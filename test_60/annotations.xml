@@ -1,0 +1,355 @@
+<?xml version="1.0" encoding="utf-8"?>
+<annotations>
+  <version>1.1</version>
+  <meta>
+    <task>
+      <id>2</id>
+      <name>cv</name>
+      <size>60</size>
+      <mode>annotation</mode>
+      <overlap>0</overlap>
+      <bugtracker></bugtracker>
+      <created>2026-06-06 02:45:12.421306+00:00</created>
+      <updated>2026-06-06 09:52:27.912771+00:00</updated>
+      <subset>default</subset>
+      <start_frame>0</start_frame>
+      <stop_frame>59</stop_frame>
+      <frame_filter></frame_filter>
+      <segments>
+        <segment>
+          <id>2</id>
+          <start>0</start>
+          <stop>59</stop>
+          <url>http://localhost:8080/api/tasks/2/dataset/export/api/jobs/2</url>
+        </segment>
+      </segments>
+      <owner>
+        <username>admin</username>
+        <email>akirakawashi@yandex.ru</email>
+      </owner>
+      <assignee></assignee>
+      <labels>
+        <label>
+          <name>our advertising</name>
+          <color>#66ff66</color>
+          <type>rectangle</type>
+          <attributes>
+          </attributes>
+        </label>
+        <label>
+          <name>competitors' advertising</name>
+          <color>#fa3253</color>
+          <type>rectangle</type>
+          <attributes>
+          </attributes>
+        </label>
+        <label>
+          <name>other advertising</name>
+          <color>#3d3df5</color>
+          <type>rectangle</type>
+          <attributes>
+          </attributes>
+        </label>
+      </labels>
+    </task>
+    <dumped>2026-06-06 09:52:56.942594+00:00</dumped>
+  </meta>
+  <image id="0" name="Screenshot_1.png" width="2471" height="966">
+    <box label="our advertising" source="manual" occluded="0" xtl="1419.80" ytl="368.15" xbr="1447.10" ybr="412.51" z_order="0">
+    </box>
+    <box label="our advertising" source="manual" occluded="0" xtl="1020.48" ytl="367.01" xbr="1063.71" ybr="395.45" z_order="0">
+    </box>
+    <box label="other advertising" source="manual" occluded="0" xtl="2183.17" ytl="316.95" xbr="2387.95" ybr="571.79" z_order="0">
+    </box>
+    <box label="other advertising" source="manual" occluded="0" xtl="318.54" ytl="293.06" xbr="460.75" ybr="387.49" z_order="0">
+    </box>
+  </image>
+  <image id="1" name="Screenshot_10.png" width="2440" height="980">
+    <box label="our advertising" source="manual" occluded="0" xtl="406.15" ytl="434.91" xbr="534.21" ybr="525.90" z_order="0">
+    </box>
+    <box label="our advertising" source="manual" occluded="0" xtl="968.44" ytl="472.72" xbr="1017.75" ybr="509.80" z_order="0">
+    </box>
+    <box label="competitors' advertising" source="manual" occluded="0" xtl="1391.13" ytl="453.13" xbr="1450.97" ybr="484.52" z_order="0">
+    </box>
+  </image>
+  <image id="2" name="Screenshot_11.png" width="2420" height="978">
+    <box label="our advertising" source="manual" occluded="0" xtl="429.55" ytl="376.87" xbr="546.07" ybr="467.39" z_order="0">
+    </box>
+  </image>
+  <image id="3" name="Screenshot_12.png" width="2439" height="981">
+  </image>
+  <image id="4" name="Screenshot_13.png" width="2420" height="964">
+  </image>
+  <image id="5" name="Screenshot_14.png" width="2405" height="983">
+    <box label="other advertising" source="manual" occluded="0" xtl="1395.30" ytl="529.65" xbr="1421.38" ybr="568.65" z_order="0">
+    </box>
+  </image>
+  <image id="6" name="Screenshot_15.png" width="2402" height="969">
+    <box label="other advertising" source="manual" occluded="0" xtl="1631.88" ytl="527.52" xbr="1708.65" ybr="623.64" z_order="0">
+    </box>
+  </image>
+  <image id="7" name="Screenshot_16.png" width="2402" height="964">
+  </image>
+  <image id="8" name="Screenshot_17.png" width="2424" height="984">
+    <box label="competitors' advertising" source="manual" occluded="0" xtl="315.30" ytl="514.06" xbr="460.38" ybr="693.74" z_order="0">
+    </box>
+    <box label="competitors' advertising" source="manual" occluded="0" xtl="1156.35" ytl="499.51" xbr="1184.05" ybr="540.41" z_order="0">
+    </box>
+  </image>
+  <image id="9" name="Screenshot_18.png" width="2411" height="981">
+    <box label="competitors' advertising" source="manual" occluded="0" xtl="1045.51" ytl="503.23" xbr="1092.39" ybr="572.57" z_order="0">
+    </box>
+  </image>
+  <image id="10" name="Screenshot_19.png" width="2402" height="971">
+  </image>
+  <image id="11" name="Screenshot_2.png" width="2442" height="984">
+    <box label="our advertising" source="manual" occluded="0" xtl="907.51" ytl="377.64" xbr="961.48" ybr="417.35" z_order="0">
+    </box>
+    <box label="our advertising" source="manual" occluded="0" xtl="1514.38" ytl="380.45" xbr="1537.58" ybr="462.21" z_order="0">
+    </box>
+  </image>
+  <image id="12" name="Screenshot_20.png" width="2395" height="953">
+    <box label="other advertising" source="manual" occluded="0" xtl="1163.62" ytl="402.26" xbr="1187.48" ybr="438.19" z_order="0">
+    </box>
+    <box label="other advertising" source="manual" occluded="0" xtl="1399.95" ytl="409.61" xbr="1418.67" ybr="428.01" z_order="0">
+    </box>
+  </image>
+  <image id="13" name="Screenshot_21.png" width="2442" height="971">
+    <box label="other advertising" source="manual" occluded="0" xtl="810.78" ytl="399.41" xbr="907.05" ybr="541.48" z_order="0">
+    </box>
+    <box label="other advertising" source="manual" occluded="0" xtl="1603.41" ytl="432.02" xbr="1656.98" ybr="504.99" z_order="0">
+    </box>
+    <box label="other advertising" source="manual" occluded="0" xtl="1512.12" ytl="432.98" xbr="1539.58" ybr="475.26" z_order="0">
+    </box>
+    <box label="our advertising" source="manual" occluded="0" xtl="1463.12" ytl="427.98" xbr="1493.08" ybr="464.34" z_order="0">
+    </box>
+    <box label="our advertising" source="manual" occluded="0" xtl="1196.35" ytl="433.46" xbr="1214.25" ybr="457.85" z_order="0">
+    </box>
+  </image>
+  <image id="14" name="Screenshot_22.png" width="2402" height="942">
+    <box label="our advertising" source="manual" occluded="0" xtl="1126.59" ytl="377.52" xbr="1147.92" ybr="408.01" z_order="0">
+    </box>
+    <box label="our advertising" source="manual" occluded="0" xtl="1506.61" ytl="371.22" xbr="1551.25" ybr="432.72" z_order="0">
+    </box>
+    <box label="other advertising" source="manual" occluded="0" xtl="1634.71" ytl="377.30" xbr="1683.40" ybr="454.87" z_order="0">
+    </box>
+    <box label="other advertising" source="manual" occluded="0" xtl="2043.50" ytl="375.03" xbr="2168.06" ybr="505.26" z_order="0">
+    </box>
+  </image>
+  <image id="15" name="Screenshot_23.png" width="2371" height="954">
+    <box label="our advertising" source="manual" occluded="0" xtl="1762.90" ytl="357.34" xbr="1856.43" ybr="488.28" z_order="0">
+    </box>
+    <box label="our advertising" source="manual" occluded="0" xtl="1068.58" ytl="374.55" xbr="1095.51" ybr="414.20" z_order="0">
+    </box>
+  </image>
+  <image id="16" name="Screenshot_24.png" width="2417" height="981">
+    <box label="our advertising" source="manual" occluded="0" xtl="857.44" ytl="357.10" xbr="923.03" ybr="451.68" z_order="0">
+    </box>
+  </image>
+  <image id="17" name="Screenshot_25.png" width="2374" height="947">
+  </image>
+  <image id="18" name="Screenshot_26.png" width="2448" height="942">
+    <box label="our advertising" source="manual" occluded="0" xtl="1326.87" ytl="381.88" xbr="1349.07" ybr="412.94" z_order="0">
+    </box>
+  </image>
+  <image id="19" name="Screenshot_27.png" width="2422" height="965">
+  </image>
+  <image id="20" name="Screenshot_28.png" width="2392" height="938">
+  </image>
+  <image id="21" name="Screenshot_29.png" width="2368" height="953">
+  </image>
+  <image id="22" name="Screenshot_3.png" width="2451" height="988">
+  </image>
+  <image id="23" name="Screenshot_30.png" width="2415" height="947">
+  </image>
+  <image id="24" name="Screenshot_31.png" width="2401" height="968">
+  </image>
+  <image id="25" name="Screenshot_32.png" width="2414" height="973">
+  </image>
+  <image id="26" name="Screenshot_33.png" width="2385" height="926">
+  </image>
+  <image id="27" name="Screenshot_34.png" width="2311" height="936">
+  </image>
+  <image id="28" name="Screenshot_35.png" width="2382" height="964">
+  </image>
+  <image id="29" name="Screenshot_36.png" width="2359" height="924">
+  </image>
+  <image id="30" name="Screenshot_37.png" width="2318" height="902">
+    <box label="our advertising" source="manual" occluded="0" xtl="1501.17" ytl="337.46" xbr="1643.35" ybr="570.20" z_order="0">
+    </box>
+    <box label="our advertising" source="manual" occluded="0" xtl="1249.81" ytl="432.25" xbr="1281.12" ybr="472.87" z_order="0">
+    </box>
+  </image>
+  <image id="31" name="Screenshot_38.png" width="2437" height="956">
+    <box label="our advertising" source="manual" occluded="0" xtl="2230.20" ytl="453.21" xbr="2426.74" ybr="723.60" z_order="0">
+    </box>
+    <box label="other advertising" source="manual" occluded="0" xtl="304.07" ytl="409.13" xbr="396.98" ybr="530.63" z_order="0">
+    </box>
+  </image>
+  <image id="32" name="Screenshot_39.png" width="2385" height="921">
+    <box label="competitors' advertising" source="manual" occluded="0" xtl="1001.23" ytl="354.16" xbr="1084.70" ybr="402.43" z_order="0">
+    </box>
+    <box label="other advertising" source="manual" occluded="0" xtl="895.61" ytl="423.12" xbr="952.23" ybr="501.52" z_order="0">
+    </box>
+    <box label="other advertising" source="manual" occluded="0" xtl="1464.94" ytl="388.03" xbr="1523.28" ybr="421.28" z_order="0">
+    </box>
+    <box label="other advertising" source="manual" occluded="0" xtl="1328.48" ytl="407.17" xbr="1355.77" ybr="424.11" z_order="0">
+    </box>
+  </image>
+  <image id="33" name="Screenshot_4.png" width="2495" height="962">
+    <box label="other advertising" source="manual" occluded="0" xtl="1981.98" ytl="236.68" xbr="2261.36" ybr="671.28" z_order="0">
+    </box>
+    <box label="other advertising" source="manual" occluded="0" xtl="575.19" ytl="335.46" xbr="668.32" ybr="404.60" z_order="0">
+    </box>
+    <box label="our advertising" source="manual" occluded="0" xtl="167.40" ytl="420.12" xbr="249.24" ybr="483.61" z_order="0">
+    </box>
+    <box label="our advertising" source="manual" occluded="0" xtl="257.71" ytl="420.12" xbr="331.08" ybr="475.15" z_order="0">
+    </box>
+    <box label="competitors' advertising" source="manual" occluded="0" xtl="1342.75" ytl="371.15" xbr="1383.85" ybr="402.51" z_order="0">
+    </box>
+  </image>
+  <image id="34" name="Screenshot_40.png" width="2363" height="973">
+    <box label="other advertising" source="manual" occluded="0" xtl="448.89" ytl="148.01" xbr="782.69" ybr="339.74" z_order="0">
+    </box>
+    <box label="competitors' advertising" source="manual" occluded="0" xtl="1815.27" ytl="367.31" xbr="1945.04" ybr="440.19" z_order="0">
+    </box>
+    <box label="other advertising" source="manual" occluded="0" xtl="1393.01" ytl="437.19" xbr="1429.95" ybr="460.15" z_order="0">
+    </box>
+  </image>
+  <image id="35" name="Screenshot_41.png" width="2411" height="959">
+    <box label="other advertising" source="manual" occluded="0" xtl="1479.34" ytl="400.72" xbr="1542.49" ybr="436.37" z_order="0">
+    </box>
+  </image>
+  <image id="36" name="Screenshot_42.png" width="2391" height="972">
+    <box label="competitors' advertising" source="manual" occluded="0" xtl="1571.94" ytl="388.53" xbr="1682.04" ybr="455.20" z_order="0">
+    </box>
+  </image>
+  <image id="37" name="Screenshot_43.png" width="2401" height="945">
+    <box label="other advertising" source="manual" occluded="0" xtl="531.72" ytl="410.61" xbr="606.77" ybr="481.61" z_order="0">
+    </box>
+  </image>
+  <image id="38" name="Screenshot_44.png" width="2361" height="946">
+    <box label="our advertising" source="manual" occluded="0" xtl="1716.75" ytl="357.79" xbr="1879.33" ybr="625.10" z_order="0">
+    </box>
+    <box label="our advertising" source="manual" occluded="0" xtl="1371.65" ytl="422.62" xbr="1414.54" ybr="462.52" z_order="0">
+    </box>
+    <box label="other advertising" source="manual" occluded="0" xtl="464.02" ytl="366.77" xbr="568.74" ybr="445.56" z_order="0">
+    </box>
+  </image>
+  <image id="39" name="Screenshot_45.png" width="2462" height="972">
+    <box label="our advertising" source="manual" occluded="0" xtl="1489.57" ytl="393.50" xbr="1577.29" ybr="457.55" z_order="0">
+    </box>
+    <box label="our advertising" source="manual" occluded="0" xtl="1939.30" ytl="451.98" xbr="2047.91" ybr="607.93" z_order="0">
+    </box>
+    <box label="other advertising" source="manual" occluded="0" xtl="2280.43" ytl="450.59" xbr="2461.44" ybr="698.43" z_order="0">
+    </box>
+    <box label="competitors' advertising" source="manual" occluded="0" xtl="2067.40" ytl="451.98" xbr="2241.45" ybr="651.09" z_order="0">
+    </box>
+  </image>
+  <image id="40" name="Screenshot_46.png" width="2393" height="969">
+    <box label="our advertising" source="manual" occluded="0" xtl="1633.91" ytl="337.01" xbr="1839.62" ybr="475.05" z_order="0">
+    </box>
+    <box label="our advertising" source="manual" occluded="0" xtl="2062.92" ytl="479.11" xbr="2206.38" ybr="646.92" z_order="0">
+    </box>
+  </image>
+  <image id="41" name="Screenshot_47.png" width="2379" height="973">
+  </image>
+  <image id="42" name="Screenshot_48.png" width="2332" height="954">
+    <box label="our advertising" source="manual" occluded="0" xtl="1519.05" ytl="461.87" xbr="1559.94" ybr="521.22" z_order="0">
+    </box>
+  </image>
+  <image id="43" name="Screenshot_49.png" width="2389" height="970">
+    <box label="our advertising" source="manual" occluded="0" xtl="1967.64" ytl="464.16" xbr="2164.90" ybr="683.04" z_order="0">
+    </box>
+  </image>
+  <image id="44" name="Screenshot_5.png" width="2449" height="984">
+    <box label="competitors' advertising" source="manual" occluded="0" xtl="259.43" ytl="327.98" xbr="403.47" ybr="431.86" z_order="0">
+    </box>
+    <box label="other advertising" source="manual" occluded="0" xtl="1399.29" ytl="387.54" xbr="1454.69" ybr="426.32" z_order="0">
+    </box>
+  </image>
+  <image id="45" name="Screenshot_50.png" width="2394" height="977">
+  </image>
+  <image id="46" name="Screenshot_51.png" width="2397" height="972">
+    <box label="other advertising" source="manual" occluded="0" xtl="1621.09" ytl="470.77" xbr="1674.42" ybr="549.19" z_order="0">
+    </box>
+  </image>
+  <image id="47" name="Screenshot_52.png" width="2372" height="967">
+    <box label="other advertising" source="manual" occluded="0" xtl="1969.78" ytl="433.50" xbr="2117.23" ybr="624.41" z_order="0">
+    </box>
+  </image>
+  <image id="48" name="Screenshot_53.png" width="2351" height="967">
+    <box label="other advertising" source="manual" occluded="0" xtl="1459.84" ytl="492.05" xbr="1484.33" ybr="526.92" z_order="0">
+    </box>
+    <box label="competitors' advertising" source="manual" occluded="0" xtl="1370.08" ytl="454.96" xbr="1401.24" ybr="478.70" z_order="0">
+    </box>
+    <box label="our advertising" source="manual" occluded="0" xtl="1428.69" ytl="490.57" xbr="1450.20" ybr="519.50" z_order="0">
+    </box>
+  </image>
+  <image id="49" name="Screenshot_54.png" width="2361" height="967">
+    <box label="competitors' advertising" source="manual" occluded="0" xtl="1405.07" ytl="444.47" xbr="1452.94" ybr="480.37" z_order="0">
+    </box>
+    <box label="competitors' advertising" source="manual" occluded="0" xtl="1978.57" ytl="495.34" xbr="2062.35" ybr="597.07" z_order="0">
+    </box>
+    <box label="our advertising" source="manual" occluded="0" xtl="1910.75" ytl="492.34" xbr="1970.59" ybr="578.12" z_order="0">
+    </box>
+    <box label="other advertising" source="manual" occluded="0" xtl="1701.29" ytl="487.36" xbr="1774.10" ybr="577.12" z_order="0">
+    </box>
+    <box label="other advertising" source="manual" occluded="0" xtl="1852.90" ytl="494.34" xbr="1903.77" ybr="571.14" z_order="0">
+    </box>
+    <box label="other advertising" source="manual" occluded="0" xtl="1534.73" ytl="487.36" xbr="1570.63" ybr="536.23" z_order="0">
+    </box>
+  </image>
+  <image id="50" name="Screenshot_55.png" width="2362" height="974">
+    <box label="competitors' advertising" source="manual" occluded="0" xtl="1481.26" ytl="399.92" xbr="1568.08" ybr="464.04" z_order="0">
+    </box>
+  </image>
+  <image id="51" name="Screenshot_56.png" width="2388" height="929">
+    <box label="competitors' advertising" source="manual" occluded="0" xtl="911.48" ytl="373.17" xbr="1046.54" ybr="477.16" z_order="0">
+    </box>
+  </image>
+  <image id="52" name="Screenshot_57.png" width="2339" height="936">
+    <box label="our advertising" source="manual" occluded="0" xtl="65.34" ytl="569.59" xbr="142.06" ybr="618.54" z_order="0">
+    </box>
+    <box label="our advertising" source="manual" occluded="0" xtl="1206.64" ytl="558.03" xbr="1244.13" ybr="585.05" z_order="0">
+    </box>
+    <box label="our advertising" source="manual" occluded="0" xtl="1568.87" ytl="559.69" xbr="1599.75" ybr="579.54" z_order="0">
+    </box>
+    <box label="our advertising" source="manual" occluded="0" xtl="1638.89" ytl="570.71" xbr="1671.97" ybr="629.16" z_order="0">
+    </box>
+  </image>
+  <image id="53" name="Screenshot_58.png" width="2355" height="962">
+    <box label="our advertising" source="manual" occluded="0" xtl="1467.18" ytl="572.17" xbr="1514.48" ybr="660.74" z_order="0">
+    </box>
+    <box label="our advertising" source="manual" occluded="0" xtl="860.13" ytl="556.69" xbr="914.30" ybr="594.53" z_order="0">
+    </box>
+    <box label="our advertising" source="manual" occluded="0" xtl="1334.77" ytl="567.01" xbr="1372.60" ybr="591.95" z_order="0">
+    </box>
+  </image>
+  <image id="54" name="Screenshot_59.png" width="2361" height="946">
+    <box label="our advertising" source="manual" occluded="0" xtl="467.51" ytl="523.88" xbr="567.50" ybr="595.43" z_order="0">
+    </box>
+    <box label="our advertising" source="manual" occluded="0" xtl="1339.89" ytl="560.09" xbr="1393.33" ybr="595.43" z_order="0">
+    </box>
+    <box label="our advertising" source="manual" occluded="0" xtl="1878.66" ytl="578.19" xbr="1943.31" ybr="697.15" z_order="0">
+    </box>
+  </image>
+  <image id="55" name="Screenshot_6.png" width="2426" height="984">
+    <box label="our advertising" source="manual" occluded="0" xtl="1430.35" ytl="389.22" xbr="1491.47" ybr="436.16" z_order="0">
+    </box>
+  </image>
+  <image id="56" name="Screenshot_60.png" width="2297" height="938">
+    <box label="our advertising" source="manual" occluded="0" xtl="1362.58" ytl="517.94" xbr="1461.38" ybr="584.18" z_order="0">
+    </box>
+  </image>
+  <image id="57" name="Screenshot_7.png" width="2409" height="937">
+    <box label="other advertising" source="manual" occluded="0" xtl="1470.25" ytl="335.62" xbr="1563.27" ybr="405.10" z_order="0">
+    </box>
+  </image>
+  <image id="58" name="Screenshot_8.png" width="2418" height="976">
+    <box label="other advertising" source="manual" occluded="0" xtl="1939.70" ytl="123.50" xbr="2368.73" ybr="398.88" z_order="0">
+    </box>
+  </image>
+  <image id="59" name="Screenshot_9.png" width="2419" height="975">
+  </image>
+</annotations>
