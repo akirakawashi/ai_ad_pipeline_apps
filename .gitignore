@@ -8,6 +8,7 @@ wheels/
 *.png
 *.jpg
 *.jpeg
+*.txt
 
 # Virtual environments
 .venv
