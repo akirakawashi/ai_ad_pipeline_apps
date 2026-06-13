@@ -1,0 +1,5 @@
+path: /home/shiawase/ic8_ai/ad_detection/data/yolo/ad_surface_v2
+train: images/train
+val: images/val
+names:
+  0: ad_object
