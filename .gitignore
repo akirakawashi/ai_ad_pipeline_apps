@@ -11,6 +11,8 @@ wheels/
 *.jpg
 *.jpeg
 *.txt
+*.pt
+*.cache
 
 # Virtual environments
 .venv
