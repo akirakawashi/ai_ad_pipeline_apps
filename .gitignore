@@ -22,6 +22,7 @@ wheels/
 
 # Local media and generated ML artifacts
 *.avi
+*.zip
 *.mkv
 *.mov
 *.mp4
@@ -32,4 +33,5 @@ runs/
 reports/metrics/
 data/prelabel/
 data/cvat_exports/
+data/yolo/
 cvat_import/
