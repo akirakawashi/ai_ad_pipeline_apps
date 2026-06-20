@@ -29,8 +29,12 @@ wheels/
 *.webm
 input_video/
 output_video/
-runs/
+outputs/
+ml/runs/
 reports/metrics/
+ml/data/classification/
+ml/data/detection/videos/
+ml/data/detection/yolo/
 data/prelabel/
 data/cvat_exports/
 data/yolo/
