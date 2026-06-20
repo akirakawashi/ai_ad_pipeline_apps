@@ -1,0 +1,1 @@
+"""Detection crop helper placeholders."""

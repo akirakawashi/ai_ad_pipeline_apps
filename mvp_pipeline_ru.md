@@ -3,9 +3,9 @@
 Текущий пайплайн хороший как база, но его нужно доработать по четырем важным направлениям:
 
 1. Разделить detection crop и classification crop.
-2. Добавить quality gate до классификатора, чтобы не классифицировать слишком дальние/мелкие объекты.
+2. Добавить quality gate до классификатора, чтобы не отдавать в classifier crop-ы, которые плохо подходят для классификации по качеству текущего видео.
 3. Добавить tracking/aggregation, чтобы понимать, что один и тот же билборд виден на разных кадрах.
-4. Добавить систему score-ов: detection score, quality score, brand score, visibility score, overall score.
+4. Добавить систему score-ов: detection score, crop quality score, brand score, video visibility score, overall score.
 
 ## 1. Важное уточнение по сущностям
 
@@ -50,10 +50,12 @@ Brand classifier отвечает на вопрос:
 Visibility module отвечает на вопрос:
 
 ```text
-Насколько заметна эта реклама на маршруте?
+Насколько рекламный объект заметен в данном видео/на маршруте?
 ```
 
-Нельзя считать, что если YOLO нашла bbox, то этот bbox автоматически пригоден для классификации бренда. Если объект далеко, после crop-а бренд может быть физически нечитаемым.
+Нельзя считать, что если YOLO нашла bbox, то этот bbox автоматически пригоден для классификации бренда. Если объект маленький, смазанный или плохо сохранен в доступном видео, classifier может быть ненадежен.
+
+Важно: пайплайн не должен утверждать, что рекламу нельзя прочитать в реальности. Он может утверждать только, что по данному crop-у из данного видео бренд не был надежно классифицирован.
 
 ## 3. Crop нужно сохранять, но не каждый crop классифицировать
 
@@ -66,8 +68,10 @@ Visibility module отвечает на вопрос:
 ```text
 YOLO нашла билборд
   -> crop сохраняем всегда
-  -> если crop плохой/маленький/далекий, classifier не запускаем
-  -> статус = rejected_by_quality / unreadable / too_far
+  -> если crop плохо подходит для classifier по текущему видео, classifier не запускаем
+  -> classification_input_status = rejected
+  -> brand_status = not_classified
+  -> status_reason = small_crop_in_video / motion_blur_in_video / low_video_quality
 ```
 
 ## 4. Разделить пороги detection и classification
@@ -98,7 +102,9 @@ min_bbox_area_ratio: 0.0005-0.001
 
 ### Classification gate
 
-Используется, чтобы понять, можно ли crop отправлять в classifier.
+Используется, чтобы понять, стоит ли отправлять crop в classifier.
+
+Это не оценка реальной читаемости рекламы человеком. Это техническая оценка пригодности конкретного crop-а из конкретного видео как входа для classifier.
 
 Черновые пороги:
 
@@ -111,36 +117,39 @@ min_classify_area_ratio: 0.002-0.005
 Если crop меньше этих значений:
 
 ```text
-quality_status = rejected
-quality_reason = too_small_for_classification
-status = rejected_by_quality
+crop_quality_status = rejected
+crop_quality_reason = too_small_for_classification
+classification_input_status = rejected
+classification_attempted = false
+brand_status = not_classified
 brand = null
 ```
 
 Важно: конкретные значения нужно подобрать после просмотра первых реальных crop-ов.
 
-## 5. Quality gate должен возвращать не только status, но и quality_score
+## 5. Quality gate должен возвращать не только status, но и crop_quality_score
 
 Quality gate должен возвращать:
 
 ```text
-quality_status:
+crop_quality_status:
   passed
   borderline
   rejected
 
-quality_reason:
+crop_quality_reason:
   ok
-  too_small
-  too_far
-  blurry
-  too_dark
-  too_bright
+  too_small_for_classification
+  small_crop_in_video
+  motion_blur_in_video
+  low_video_quality
+  too_dark_in_video
+  too_bright_in_video
   low_detector_conf
   bad_aspect_ratio
   clipped_by_frame_border
 
-quality_score:
+crop_quality_score:
   float 0.0-1.0
 ```
 
@@ -148,21 +157,23 @@ quality_score:
 
 ```text
 crop достаточно крупный, не смазан, нормальная яркость:
-  quality_status = passed
-  quality_score = 0.85-1.0
+  crop_quality_status = passed
+  crop_quality_score = 0.85-1.0
 
-crop неидеальный, но бренд потенциально виден:
-  quality_status = borderline
-  quality_score = 0.45-0.75
+crop неидеальный, но classifier все еще может дать полезный сигнал:
+  crop_quality_status = borderline
+  crop_quality_score = 0.45-0.75
 
 crop слишком мелкий/смазанный:
-  quality_status = rejected
-  quality_score = 0.0-0.45
+  crop_quality_status = rejected
+  crop_quality_score = 0.0-0.45
 ```
 
-Если `quality_status = rejected`, classifier не запускаем.
+Если `crop_quality_status = rejected`, classifier не запускаем.
 
-Если `quality_status = borderline`, classifier можно запустить, но финальный статус почти всегда должен быть `manual_review`, кроме случаев очень высокой уверенности.
+Если `crop_quality_status = borderline`, classifier можно запустить, но финальный статус почти всегда должен быть `manual_review`, кроме случаев очень высокой уверенности.
+
+Не используем формулировки вроде `unreadable` как финальный вывод. Безопаснее писать: `not_classified` с причиной `small_crop_in_video`, `motion_blur_in_video` или `low_video_quality`.
 
 ## 6. Нужно выбирать лучший crop по объекту, а не классифицировать каждый кадр одинаково
 
@@ -188,7 +199,7 @@ frame 130: объект уходит из кадра
 Для MVP можно начать с простой логики:
 
 ```text
-для каждого track выбрать top-N crop-ов по quality_score * area_ratio * det_conf
+для каждого track выбрать top-N crop-ов по crop_quality_score * area_ratio * det_conf
 ```
 
 Например:
@@ -221,10 +232,10 @@ first_timestamp_sec
 last_timestamp_sec
 detections_count
 best_crop_path
-best_quality_score
+best_crop_quality_score
 max_area_ratio
 mean_area_ratio
-mean_visibility_score
+mean_video_visibility_score
 final_brand
 final_brand_conf
 final_status
@@ -232,9 +243,11 @@ final_status
 
 Важно: для MVP `track_id` означает “один объект внутри одного видео/прохода”. Это не глобальный ID билборда в реальном мире. Чтобы понимать, что это тот же самый физический билборд в разные дни/маршруты, позже понадобятся GPS, геопривязка, re-identification или ручная связка.
 
-## 8. Как считать видимость
+## 8. Как считать видимость в видео
 
-Нужно не просто определить бренд, но и посчитать, насколько объект был заметен.
+Нужно не просто определить бренд, но и посчитать, насколько рекламная поверхность была заметна в данном видео/на данном маршруте.
+
+Это не абсолютная видимость объекта в реальном мире. На результат влияют камера, битрейт, погода, освещение, угол, скорость движения и качество исходного видео.
 
 Для каждой detection считаем:
 
@@ -265,26 +278,41 @@ position_weight clipped to 0.2..1.0
 Потом считаем frame-level visibility:
 
 ```text
-visibility_score = area_score * position_weight * quality_score
+geometry_visibility_score = area_score * position_weight
 ```
 
 Где:
 
 ```text
 area_score = normalized area_ratio
-quality_score = из quality gate
+position_weight = вес позиции объекта в кадре
 ```
 
-Для MVP можно упростить:
+Для MVP можно считать:
 
 ```text
-visibility_score = area_ratio * position_weight * quality_score
+video_visibility_score = geometry_visibility_score
+```
+
+Позже можно добавить отдельный `detection_reliability_weight`, если нужно ослаблять вклад слабых/сомнительных detections:
+
+```text
+video_visibility_score = geometry_visibility_score * detection_reliability_weight
+```
+
+Важно: `crop_quality_score` не должен автоматически умножаться на visibility. Плохой crop может мешать classifier-у, но рекламная поверхность все равно могла быть заметна в видео.
+
+Чтобы метрика не зависела напрямую от `frame_stride`, добавляем временной вес:
+
+```text
+video_visibility_weighted_seconds = video_visibility_score * delta_t_sec
 ```
 
 По track считаем:
 
 ```text
-track_visibility_score = sum или mean visibility_score по detections track-а
+track_video_visibility_score = sum или mean video_visibility_score по detections track-а
+track_video_visibility_weighted_seconds = sum video_visibility_weighted_seconds
 track_visible_duration_sec = last_timestamp_sec - first_timestamp_sec
 track_max_area_ratio = max(area_ratio)
 track_mean_area_ratio = mean(area_ratio)
@@ -306,9 +334,9 @@ exposure_visibility:
 
 ```text
 det_score        — уверенность YOLO detector
-quality_score    — насколько crop пригоден для анализа
+crop_quality_score — насколько crop пригоден как вход для classifier
 brand_score      — уверенность classifier
-visibility_score — насколько объект заметен в кадре
+video_visibility_score — насколько рекламная поверхность заметна в данном видео
 overall_score    — общий score для карточки/отчета
 ```
 
@@ -319,9 +347,9 @@ overall_score    — общий score для карточки/отчета
 ```text
 overall_score = 
   0.30 * det_conf +
-  0.30 * quality_score +
+  0.30 * crop_quality_score +
   0.25 * brand_conf +
-  0.15 * visibility_score_norm
+  0.15 * video_visibility_score_norm
 ```
 
 Если classifier не запускался:
@@ -330,8 +358,8 @@ overall_score =
 brand_conf = 0
 overall_score = 
   0.40 * det_conf +
-  0.40 * quality_score +
-  0.20 * visibility_score_norm
+  0.40 * crop_quality_score +
+  0.20 * video_visibility_score_norm
 ```
 
 ### Per-track final_score
@@ -341,12 +369,14 @@ overall_score =
 ```text
 track_final_score =
   0.30 * mean_det_conf +
-  0.25 * best_quality_score +
+  0.25 * best_crop_quality_score +
   0.25 * final_brand_conf +
-  0.20 * track_visibility_score_norm
+  0.20 * track_video_visibility_score_norm
 ```
 
 Значения весов на MVP можно оставить конфигурируемыми.
+
+`overall_score` — это технический score доверия к карточке/результату пайплайна. Его не нужно использовать как замену `video_visibility_score`.
 
 ## 10. Финальный бренд нужно считать по track, а не только по одной detection
 
@@ -381,42 +411,68 @@ crop_3: plus7 0.66
 ```text
 final_status = manual_review
 final_brand = null или наиболее вероятный бренд с пометкой conflict
-quality_reason/status_reason = brand_conflict_across_track
+status_reason = brand_conflict_across_track
 ```
 
 ## 11. Обновить статусы
 
-Текущие статусы нормальные, но их нужно расширить.
+Текущие статусы нормальные, но их нужно разделить по слоям, чтобы не смешивать качество видео, классификацию бренда и бизнесовый статус.
 
 ```text
-status:
+crop_quality_status:
+  passed
+  borderline
+  rejected
+
+classification_input_status:
+  accepted
+  borderline
+  rejected
+
+brand_status:
   detected_brand
   other
   unknown
   manual_review
-  rejected_by_quality
-  too_far
-  unreadable
+  not_classified
+
+final_status:
+  detected_brand
+  other
+  unknown
+  manual_review
+  not_classified
 ```
 
-Можно оставить `rejected_by_quality` как общий статус, а причину хранить отдельно:
+Причину нужно хранить отдельно:
 
 ```text
-quality_reason:
-  too_small
-  too_far
-  blurry
-  too_dark
-  too_bright
+crop_quality_reason:
+  ok
+  too_small_for_classification
+  small_crop_in_video
+  motion_blur_in_video
+  low_video_quality
+  too_dark_in_video
+  too_bright_in_video
+  low_detector_conf
+  bad_aspect_ratio
+  clipped_by_frame_border
 ```
 
 Для бизнес-отчета важно разделять:
 
 ```text
 unknown — модель не уверена
-unreadable/too_far — по изображению физически нельзя понять бренд
+not_classified — classifier не запускался или результат не принят из-за качества crop-а в текущем видео
 manual_review — можно проверить человеком
 other — реклама не из целевых телеком-брендов
+```
+
+В отчете нельзя писать “бренд невозможно прочитать”. Безопасная формулировка:
+
+```text
+бренд не был надежно определен по доступному видеоматериалу
 ```
 
 ## 12. Обновить detections.csv
@@ -455,9 +511,10 @@ crop_path
 crop_width
 crop_height
 
-quality_status
-quality_reason
-quality_score
+crop_quality_status
+crop_quality_reason
+crop_quality_score
+classification_input_status
 
 classification_attempted
 brand_pred
@@ -469,10 +526,12 @@ top2_score
 top3_brand
 top3_score
 
-visibility_score
+video_visibility_score
+video_visibility_weighted_seconds
 overall_score
 
-status
+brand_status
+final_status
 status_reason
 ```
 
@@ -507,16 +566,17 @@ best_timestamp_sec
 mean_det_conf
 max_det_conf
 
-mean_quality_score
-best_quality_score
+mean_crop_quality_score
+best_crop_quality_score
 
 max_area_ratio
 mean_area_ratio
 sum_area_ratio
 
 mean_position_weight
-mean_visibility_score
-sum_visibility_score
+mean_video_visibility_score
+sum_video_visibility_score
+video_visibility_weighted_seconds
 
 final_brand
 final_brand_conf
@@ -549,8 +609,9 @@ brand
 status
 track_count
 mean_track_final_score
-mean_visibility_score
-sum_visibility_score
+mean_video_visibility_score
+sum_video_visibility_score
+video_visibility_weighted_seconds
 mean_final_brand_conf
 max_final_brand_conf
 first_timestamp_sec
@@ -569,14 +630,14 @@ charts/
   tracks_by_brand.png
   status_counts.png
   confidence_distribution.png
-  quality_score_distribution.png
-  visibility_by_brand.png
-  visibility_timeline.png
+  crop_quality_score_distribution.png
+  video_visibility_by_brand.png
+  video_visibility_timeline.png
   area_ratio_timeline.png
   manual_review_cases.png
 ```
 
-### visibility_timeline
+### video_visibility_timeline
 
 По X:
 
@@ -587,7 +648,7 @@ timestamp_sec
 По Y:
 
 ```text
-sum visibility_score по кадру
+sum video_visibility_score по кадру
 ```
 
 Группировка:
@@ -596,13 +657,14 @@ sum visibility_score по кадру
 brand/status
 ```
 
-### visibility_by_brand
+### video_visibility_by_brand
 
 По брендам:
 
 ```text
-sum_visibility_score
-mean_visibility_score
+sum_video_visibility_score
+mean_video_visibility_score
+video_visibility_weighted_seconds
 track_count
 ```
 
@@ -615,9 +677,9 @@ Brand: MTS
 Status: detected_brand
 Det: 0.87
 Cls: 0.82
-Q: 0.74
+CropQ: 0.74
 Area: 2.1%
-Vis: 0.63
+VideoVis: 0.63
 Score: 0.79
 Track: 12
 ```
@@ -625,15 +687,15 @@ Track: 12
 Если crop не классифицировался:
 
 ```text
-Status: too_far
-Reason: too_small_for_classification
+Status: not_classified
+Reason: small_crop_in_video
 Det: 0.71
-Q: 0.22
+CropQ: 0.22
 Area: 0.1%
 Track: 8
 ```
 
-Важно: если объект `manual_review`, `unknown` или `too_far`, нельзя рисовать карточку так, будто бренд подтвержден.
+Важно: если объект `manual_review`, `unknown` или `not_classified`, нельзя рисовать карточку так, будто бренд подтвержден.
 
 ## 17. Обновить HTML report
 
@@ -662,8 +724,9 @@ Track: 8
 ```text
 видимость по брендам:
 - track_count
-- sum_visibility_score
-- mean_visibility_score
+- sum_video_visibility_score
+- mean_video_visibility_score
+- video_visibility_weighted_seconds
 - max_area_ratio
 - visible_duration_sec
 ```
@@ -672,9 +735,10 @@ Track: 8
 
 ```text
 сколько объектов не удалось классифицировать из-за:
-- too_small
-- too_far
-- blur
+- too_small_for_classification
+- small_crop_in_video
+- motion_blur_in_video
+- low_video_quality
 - low_confidence
 ```
 
@@ -682,6 +746,14 @@ Track: 8
 
 ```text
 crop-ы, которые нужно проверить руками
+```
+
+Приоритет ручной проверки:
+
+```text
+high video_visibility_score + low brand_conf
+high video_visibility_score + brand_conflict_across_track
+high video_visibility_score + not_classified
 ```
 
 ### 7. Best detections gallery
@@ -702,13 +774,13 @@ crop-ы, которые нужно проверить руками
    video -> sampled frames -> detector -> detections.csv -> crops
 
 3. Quality gate:
-   quality_status, quality_reason, quality_score
+   crop_quality_status, crop_quality_reason, crop_quality_score
 
 4. Classification:
    запускать classifier только для passed/borderline crop-ов
 
 5. Scoring:
-   det_score, quality_score, brand_score, visibility_score, overall_score
+   det_score, crop_quality_score, brand_score, video_visibility_score, overall_score
 
 6. Simple tracking:
    detections -> track_id через IoU на соседних кадрах
@@ -743,8 +815,8 @@ min_classify_area_ratio: 0.002
 
 crop_margin_ratio: 0.05
 
-quality_pass_min: 0.65
-quality_borderline_min: 0.40
+crop_quality_pass_min: 0.65
+crop_quality_borderline_min: 0.40
 
 brand_conf_accept: 0.80
 other_conf_accept: 0.85
@@ -779,10 +851,10 @@ best_crops_per_track: 3
 Сколько уникальных объектов каждого бренда было найдено?
 ```
 
-`visibility_by_brand` отвечает на вопрос:
+`video_visibility_by_brand` отвечает на вопрос:
 
 ```text
-Насколько заметен каждый бренд на маршруте?
+Насколько каждый бренд был заметен в данном видео/на данном маршруте?
 ```
 
 Это ключевая поправка к пайплайну.

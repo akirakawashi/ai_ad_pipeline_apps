@@ -33,6 +33,7 @@ outputs/
 ml/runs/
 reports/metrics/
 ml/data/classification/
+ml/data/pipeline/input/
 ml/data/detection/videos/
 ml/data/detection/yolo/
 data/prelabel/
