@@ -60,25 +60,22 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--detector-conf-min", type=float, default=0.50)
     parser.add_argument("--detector-imgsz", type=int, default=960)
     parser.add_argument("--detector-iou", type=float, default=0.50)
-    parser.add_argument("--min-detection-width", type=int, default=64)
-    parser.add_argument("--min-detection-height", type=int, default=64)
-    parser.add_argument("--min-detection-area-ratio", type=float, default=0.0015)
+    parser.add_argument("--min-detection-width", type=int, default=48)
+    parser.add_argument("--min-detection-height", type=int, default=40)
+    parser.add_argument("--min-detection-area-ratio", type=float, default=0.001)
     parser.add_argument("--min-detection-aspect-ratio", type=float, default=0.25)
     parser.add_argument("--max-detection-aspect-ratio", type=float, default=8.0)
     parser.add_argument("--min-track-detections", type=int, default=2)
     parser.add_argument("--min-track-frame-span", type=int, default=10)
+    parser.add_argument("--best-crops-per-object", type=int, default=3)
     parser.add_argument("--object-merge-max-gap-frames", type=int, default=90)
     parser.add_argument("--object-merge-min-iou", type=float, default=0.02)
     parser.add_argument("--object-merge-max-center-distance", type=float, default=0.18)
     parser.add_argument("--object-merge-max-area-ratio", type=float, default=5.0)
     parser.add_argument("--object-merge-max-aspect-ratio", type=float, default=3.0)
     parser.add_argument("--business-min-object-detections", type=int, default=3)
-    parser.add_argument("--business-min-visible-duration-sec", type=float, default=0.20)
-    parser.add_argument(
-        "--draw-rejected",
-        action="store_true",
-        help="Deprecated; all detections are drawn with business labels.",
-    )
+    parser.add_argument("--business-min-visible-duration-sec", type=float, default=0.50)
+    parser.add_argument("--render-gap-fill-max-sec", type=float, default=0.35)
     parser.add_argument("--save-annotated-frames", action="store_true", help="Save annotated frame JPGs.")
     return parser.parse_args()
 
@@ -115,6 +112,7 @@ def build_config(args: argparse.Namespace) -> PipelineConfig:
         max_detection_aspect_ratio=args.max_detection_aspect_ratio,
         min_track_detections=args.min_track_detections,
         min_track_frame_span=args.min_track_frame_span,
+        best_crops_per_object=args.best_crops_per_object,
         object_merge_max_gap_frames=args.object_merge_max_gap_frames,
         object_merge_min_iou=args.object_merge_min_iou,
         object_merge_max_center_distance=args.object_merge_max_center_distance,
@@ -122,8 +120,8 @@ def build_config(args: argparse.Namespace) -> PipelineConfig:
         object_merge_max_aspect_ratio=args.object_merge_max_aspect_ratio,
         business_min_object_detections=args.business_min_object_detections,
         business_min_visible_duration_sec=args.business_min_visible_duration_sec,
+        render_gap_fill_max_sec=args.render_gap_fill_max_sec,
         device=args.device,
-        draw_rejected=args.draw_rejected,
         save_annotated_frames=args.save_annotated_frames,
     )
 
@@ -148,6 +146,9 @@ def main() -> int:
     print(f"detections after gate: {len(detections)}")
 
     assign_track_ids(detections, config)
+    preliminary_tracks = aggregate_tracks(detections, config)
+    object_count = assign_object_groups(preliminary_tracks, detections, config)
+    print(f"objects: {object_count}")
 
     if any(
         detection.crop_quality_status in {"passed", "borderline"}
@@ -158,8 +159,6 @@ def main() -> int:
         classify_detections(classifier, detections, config)
 
     tracks = aggregate_tracks(detections, config)
-    object_count = assign_object_groups(tracks, detections, config)
-    print(f"objects: {object_count}")
 
     applied_overrides = apply_brand_overrides(tracks, detections, config.brand_overrides_path)
     if applied_overrides:

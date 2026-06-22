@@ -192,6 +192,8 @@ def is_business_visible(
     detections: list[DetectionRecord],
     config: PipelineConfig,
 ) -> bool:
+    if any(track.final_status_reason.startswith("manual_ignore:") for track in tracks):
+        return False
     if any(track.final_status_reason.startswith("manual_override:") for track in tracks):
         return True
     if len(detections) < config.business_min_object_detections:

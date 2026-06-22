@@ -2,6 +2,9 @@
 set -euo pipefail
 
 INPUT="${1:-ml/data/pipeline/input/VideoProject.mp4}"
+if [[ $# -gt 0 ]]; then
+  shift
+fi
 FRAME_STRIDE="${FRAME_STRIDE:-1}"
 DEVICE="${DEVICE:-0}"
 DETECTOR_MODEL="${DETECTOR_MODEL:-models/detection/best.pt}"
@@ -20,5 +23,7 @@ CMD=(
 if [[ -f "$BRAND_OVERRIDES" ]]; then
   CMD+=(--brand-overrides "$BRAND_OVERRIDES")
 fi
+
+CMD+=("$@")
 
 "${CMD[@]}"

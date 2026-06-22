@@ -72,7 +72,7 @@ def classify_detections(
         and detection.crop_quality_status in {"passed", "borderline"}
         and detection.classification_input_status in {"accepted", "borderline"}
     ]
-    selected = select_best_detections_by_track(eligible, config.best_crops_per_track)
+    selected = select_best_detections_by_object(eligible, config.best_crops_per_object)
 
     with torch.no_grad():
         for detection in selected:
@@ -88,21 +88,30 @@ def classify_detections(
             _fill_detection_prediction(detection, top, config)
 
 
-def select_best_detections_by_track(
+def select_best_detections_by_object(
     detections: list[DetectionRecord],
-    per_track: int,
+    per_object: int,
 ) -> list[DetectionRecord]:
-    grouped: dict[int, list[DetectionRecord]] = {}
+    grouped: dict[tuple[str, int], list[DetectionRecord]] = {}
     for detection in detections:
-        if detection.track_id is None:
+        group_key = detection_group_key(detection)
+        if group_key is None:
             continue
-        grouped.setdefault(detection.track_id, []).append(detection)
+        grouped.setdefault(group_key, []).append(detection)
 
     selected: list[DetectionRecord] = []
-    for track_detections in grouped.values():
-        ordered = sorted(track_detections, key=best_crop_score, reverse=True)
-        selected.extend(ordered[:per_track])
+    for object_detections in grouped.values():
+        ordered = sorted(object_detections, key=best_crop_score, reverse=True)
+        selected.extend(ordered[:per_object])
     return selected
+
+
+def detection_group_key(detection: DetectionRecord) -> tuple[str, int] | None:
+    if detection.object_id is not None:
+        return ("object", detection.object_id)
+    if detection.track_id is not None:
+        return ("track", detection.track_id)
+    return None
 
 
 def best_crop_score(detection: DetectionRecord) -> float:

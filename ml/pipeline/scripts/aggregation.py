@@ -74,7 +74,7 @@ def _aggregate_one(
         run_id=detections[0].run_id,
         source_path=detections[0].source_path,
         track_id=track_id,
-        object_id=track_id,
+        object_id=_track_object_id(detections, track_id),
         first_frame_index=detections[0].frame_index,
         last_frame_index=detections[-1].frame_index,
         first_timestamp_sec=detections[0].timestamp_sec,
@@ -166,6 +166,13 @@ def _business_brand(final_brand: str, final_status: str, final_reason: str) -> s
     if final_status == "other" and final_brand == "other":
         return final_brand
     return "other"
+
+
+def _track_object_id(detections: list[DetectionRecord], default: int) -> int:
+    object_ids = [detection.object_id for detection in detections if detection.object_id is not None]
+    if not object_ids:
+        return default
+    return Counter(object_ids).most_common(1)[0][0]
 
 
 def _dominant_not_classified_reason(detections: list[DetectionRecord]) -> str:

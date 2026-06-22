@@ -10,7 +10,8 @@ from scripts.aggregation import TARGET_BRANDS
 from scripts.schemas import DetectionRecord, TrackRecord
 
 
-VALID_BRANDS = TARGET_BRANDS | {"other"}
+IGNORE_BRAND = "ignore"
+VALID_BRANDS = TARGET_BRANDS | {"other", IGNORE_BRAND}
 
 
 @dataclass(frozen=True)
@@ -68,9 +69,9 @@ def apply_brand_overrides(
             detections_by_track.get(track_id, []),
         )
         for target_track in target_tracks:
-            apply_track_brand_override(target_track, override.brand, override.reason)
+            apply_track_override(target_track, override.brand, override.reason)
         for detection in target_detections:
-            apply_detection_brand_override(detection, override.brand, override.reason)
+            apply_detection_override(detection, override.brand, override.reason)
         applied += 1
 
     return applied
@@ -114,7 +115,11 @@ def normalize_brand(value: str) -> str:
     return brand
 
 
-def apply_track_brand_override(track: TrackRecord, brand: str, reason: str) -> None:
+def apply_track_override(track: TrackRecord, brand: str, reason: str) -> None:
+    if brand == IGNORE_BRAND:
+        apply_track_ignore_override(track, reason)
+        return
+
     track.final_brand = brand
     track.final_brand_conf = 1.0
     track.final_status = "other" if brand == "other" else "detected_brand"
@@ -130,7 +135,11 @@ def apply_track_brand_override(track: TrackRecord, brand: str, reason: str) -> N
     )
 
 
-def apply_detection_brand_override(detection: DetectionRecord, brand: str, reason: str) -> None:
+def apply_detection_override(detection: DetectionRecord, brand: str, reason: str) -> None:
+    if brand == IGNORE_BRAND:
+        apply_detection_ignore_override(detection, reason)
+        return
+
     detection.brand_pred = brand
     detection.brand_conf = 1.0
     detection.top1_brand = brand
@@ -140,3 +149,25 @@ def apply_detection_brand_override(detection: DetectionRecord, brand: str, reaso
     detection.business_brand = brand
     detection.business_visible = True
     detection.status_reason = f"manual_override:{reason}"
+
+
+def apply_track_ignore_override(track: TrackRecord, reason: str) -> None:
+    track.final_brand = ""
+    track.final_brand_conf = 0.0
+    track.final_status = "ignored"
+    track.business_brand = "other"
+    track.business_visible = False
+    track.final_status_reason = f"manual_ignore:{reason}"
+    track.manual_review_required = False
+
+
+def apply_detection_ignore_override(detection: DetectionRecord, reason: str) -> None:
+    detection.brand_pred = ""
+    detection.brand_conf = 0.0
+    detection.top1_brand = ""
+    detection.top1_score = 0.0
+    detection.brand_status = "ignored"
+    detection.final_status = "ignored"
+    detection.business_brand = "other"
+    detection.business_visible = False
+    detection.status_reason = f"manual_ignore:{reason}"

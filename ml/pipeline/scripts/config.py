@@ -22,9 +22,9 @@ class PipelineConfig:
     detector_iou: float = 0.50
     device: str | None = None
 
-    min_detection_width: int = 64
-    min_detection_height: int = 64
-    min_detection_area_ratio: float = 0.0015
+    min_detection_width: int = 48
+    min_detection_height: int = 40
+    min_detection_area_ratio: float = 0.001
     min_detection_aspect_ratio: float = 0.25
     max_detection_aspect_ratio: float = 8.0
 
@@ -49,7 +49,7 @@ class PipelineConfig:
     max_track_gap_frames: int = 2
     min_track_detections: int = 2
     min_track_frame_span: int = 10
-    best_crops_per_track: int = 3
+    best_crops_per_object: int = 3
 
     object_merge_max_gap_frames: int = 90
     object_merge_min_iou: float = 0.02
@@ -58,12 +58,12 @@ class PipelineConfig:
     object_merge_max_aspect_ratio: float = 3.0
 
     business_min_object_detections: int = 3
-    business_min_visible_duration_sec: float = 0.20
+    business_min_visible_duration_sec: float = 0.50
+    render_gap_fill_max_sec: float = 0.35
 
     visibility_area_norm: float = 0.05
     min_position_weight: float = 0.20
 
-    draw_rejected: bool = False
     save_annotated_frames: bool = False
 
 
