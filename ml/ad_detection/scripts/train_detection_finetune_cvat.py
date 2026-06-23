@@ -53,9 +53,15 @@ class FineRecord:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Fine-tune YOLO detector from a CVAT XML export.")
-    parser.add_argument("--prepare-only", action="store_true", help="Prepare dataset, do not train.")
-    parser.add_argument("--cvat-zip", type=Path, default=Path("fine.zip"), help="CVAT export zip.")
+    parser = argparse.ArgumentParser(
+        description="Fine-tune YOLO detector from a CVAT XML export."
+    )
+    parser.add_argument(
+        "--prepare-only", action="store_true", help="Prepare dataset, do not train."
+    )
+    parser.add_argument(
+        "--cvat-zip", type=Path, default=Path("fine.zip"), help="CVAT export zip."
+    )
     parser.add_argument(
         "--base-data-yaml",
         type=Path,
@@ -94,7 +100,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--lr0", type=float, default=0.0005)
     parser.add_argument("--patience", type=int, default=10)
     parser.add_argument("--workers", type=int, default=4)
-    parser.add_argument("--device", default=None, help="Torch/Ultralytics device, e.g. cpu or 0.")
+    parser.add_argument(
+        "--device", default=None, help="Torch/Ultralytics device, e.g. cpu or 0."
+    )
     parser.add_argument("--exist-ok", action="store_true")
     parser.add_argument("--cache", action="store_true")
     return parser.parse_args()
@@ -102,7 +110,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    project_root = Path(__file__).resolve().parent
+    project_root = Path(__file__).resolve().parents[3]
     cvat_zip = resolve_project_path(project_root, args.cvat_zip)
     base_data_yaml = resolve_project_path(project_root, args.base_data_yaml)
     weights = resolve_project_path(project_root, args.weights)
@@ -113,7 +121,9 @@ def main() -> int:
         prepared = load_prepared_dataset(dataset_dir)
         print("using existing prepared dataset")
     else:
-        validate_prepare_inputs(cvat_zip, base_data_yaml, args.fine_only, args.val_ratio)
+        validate_prepare_inputs(
+            cvat_zip, base_data_yaml, args.fine_only, args.val_ratio
+        )
         prepared = prepare_dataset(
             cvat_zip=cvat_zip,
             base_data_yaml=base_data_yaml,
@@ -139,7 +149,9 @@ def resolve_project_path(project_root: Path, value: Path) -> Path:
     return value if value.is_absolute() else project_root / value
 
 
-def validate_prepare_inputs(cvat_zip: Path, base_data_yaml: Path, fine_only: bool, val_ratio: float) -> None:
+def validate_prepare_inputs(
+    cvat_zip: Path, base_data_yaml: Path, fine_only: bool, val_ratio: float
+) -> None:
     if not cvat_zip.exists():
         raise FileNotFoundError(cvat_zip)
     if not fine_only and not base_data_yaml.exists():
@@ -184,14 +196,21 @@ def prepare_dataset(
 ) -> PreparedDataset:
     if dataset_dir.exists():
         if not overwrite:
-            raise FileExistsError(f"{dataset_dir} already exists. Use --overwrite-dataset to rebuild it.")
+            raise FileExistsError(
+                f"{dataset_dir} already exists. Use --overwrite-dataset to rebuild it."
+            )
         shutil.rmtree(dataset_dir)
 
     fine_images_train_dir = dataset_dir / "images" / "train"
     fine_images_val_dir = dataset_dir / "images" / "val"
     fine_labels_train_dir = dataset_dir / "labels" / "train"
     fine_labels_val_dir = dataset_dir / "labels" / "val"
-    for path in (fine_images_train_dir, fine_images_val_dir, fine_labels_train_dir, fine_labels_val_dir):
+    for path in (
+        fine_images_train_dir,
+        fine_images_val_dir,
+        fine_labels_train_dir,
+        fine_labels_val_dir,
+    ):
         path.mkdir(parents=True, exist_ok=True)
 
     base_train_images: list[Path] = []
@@ -200,8 +219,12 @@ def prepare_dataset(
     if not fine_only:
         base_yaml = load_yaml(base_data_yaml)
         base_root = resolve_base_dataset_root(base_data_yaml, base_yaml)
-        base_train_images = collect_split_images(base_yaml["train"], base_root, base_data_yaml.parent)
-        base_val_images = collect_split_images(base_yaml["val"], base_root, base_data_yaml.parent)
+        base_train_images = collect_split_images(
+            base_yaml["train"], base_root, base_data_yaml.parent
+        )
+        base_val_images = collect_split_images(
+            base_yaml["val"], base_root, base_data_yaml.parent
+        )
         names = normalize_names(base_yaml.get("names", names))
 
     with zipfile.ZipFile(cvat_zip) as archive:
@@ -218,8 +241,12 @@ def prepare_dataset(
             labels_val_dir=fine_labels_val_dir,
         )
 
-    fine_train_images = [require_path(record.image_path) for record in records if record.split == "train"]
-    fine_val_images = [require_path(record.image_path) for record in records if record.split == "val"]
+    fine_train_images = [
+        require_path(record.image_path) for record in records if record.split == "train"
+    ]
+    fine_val_images = [
+        require_path(record.image_path) for record in records if record.split == "val"
+    ]
     train_txt = dataset_dir / "train.txt"
     val_txt = dataset_dir / "val.txt"
     data_yaml = dataset_dir / "data.yaml"
@@ -256,7 +283,9 @@ def prepare_dataset(
     return prepared
 
 
-def read_cvat_records(archive: zipfile.ZipFile) -> tuple[list[FineRecord], dict[int, str]]:
+def read_cvat_records(
+    archive: zipfile.ZipFile,
+) -> tuple[list[FineRecord], dict[int, str]]:
     annotations_member = find_member(archive, "annotations.xml")
     if annotations_member is None:
         raise FileNotFoundError("annotations.xml was not found in CVAT zip")
@@ -275,7 +304,9 @@ def read_cvat_records(archive: zipfile.ZipFile) -> tuple[list[FineRecord], dict[
         image_name = Path(image_el.attrib["name"]).name
         image_member = image_members.get(image_name)
         if image_member is None:
-            raise FileNotFoundError(f"Image from annotations.xml is missing in zip: {image_name}")
+            raise FileNotFoundError(
+                f"Image from annotations.xml is missing in zip: {image_name}"
+            )
         width = int(float(image_el.attrib["width"]))
         height = int(float(image_el.attrib["height"]))
         boxes: list[tuple[int, float, float, float, float]] = []
@@ -349,7 +380,10 @@ def extract_fine_records(
         image_path = images_dir / record.image_name
         label_path = labels_dir / f"{Path(record.image_name).stem}.txt"
 
-        with archive.open(record.image_member) as source, image_path.open("wb") as target:
+        with (
+            archive.open(record.image_member) as source,
+            image_path.open("wb") as target,
+        ):
             shutil.copyfileobj(source, target)
         label_path.write_text(label_text(record), encoding="utf-8")
 
@@ -364,7 +398,9 @@ def label_text(record: FineRecord) -> str:
         y_center = ((y1 + y2) / 2.0) / record.height
         width = (x2 - x1) / record.width
         height = (y2 - y1) / record.height
-        lines.append(f"{class_id} {x_center:.6f} {y_center:.6f} {width:.6f} {height:.6f}")
+        lines.append(
+            f"{class_id} {x_center:.6f} {y_center:.6f} {width:.6f} {height:.6f}"
+        )
     return "\n".join(lines) + ("\n" if lines else "")
 
 
@@ -395,7 +431,9 @@ def resolve_base_dataset_root(base_data_yaml: Path, base_yaml: dict[str, Any]) -
     return base_data_yaml.parent
 
 
-def collect_split_images(split_value: str | list[str], dataset_root: Path, yaml_dir: Path) -> list[Path]:
+def collect_split_images(
+    split_value: str | list[str], dataset_root: Path, yaml_dir: Path
+) -> list[Path]:
     values = split_value if isinstance(split_value, list) else [split_value]
     images: list[Path] = []
     for value in values:
@@ -407,7 +445,13 @@ def collect_split_images(split_value: str | list[str], dataset_root: Path, yaml_
         if path.suffix == ".txt":
             images.extend(read_image_list(path, dataset_root))
         elif path.is_dir():
-            images.extend(sorted(p.resolve() for p in path.rglob("*") if p.suffix.casefold() in IMAGE_EXTENSIONS))
+            images.extend(
+                sorted(
+                    p.resolve()
+                    for p in path.rglob("*")
+                    if p.suffix.casefold() in IMAGE_EXTENSIONS
+                )
+            )
         elif path.is_file() and path.suffix.casefold() in IMAGE_EXTENSIONS:
             images.append(path.resolve())
         else:
@@ -457,7 +501,10 @@ def write_yaml(path: Path, data: dict[str, Any]) -> None:
 
 
 def write_json(path: Path, data: dict[str, Any]) -> None:
-    serializable = {key: str(value) if isinstance(value, Path) else value for key, value in data.items()}
+    serializable = {
+        key: str(value) if isinstance(value, Path) else value
+        for key, value in data.items()
+    }
     with path.open("w", encoding="utf-8") as handle:
         json.dump(serializable, handle, ensure_ascii=False, indent=2)
         handle.write("\n")
@@ -501,7 +548,9 @@ def print_prepared_summary(prepared: PreparedDataset) -> None:
     print(f"fine total boxes: {prepared.fine_total_boxes}")
 
 
-def train_detector(args: argparse.Namespace, data_yaml: Path, weights: Path, run_project: Path) -> None:
+def train_detector(
+    args: argparse.Namespace, data_yaml: Path, weights: Path, run_project: Path
+) -> None:
     from ultralytics import YOLO
 
     train_kwargs: dict[str, Any] = {

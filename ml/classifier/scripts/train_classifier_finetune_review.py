@@ -24,7 +24,7 @@ from torch.utils.data import DataLoader
 
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
-PROJECT_ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 CLASSIFICATION_DATA_DIR = PROJECT_ROOT / "ml" / "data" / "classification"
 CLASSIFICATION_RUNS_DIR = PROJECT_ROOT / "ml" / "runs" / "classification"
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
@@ -45,7 +45,9 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Merge reviewed crops into classifier dataset and fine-tune from best.pt."
     )
-    parser.add_argument("--prepare-only", action="store_true", help="Prepare data, do not train.")
+    parser.add_argument(
+        "--prepare-only", action="store_true", help="Prepare data, do not train."
+    )
     parser.add_argument(
         "--review-dir",
         type=Path,
@@ -73,9 +75,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=CLASSIFICATION_RUNS_DIR / "v2_ads_only" / "convnext_tiny_finetune_review",
+        default=CLASSIFICATION_RUNS_DIR
+        / "v2_ads_only"
+        / "convnext_tiny_finetune_review",
     )
-    parser.add_argument("--overwrite", action="store_true", help="Rebuild --prepared-dir.")
+    parser.add_argument(
+        "--overwrite", action="store_true", help="Rebuild --prepared-dir."
+    )
     parser.add_argument("--epochs", type=int, default=12)
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--num-workers", type=int, default=4)
@@ -134,7 +140,9 @@ def prepare_finetune_dataset(args: argparse.Namespace, prepared_dir: Path) -> No
 
     if prepared_dir.exists():
         if not args.overwrite:
-            raise FileExistsError(f"{prepared_dir} already exists. Use --overwrite to rebuild it.")
+            raise FileExistsError(
+                f"{prepared_dir} already exists. Use --overwrite to rebuild it."
+            )
         shutil.rmtree(prepared_dir)
     prepared_dir.mkdir(parents=True, exist_ok=True)
 
@@ -152,7 +160,9 @@ def prepare_finetune_dataset(args: argparse.Namespace, prepared_dir: Path) -> No
 
 def read_base_manifest(base_prepared: Path) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
-    with (base_prepared / "manifest.csv").open("r", encoding="utf-8", newline="") as handle:
+    with (base_prepared / "manifest.csv").open(
+        "r", encoding="utf-8", newline=""
+    ) as handle:
         reader = csv.DictReader(handle)
         for row in reader:
             source_path = Path(row["file_path"])
@@ -164,7 +174,9 @@ def read_base_manifest(base_prepared: Path) -> list[dict[str, str]]:
                     "class": row["class"],
                     "file_path": str(source_path.resolve()),
                     "original_path": row.get("original_path", ""),
-                    "original_extension": row.get("original_extension", source_path.suffix.casefold()),
+                    "original_extension": row.get(
+                        "original_extension", source_path.suffix.casefold()
+                    ),
                     "is_important": row.get("is_important", "0"),
                     "sha256": row.get("sha256", ""),
                     "converted_to_png": row.get("converted_to_png", "0"),
@@ -183,7 +195,12 @@ def prepare_review_images(review_dir: Path, prepared_dir: Path) -> list[dict[str
             if path.is_file() and path.suffix.casefold() in IMAGE_EXTENSIONS
         )
         for index, source_path in enumerate(images, start=1):
-            output_path = prepared_dir / "train" / class_name / f"review_{class_name}_{index:06d}.png"
+            output_path = (
+                prepared_dir
+                / "train"
+                / class_name
+                / f"review_{class_name}_{index:06d}.png"
+            )
             output_path.parent.mkdir(parents=True, exist_ok=True)
             convert_to_png(source_path, output_path)
             rows.append(
@@ -265,7 +282,9 @@ def write_summary(
 
 def load_train_module():
     module_path = PROJECT_ROOT / "ml" / "classifier" / "scripts" / "train_convnext.py"
-    spec = importlib.util.spec_from_file_location("classifier_train_convnext", module_path)
+    spec = importlib.util.spec_from_file_location(
+        "classifier_train_convnext", module_path
+    )
     if spec is None or spec.loader is None:
         raise ImportError(f"Could not load {module_path}")
     module = importlib.util.module_from_spec(spec)
@@ -287,9 +306,13 @@ def train_classifier(args: argparse.Namespace, prepared_dir: Path) -> None:
     input_size = int(checkpoint_args.get("input_size", 320))
 
     train_args = build_train_args(args, prepared_dir, model_name, input_size)
-    train_dataset, val_dataset, discovered_classes = train_module.build_datasets(train_args)
+    train_dataset, val_dataset, discovered_classes = train_module.build_datasets(
+        train_args
+    )
     if discovered_classes != classes:
-        raise ValueError(f"Class mismatch. checkpoint={classes}, dataset={discovered_classes}")
+        raise ValueError(
+            f"Class mismatch. checkpoint={classes}, dataset={discovered_classes}"
+        )
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     use_amp = not args.no_amp and device.type == "cuda"
@@ -300,7 +323,9 @@ def train_classifier(args: argparse.Namespace, prepared_dir: Path) -> None:
         train_sampler = None
         train_shuffle = True
     else:
-        train_sampler = train_module.build_weighted_sampler(train_dataset, args.important_sample_weight)
+        train_sampler = train_module.build_weighted_sampler(
+            train_dataset, args.important_sample_weight
+        )
         train_shuffle = False
 
     train_loader = DataLoader(
@@ -333,7 +358,16 @@ def train_classifier(args: argparse.Namespace, prepared_dir: Path) -> None:
 
     output_dir = resolve_project_path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    write_training_config(output_dir, args, prepared_dir, classes, device, use_amp, train_dataset, val_dataset)
+    write_training_config(
+        output_dir,
+        args,
+        prepared_dir,
+        classes,
+        device,
+        use_amp,
+        train_dataset,
+        val_dataset,
+    )
 
     best_val_f1 = -math.inf
     best_val_loss = math.inf
@@ -388,9 +422,15 @@ def train_classifier(args: argparse.Namespace, prepared_dir: Path) -> None:
                 train_args,
                 val_metrics,
             )
-            train_module.save_confusion_matrix(output_dir, classes, val_metrics["confusion_matrix"])
-            train_module.save_classification_report(output_dir, classes, val_metrics["per_class"])
-            train_module.save_predictions(output_dir, "val_predictions_best.csv", val_metrics["predictions"])
+            train_module.save_confusion_matrix(
+                output_dir, classes, val_metrics["confusion_matrix"]
+            )
+            train_module.save_classification_report(
+                output_dir, classes, val_metrics["per_class"]
+            )
+            train_module.save_predictions(
+                output_dir, "val_predictions_best.csv", val_metrics["predictions"]
+            )
         else:
             bad_epochs += 1
 
@@ -407,8 +447,19 @@ def train_classifier(args: argparse.Namespace, prepared_dir: Path) -> None:
         }
         history.append(row)
         train_module.save_history(output_dir, history)
-        train_module.save_predictions(output_dir, "val_predictions_last.csv", val_metrics["predictions"])
-        train_module.save_checkpoint(output_dir, "last.pt", model, optimizer, classes, epoch, train_args, val_metrics)
+        train_module.save_predictions(
+            output_dir, "val_predictions_last.csv", val_metrics["predictions"]
+        )
+        train_module.save_checkpoint(
+            output_dir,
+            "last.pt",
+            model,
+            optimizer,
+            classes,
+            epoch,
+            train_args,
+            val_metrics,
+        )
         scheduler.step()
 
         elapsed = time.time() - started
@@ -419,7 +470,9 @@ def train_classifier(args: argparse.Namespace, prepared_dir: Path) -> None:
             f"time={elapsed:.1f}s"
         )
         if bad_epochs >= args.early_stop_patience:
-            print(f"Early stopping after {bad_epochs} epochs without val macro F1 improvement.")
+            print(
+                f"Early stopping after {bad_epochs} epochs without val macro F1 improvement."
+            )
             break
 
     print(f"Best val macro F1: {best_val_f1:.4f}")
