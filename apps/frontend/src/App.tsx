@@ -29,9 +29,9 @@ type Route =
   | { page: 'run'; runId: string }
 
 function currentRoute(): Route {
+  if (window.location.pathname === '/runs/new') return { page: 'new' }
   const match = window.location.pathname.match(/^\/runs\/([^/]+)$/)
   if (match) return { page: 'run', runId: match[1] }
-  if (window.location.pathname === '/runs/new') return { page: 'new' }
   return { page: 'runs' }
 }
 

@@ -7,14 +7,14 @@ from sqlalchemy import engine_from_config, pool
 from sqlmodel import SQLModel
 
 from infrastructure.database import models  # noqa: F401
-from settings.factory import ConfigFactory
+from settings.factory import get_settings
 
 
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-settings = ConfigFactory()
+settings = get_settings()
 config.set_main_option("sqlalchemy.url", settings.database.url)
 target_metadata = SQLModel.metadata
 

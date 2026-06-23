@@ -60,9 +60,7 @@ class ObjectStorageSettings(FrozenModel):
 class PipelineSettings(FrozenModel):
     project_root: Path = Field(default_factory=project_root)
     detector_model_path: Path = Field(
-        default_factory=lambda: (
-            project_root() / "models/detection/best.pt"
-        ).resolve()
+        default_factory=lambda: (project_root() / "models/detection/best.pt").resolve()
     )
     classifier_model_path: Path = Field(
         default_factory=lambda: (
@@ -77,7 +75,9 @@ class PipelineSettings(FrozenModel):
     frame_stride: int = Field(default=1, ge=1)
     device: str | None = "0"
     worker_poll_interval_sec: float = Field(default=2.0, gt=0)
-    worker_temp_dir: Path = Path("/tmp/ad-pipeline")
+    worker_temp_dir: Path = Field(
+        default_factory=lambda: project_root() / ".runtime/worker"
+    )
 
 
 class Settings(BaseSettings):
@@ -159,8 +159,7 @@ class Settings(BaseSettings):
             self.minio_internal_endpoint
         )
         public_endpoint, public_secure = endpoint_parts(
-            self.minio_public_endpoint
-            or self.minio_internal_endpoint
+            self.minio_public_endpoint or self.minio_internal_endpoint
         )
         return ObjectStorageSettings(
             access_key=self.minio_root_user,
@@ -170,7 +169,5 @@ class Settings(BaseSettings):
             internal_secure=internal_secure,
             public_endpoint=public_endpoint,
             public_secure=public_secure,
-            presigned_expiry_seconds=(
-                self.minio_presigned_expiry_seconds
-            ),
+            presigned_expiry_seconds=(self.minio_presigned_expiry_seconds),
         )

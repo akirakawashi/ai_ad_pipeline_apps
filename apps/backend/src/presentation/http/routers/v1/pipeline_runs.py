@@ -72,9 +72,7 @@ def get_run(
     run_id: str = Path(description="Pipeline run id"),
     service: PipelineRunService = Depends(get_run_service),
 ) -> OkResponse[PipelineRunResponse]:
-    return OkResponse(
-        data=PipelineRunResponse.model_validate(service.get_run(run_id))
-    )
+    return OkResponse(data=PipelineRunResponse.model_validate(service.get_run(run_id)))
 
 
 @router.get(
@@ -85,9 +83,7 @@ def get_run_status(
     run_id: str = Path(description="Pipeline run id"),
     service: PipelineRunService = Depends(get_run_service),
 ) -> OkResponse[PipelineRunResponse]:
-    return OkResponse(
-        data=PipelineRunResponse.model_validate(service.get_run(run_id))
-    )
+    return OkResponse(data=PipelineRunResponse.model_validate(service.get_run(run_id)))
 
 
 @router.get(
@@ -99,9 +95,7 @@ def get_run_summary(
     service: PipelineRunService = Depends(get_run_service),
 ) -> OkResponse[RunSummaryResponse]:
     return OkResponse(
-        data=RunSummaryResponse.model_validate(
-            service.get_summary(run_id)
-        )
+        data=RunSummaryResponse.model_validate(service.get_summary(run_id))
     )
 
 
@@ -115,9 +109,7 @@ def get_run_objects(
     service: PipelineRunService = Depends(get_run_service),
 ) -> OkResponse[RunObjectsResponse]:
     return OkResponse(
-        data=RunObjectsResponse.model_validate(
-            service.get_objects(run_id, limit=limit)
-        )
+        data=RunObjectsResponse.model_validate(service.get_objects(run_id, limit=limit))
     )
 
 

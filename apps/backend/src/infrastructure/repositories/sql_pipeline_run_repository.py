@@ -61,9 +61,7 @@ class SqlPipelineRunRepository:
             filters.append(PipelineRun.status == status)
 
         total = self._session.exec(
-            select(func.count(PipelineRun.pipeline_runs_id)).where(
-                *filters
-            )
+            select(func.count(PipelineRun.pipeline_runs_id)).where(*filters)
         ).one()
         statement = (
             select(PipelineRun)
@@ -86,19 +84,13 @@ class SqlPipelineRunRepository:
         with_artifacts: bool = True,
         with_events: bool = False,
     ) -> PipelineRun | None:
-        statement = select(PipelineRun).where(
-            PipelineRun.pipeline_runs_id == run_id
-        )
+        statement = select(PipelineRun).where(PipelineRun.pipeline_runs_id == run_id)
         if with_artifacts:
-            statement = statement.options(
-                selectinload(PipelineRun.artifacts)
-            )
+            statement = statement.options(selectinload(PipelineRun.artifacts))
         else:
             statement = statement.options(noload(PipelineRun.artifacts))
         if with_events:
-            statement = statement.options(
-                selectinload(PipelineRun.events)
-            )
+            statement = statement.options(selectinload(PipelineRun.events))
         else:
             statement = statement.options(noload(PipelineRun.events))
         return self._session.exec(statement).one_or_none()
@@ -236,9 +228,7 @@ class SqlPipelineRunRepository:
         run.fps = fps
         run.frame_count = frame_count
         run.frame_stride = frame_stride
-        run.duration_sec = (
-            frame_count / fps if fps > 0 and frame_count > 0 else None
-        )
+        run.duration_sec = frame_count / fps if fps > 0 and frame_count > 0 else None
         run.width = width
         run.height = height
         run.completed_at = datetime.now(timezone.utc)

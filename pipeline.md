@@ -81,7 +81,10 @@ LIMIT 1;
 
 - PostgreSQL на `localhost:5432`;
 - MinIO API на `localhost:9000`;
-- MinIO Console на `localhost:9001`.
+- MinIO Console на `localhost:9001`;
+- одноразовым применением Alembic migrations;
+- FastAPI на `localhost:8000`;
+- ML worker.
 
 Используются явно зафиксированные image tags:
 
@@ -90,9 +93,64 @@ postgres:18.4-trixie
 minio/minio:RELEASE.2025-09-07T16-13-09Z
 ```
 
-Оба контейнера получают переменные из `apps/backend/.env`. При запуске
-backend должен проверять наличие bucket `ad-pipeline` и создавать его, если он
-ещё не существует.
+Python-сервисы получают переменные из `apps/backend/.env`. Внутри Docker
+Compose адрес PostgreSQL меняется на `postgres`, а внутренний адрес MinIO — на
+`minio:9000`.
+
+Dockerfile содержит два build target:
+
+- `backend` — только зависимости API, migrations и MinIO bootstrap;
+- `worker` — полный ML-стек с PyTorch/CUDA, OpenCV и FFmpeg.
+
+Это не заставляет API и migrations устанавливать тяжёлые GPU-зависимости.
+
+Сервис `migrate` выполняет `alembic upgrade head` после успешного healthcheck
+PostgreSQL. Сервис `storage-init` ждёт готовности MinIO и создаёт bucket.
+Backend и worker запускаются только после успешного завершения обоих
+инициализирующих сервисов.
+
+Весь dev stack запускается из корня проекта:
+
+```bash
+./scripts/dev.sh
+```
+
+Docker Compose переиспользует уже запущенные PostgreSQL и MinIO и создаёт
+только отсутствующие или изменённые контейнеры.
+
+Фоновый режим:
+
+```bash
+./scripts/dev.sh --detach
+```
+
+Явная пересборка images после изменения Dockerfile или зависимостей:
+
+```bash
+./scripts/dev.sh --build
+```
+
+Остановка:
+
+```bash
+./scripts/dev.sh down
+```
+
+Просмотр логов:
+
+```bash
+./scripts/dev.sh logs
+```
+
+Frontend остаётся локальным dev-процессом и запускается отдельно:
+
+```bash
+cd apps/frontend
+pnpm dev
+```
+
+Worker запускается с `gpus: all`, поэтому Docker host должен поддерживать
+NVIDIA Container Toolkit / GPU integration Docker Desktop.
 
 Значения по умолчанию:
 
@@ -210,8 +268,8 @@ runs/{run_id}/artifacts/crops/...
 Локальная директория worker является временной:
 
 ```text
-/tmp/ad-pipeline/{run_id}/input/
-/tmp/ad-pipeline/{run_id}/output/
+.runtime/worker/{run_id}/input/
+.runtime/worker/{run_id}/output/
 ```
 
 После загрузки всех артефактов в MinIO её можно очистить. Источником истины

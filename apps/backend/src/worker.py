@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+# The worker is also supported as a direct script. The path bootstrap must
+# happen before importing the backend package and the repository-level ML code.
+# ruff: noqa: E402
+
 import logging
 import mimetypes
 import os
@@ -69,8 +73,7 @@ class DatabaseProgressReporter(PipelineProgressReporter):
     ) -> None:
         normalized = max(0, min(99, progress))
         create_event = (
-            stage != self._last_stage
-            or normalized - self._last_progress >= 10
+            stage != self._last_stage or normalized - self._last_progress >= 10
         )
         self._repository.update_progress(
             self._run_id,
@@ -96,9 +99,7 @@ class PipelineWorker:
         while True:
             processed = self.process_next()
             if not processed:
-                time.sleep(
-                    self._config.pipeline.worker_poll_interval_sec
-                )
+                time.sleep(self._config.pipeline.worker_poll_interval_sec)
 
     def process_next(self) -> bool:
         with create_session() as session:
@@ -108,8 +109,7 @@ class PipelineWorker:
                 return False
 
             run_root = (
-                self._config.pipeline.worker_temp_dir
-                / run.pipeline_runs_id
+                self._config.pipeline.worker_temp_dir / run.pipeline_runs_id
             ).resolve()
             input_path = run_root / "input" / run.source_name
             output_path = run_root / "output"
@@ -137,15 +137,9 @@ class PipelineWorker:
                 pipeline_config = PipelineConfig(
                     input_path=input_path,
                     output_dir=output_path,
-                    detector_model_path=(
-                        self._config.pipeline.detector_model_path
-                    ),
-                    classifier_model_path=(
-                        self._config.pipeline.classifier_model_path
-                    ),
-                    brand_overrides_path=(
-                        self._config.pipeline.brand_overrides_path
-                    ),
+                    detector_model_path=self._config.pipeline.detector_model_path,
+                    classifier_model_path=(self._config.pipeline.classifier_model_path),
+                    brand_overrides_path=self._config.pipeline.brand_overrides_path,
                     run_id=run.pipeline_runs_id,
                     frame_stride=self._config.pipeline.frame_stride,
                     device=self._config.pipeline.device,
@@ -205,16 +199,11 @@ class PipelineWorker:
         run_id: str,
         output_dir: Path,
     ) -> None:
-        for source in sorted(
-            path for path in output_dir.rglob("*") if path.is_file()
-        ):
+        for source in sorted(path for path in output_dir.rglob("*") if path.is_file()):
             relative = source.relative_to(output_dir)
-            object_key = (
-                f"runs/{run_id}/artifacts/{relative.as_posix()}"
-            )
+            object_key = f"runs/{run_id}/artifacts/{relative.as_posix()}"
             content_type = (
-                mimetypes.guess_type(source.name)[0]
-                or "application/octet-stream"
+                mimetypes.guess_type(source.name)[0] or "application/octet-stream"
             )
             self._storage.upload_file(
                 source,
@@ -229,6 +218,8 @@ class PipelineWorker:
                 size_bytes=source.stat().st_size,
             )
         repository.commit()
+
+
 def main() -> int:
     logging.basicConfig(
         level=logging.INFO,

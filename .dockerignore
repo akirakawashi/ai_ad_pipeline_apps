@@ -1,0 +1,8 @@
+*
+!pyproject.toml
+!uv.lock
+!apps/
+apps/*
+!apps/backend/
+apps/backend/*
+!apps/backend/Dockerfile

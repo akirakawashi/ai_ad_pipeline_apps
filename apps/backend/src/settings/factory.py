@@ -8,7 +8,3 @@ from settings.app import Settings
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
-
-
-# Backward compatibility for Alembic configuration maintained separately.
-ConfigFactory = Settings

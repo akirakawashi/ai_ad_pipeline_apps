@@ -8,6 +8,7 @@ from typing import BinaryIO
 
 from minio import Minio
 from minio.datatypes import Object
+from minio.helpers import ObjectWriteResult
 
 from settings.app import ObjectStorageSettings
 
@@ -46,8 +47,7 @@ class MinioStorage:
             self.bucket,
             object_key,
             expires=timedelta(
-                seconds=expires_seconds
-                or self._settings.presigned_expiry_seconds
+                seconds=expires_seconds or self._settings.presigned_expiry_seconds
             ),
         )
 
@@ -61,8 +61,7 @@ class MinioStorage:
             self.bucket,
             object_key,
             expires=timedelta(
-                seconds=expires_seconds
-                or self._settings.presigned_expiry_seconds
+                seconds=expires_seconds or self._settings.presigned_expiry_seconds
             ),
         )
 
@@ -83,7 +82,7 @@ class MinioStorage:
         object_key: str,
         *,
         content_type: str | None = None,
-    ) -> Object:
+    ) -> ObjectWriteResult:
         resolved_content_type = (
             content_type
             or mimetypes.guess_type(source.name)[0]
@@ -103,7 +102,7 @@ class MinioStorage:
         *,
         length: int,
         content_type: str,
-    ) -> Object:
+    ) -> ObjectWriteResult:
         return self._internal.put_object(
             self.bucket,
             object_key,
@@ -129,7 +128,7 @@ class MinioStorage:
         value: bytes,
         *,
         content_type: str,
-    ) -> Object:
+    ) -> ObjectWriteResult:
         return self.put_stream(
             object_key,
             io.BytesIO(value),

@@ -96,8 +96,7 @@ class PipelineRunService:
             run_id=run.pipeline_runs_id,
             artifact_type="source_video",
             object_key=run.source_object_key,
-            content_type=run.source_content_type
-            or "application/octet-stream",
+            content_type=run.source_content_type or "application/octet-stream",
             size_bytes=object_stat.size,
         )
         self._repository.mark_upload_complete(
@@ -147,9 +146,7 @@ class PipelineRunService:
             None,
         )
         if artifact is None:
-            raise PipelineRunNotFoundError(
-                f"Artifact {artifact_id} was not found"
-            )
+            raise PipelineRunNotFoundError(f"Artifact {artifact_id} was not found")
         return {
             "artifact_id": artifact.pipeline_artifacts_id,
             "url": self._storage.presigned_get(artifact.object_key),
@@ -162,14 +159,10 @@ class PipelineRunService:
         annotated = by_type.get("annotated_video")
         return {
             "source_url": (
-                self._storage.presigned_get(source.object_key)
-                if source
-                else None
+                self._storage.presigned_get(source.object_key) if source else None
             ),
             "annotated_url": (
-                self._storage.presigned_get(annotated.object_key)
-                if annotated
-                else None
+                self._storage.presigned_get(annotated.object_key) if annotated else None
             ),
         }
 
@@ -188,8 +181,7 @@ class PipelineRunService:
 
         total_objects = sum(int(row.get("object_count", 0)) for row in brands)
         total_visibility = sum(
-            float(row.get("video_visibility_weighted_seconds", 0.0))
-            for row in brands
+            float(row.get("video_visibility_weighted_seconds", 0.0)) for row in brands
         )
         return {
             "run": run,
@@ -308,9 +300,7 @@ class PipelineRunService:
             with_events=with_events,
         )
         if run is None:
-            raise PipelineRunNotFoundError(
-                f"Pipeline run {run_id} was not found"
-            )
+            raise PipelineRunNotFoundError(f"Pipeline run {run_id} was not found")
         return run
 
     def _require_artifact(
@@ -321,9 +311,7 @@ class PipelineRunService:
         run = self._require_run(run_id)
         artifact = self._find_artifact(run.artifacts, artifact_type)
         if artifact is None:
-            raise PipelineRunNotFoundError(
-                f"Artifact {artifact_type} was not found"
-            )
+            raise PipelineRunNotFoundError(f"Artifact {artifact_type} was not found")
         return artifact
 
     @staticmethod
@@ -348,6 +336,4 @@ class PipelineRunService:
 
     @staticmethod
     def _native_rows(dataframe: pd.DataFrame) -> list[dict[str, Any]]:
-        return json.loads(
-            dataframe.to_json(orient="records", force_ascii=False)
-        )
+        return json.loads(dataframe.to_json(orient="records", force_ascii=False))

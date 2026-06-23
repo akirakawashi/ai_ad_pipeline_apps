@@ -1925,6 +1925,20 @@ dependencies = [
     { name = "uvicorn", extra = ["standard"] },
 ]
 
+[package.dev-dependencies]
+backend = [
+    { name = "alembic" },
+    { name = "fastapi" },
+    { name = "minio" },
+    { name = "pandas" },
+    { name = "psycopg", extra = ["binary"] },
+    { name = "pydantic-settings" },
+    { name = "python-dotenv" },
+    { name = "sqlalchemy" },
+    { name = "sqlmodel" },
+    { name = "uvicorn", extra = ["standard"] },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "alembic", specifier = ">=1.16.0" },
@@ -1947,6 +1961,20 @@ requires-dist = [
     { name = "sqlmodel", specifier = ">=0.0.38" },
     { name = "timm", specifier = ">=1.0.27" },
     { name = "ultralytics", specifier = ">=8.4.63" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.34.0" },
+]
+
+[package.metadata.requires-dev]
+backend = [
+    { name = "alembic", specifier = ">=1.16.0" },
+    { name = "fastapi", specifier = ">=0.115.0" },
+    { name = "minio", specifier = ">=7.2.15" },
+    { name = "pandas", specifier = ">=3.0.3" },
+    { name = "psycopg", extras = ["binary"], specifier = ">=3.2.9" },
+    { name = "pydantic-settings", specifier = ">=2.14.2" },
+    { name = "python-dotenv", specifier = ">=1.1.0" },
+    { name = "sqlalchemy", specifier = ">=2.0.41" },
+    { name = "sqlmodel", specifier = ">=0.0.38" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.34.0" },
 ]
 

@@ -42,3 +42,4 @@ data/yolo/
 cvat_import/
 
 .env
+.runtime/

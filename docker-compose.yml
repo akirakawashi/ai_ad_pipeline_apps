@@ -1,3 +1,23 @@
+x-python-environment: &python-environment
+  env_file:
+    - ./apps/backend/.env
+  environment:
+    POSTGRES_HOST: postgres
+    MINIO_INTERNAL_ENDPOINT: http://minio:9000
+    MINIO_PUBLIC_ENDPOINT: http://127.0.0.1:9000
+    PYTHONPATH: /app/apps/backend/src:/app
+
+x-backend-service: &backend-service
+  <<: *python-environment
+  build:
+    context: .
+    dockerfile: apps/backend/Dockerfile
+    target: backend
+  volumes:
+    - ./apps/backend/src:/app/apps/backend/src:ro
+    - ./apps/backend/alembic:/app/apps/backend/alembic:ro
+    - ./apps/backend/alembic.ini:/app/apps/backend/alembic.ini:ro
+
 services:
   postgres:
     image: postgres:18.4-trixie
@@ -31,6 +51,103 @@ services:
       - "127.0.0.1:9001:9001"
     volumes:
       - minio_data:/data
+
+  migrate:
+    <<: *backend-service
+    command:
+      - uv
+      - run
+      - --no-sync
+      - alembic
+      - -c
+      - apps/backend/alembic.ini
+      - upgrade
+      - head
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  storage-init:
+    <<: *backend-service
+    command:
+      - uv
+      - run
+      - --no-sync
+      - python
+      - -m
+      - infrastructure.storage.bootstrap
+    depends_on:
+      minio:
+        condition: service_started
+    restart: "no"
+
+  backend:
+    <<: *backend-service
+    command:
+      - uv
+      - run
+      - --no-sync
+      - uvicorn
+      - main:app
+      - --app-dir
+      - apps/backend/src
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --reload
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      POSTGRES_HOST: postgres
+      MINIO_INTERNAL_ENDPOINT: http://minio:9000
+      MINIO_PUBLIC_ENDPOINT: http://127.0.0.1:9000
+      PYTHONPATH: /app/apps/backend/src:/app
+      WATCHFILES_FORCE_POLLING: "true"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      storage-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthcheck')",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  worker:
+    <<: *python-environment
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
+      target: worker
+    command:
+      - uv
+      - run
+      - --no-sync
+      - python
+      - apps/backend/src/worker.py
+    volumes:
+      - ./apps/backend/src:/app/apps/backend/src:ro
+      - ./ml/__init__.py:/app/ml/__init__.py:ro
+      - ./ml/pipeline:/app/ml/pipeline:ro
+      - ./models:/app/models:ro
+      - ./.runtime/worker:/app/.runtime/worker
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      storage-init:
+        condition: service_completed_successfully
+    gpus: all
+    restart: unless-stopped
 
 volumes:
   postgres_data:
