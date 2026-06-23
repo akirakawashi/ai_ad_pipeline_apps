@@ -1,4 +1,8 @@
 track_id,crop_name,brand,reason
 ,frame_007482_det_001.jpg,mts,visible MTS banner
-,frame_008070_det_000.jpg,miranda,left billboard at 04:25
+,frame_007986_det_000.jpg,miranda,left billboard at 04:25
+,frame_007986_det_001.jpg,other,right billboard at 04:26
 ,frame_004852_det_000.jpg,ignore,false positive car body at 02:41
+,frame_007251_det_001.jpg,ignore,false positive at 04:01
+,frame_011700_det_000.jpg,ignore,false positive at 06:30
+,frame_011765_det_000.jpg,ignore,false positive continuation at 06:32

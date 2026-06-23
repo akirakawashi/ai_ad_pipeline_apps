@@ -9,8 +9,15 @@ import torch
 from PIL import Image, ImageOps
 from torchvision import transforms
 
-from scripts.config import PipelineConfig
-from scripts.schemas import DetectionRecord
+from .config import PipelineConfig
+from .domain import (
+    BrandStatus,
+    ClassificationInputStatus,
+    CropQualityStatus,
+    FinalStatus,
+    normalize_brand_name,
+)
+from .schemas import DetectionRecord
 
 
 class ResizePad:
@@ -19,9 +26,14 @@ class ResizePad:
         self.fill = fill
 
     def __call__(self, image: Image.Image) -> Image.Image:
-        contained = ImageOps.contain(image, (self.size, self.size), Image.Resampling.BICUBIC)
+        contained = ImageOps.contain(
+            image, (self.size, self.size), Image.Resampling.BICUBIC
+        )
         canvas = Image.new("RGB", (self.size, self.size), self.fill)
-        offset = ((self.size - contained.width) // 2, (self.size - contained.height) // 2)
+        offset = (
+            (self.size - contained.width) // 2,
+            (self.size - contained.height) // 2,
+        )
         canvas.paste(contained, offset)
         return canvas
 
@@ -57,7 +69,9 @@ def load_classifier(config: PipelineConfig) -> BrandClassifier:
             transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
         ]
     )
-    return BrandClassifier(model=model, classes=classes, transform=transform, device=device)
+    return BrandClassifier(
+        model=model, classes=classes, transform=transform, device=device
+    )
 
 
 def classify_detections(
@@ -69,18 +83,28 @@ def classify_detections(
         detection
         for detection in detections
         if detection.crop_path
-        and detection.crop_quality_status in {"passed", "borderline"}
-        and detection.classification_input_status in {"accepted", "borderline"}
+        and detection.crop_quality_status
+        in {CropQualityStatus.PASSED, CropQualityStatus.BORDERLINE}
+        and detection.classification_input_status
+        in {
+            ClassificationInputStatus.ACCEPTED,
+            ClassificationInputStatus.BORDERLINE,
+        }
     ]
-    selected = select_best_detections_by_object(eligible, config.best_crops_per_object)
+    selected = select_best_detections_by_object(
+        eligible, config.classification.best_crops_per_object
+    )
 
     with torch.no_grad():
         for detection in selected:
-            image = Image.open(detection.crop_path).convert("RGB")
+            with Image.open(detection.crop_path) as source:
+                image = source.convert("RGB")
             tensor = classifier.transform(image).unsqueeze(0).to(classifier.device)
             logits = classifier.model(tensor)
             probabilities = torch.softmax(logits, dim=1)[0].detach().cpu()
-            top_scores, top_indices = torch.topk(probabilities, k=min(3, len(classifier.classes)))
+            top_scores, top_indices = torch.topk(
+                probabilities, k=min(3, len(classifier.classes))
+            )
             top = [
                 (classifier.classes[int(index)], float(score))
                 for score, index in zip(top_scores.tolist(), top_indices.tolist())
@@ -118,20 +142,15 @@ def best_crop_score(detection: DetectionRecord) -> float:
     return detection.crop_quality_score * detection.area_ratio * detection.det_conf
 
 
-def normalize_brand_name(value: str) -> str:
-    normalized = value.strip().lower()
-    if normalized == "+7":
-        return "plus7"
-    return normalized
-
-
 def normalize_torch_device(value: str | None) -> str:
     if value is None or value == "":
         return "cuda" if torch.cuda.is_available() else "cpu"
     normalized = str(value).strip()
     if normalized.isdigit():
         return f"cuda:{normalized}"
-    if "," in normalized and all(part.strip().isdigit() for part in normalized.split(",")):
+    if "," in normalized and all(
+        part.strip().isdigit() for part in normalized.split(",")
+    ):
         return f"cuda:{normalized.split(',', maxsplit=1)[0].strip()}"
     return normalized
 
@@ -143,8 +162,8 @@ def _fill_detection_prediction(
 ) -> None:
     detection.classification_attempted = True
     if not top:
-        detection.brand_status = "unknown"
-        detection.final_status = "unknown"
+        detection.brand_status = BrandStatus.UNKNOWN
+        detection.final_status = FinalStatus.UNKNOWN
         detection.status_reason = "brand_conf_low"
         return
 
@@ -152,18 +171,18 @@ def _fill_detection_prediction(
     detection.brand_pred = detection.top1_brand
     detection.brand_conf = detection.top1_score
     if detection.brand_pred == "other":
-        if detection.brand_conf >= config.other_conf_accept:
-            detection.brand_status = "other"
-        elif detection.brand_conf >= config.manual_review_min:
-            detection.brand_status = "manual_review"
+        if detection.brand_conf >= config.classification.other_confidence_accept:
+            detection.brand_status = BrandStatus.OTHER
+        elif detection.brand_conf >= config.classification.manual_review_min:
+            detection.brand_status = BrandStatus.MANUAL_REVIEW
         else:
-            detection.brand_status = "unknown"
-    elif detection.brand_conf >= config.brand_conf_accept:
-        detection.brand_status = "detected_brand"
-    elif detection.brand_conf >= config.manual_review_min:
-        detection.brand_status = "manual_review"
+            detection.brand_status = BrandStatus.UNKNOWN
+    elif detection.brand_conf >= config.classification.brand_confidence_accept:
+        detection.brand_status = BrandStatus.DETECTED_BRAND
+    elif detection.brand_conf >= config.classification.manual_review_min:
+        detection.brand_status = BrandStatus.MANUAL_REVIEW
     else:
-        detection.brand_status = "unknown"
+        detection.brand_status = BrandStatus.UNKNOWN
 
     if len(top) > 1:
         detection.top2_brand, detection.top2_score = top[1]

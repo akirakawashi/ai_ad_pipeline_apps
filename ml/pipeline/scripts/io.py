@@ -7,7 +7,7 @@ from pathlib import Path
 
 import cv2
 
-from scripts.schemas import FrameRecord, InputMetadata
+from .schemas import FrameRecord, InputMetadata
 
 
 IMAGE_EXTENSIONS = {".bmp", ".jpeg", ".jpg", ".png", ".tif", ".tiff", ".webp"}
@@ -23,7 +23,9 @@ def detect_input_type(input_path: Path) -> str:
     raise ValueError(f"Unsupported input extension: {input_path.suffix}")
 
 
-def load_frames(input_path: Path, frame_stride: int) -> tuple[InputMetadata, list[FrameRecord]]:
+def load_frames(
+    input_path: Path, frame_stride: int
+) -> tuple[InputMetadata, list[FrameRecord]]:
     metadata = load_metadata(input_path, frame_stride)
     frames = list(iter_frames(input_path, frame_stride))
     if not frames:
@@ -58,7 +60,9 @@ def iter_frames(input_path: Path, frame_stride: int) -> Iterator[FrameRecord]:
     yield from _iter_video_frames(input_path, frame_stride)
 
 
-def _load_image(input_path: Path, frame_stride: int) -> tuple[InputMetadata, list[FrameRecord]]:
+def _load_image(
+    input_path: Path, frame_stride: int
+) -> tuple[InputMetadata, list[FrameRecord]]:
     image = cv2.imread(str(input_path), cv2.IMREAD_COLOR)
     if image is None:
         raise RuntimeError(f"Could not read image: {input_path}")
@@ -83,14 +87,6 @@ def _load_image(input_path: Path, frame_stride: int) -> tuple[InputMetadata, lis
         image=image,
     )
     return metadata, [frame]
-
-
-def _load_video(input_path: Path, frame_stride: int) -> tuple[InputMetadata, list[FrameRecord]]:
-    metadata = _load_video_metadata(input_path, frame_stride)
-    frames = list(_iter_video_frames(input_path, frame_stride))
-    if not frames:
-        raise RuntimeError(f"No frames were read from video: {input_path}")
-    return metadata, frames
 
 
 def _load_video_metadata(input_path: Path, frame_stride: int) -> InputMetadata:

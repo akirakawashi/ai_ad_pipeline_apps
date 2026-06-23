@@ -3,15 +3,21 @@
 from __future__ import annotations
 
 import csv
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 
-from scripts.aggregation import TARGET_BRANDS
-from scripts.schemas import DetectionRecord, TrackRecord
+from .domain import (
+    BrandStatus,
+    FinalStatus,
+    IGNORE_BRAND,
+    VALID_OVERRIDE_BRANDS,
+    normalize_brand_name,
+)
+from .schemas import DetectionRecord, TrackRecord
 
-
-IGNORE_BRAND = "ignore"
-VALID_BRANDS = TARGET_BRANDS | {"other", IGNORE_BRAND}
+logger = logging.getLogger(__name__)
+VALID_BRANDS = VALID_OVERRIDE_BRANDS
 
 
 @dataclass(frozen=True)
@@ -55,12 +61,18 @@ def apply_brand_overrides(
         if track_id is None and override.crop_name:
             track_id = crop_name_to_track_id.get(override.crop_name)
         if track_id is None:
-            print(f"brand override skipped: track not found for crop={override.crop_name}")
+            logger.warning(
+                "brand override skipped: track not found for crop=%s",
+                override.crop_name,
+            )
             continue
 
         matched_track = tracks_by_id.get(track_id)
         if matched_track is None:
-            print(f"brand override skipped: track_id={track_id} not found")
+            logger.warning(
+                "brand override skipped: track_id=%s not found",
+                track_id,
+            )
             continue
 
         target_tracks = tracks_by_object.get(matched_track.object_id, [matched_track])
@@ -87,7 +99,9 @@ def read_brand_overrides(path: Path) -> list[BrandOverride]:
             brand = normalize_brand(row.get("brand", ""))
             reason = row.get("reason", "").strip() or "manual_override"
             if track_id is None and not crop_name:
-                raise ValueError(f"Override row must contain track_id or crop_name: {row}")
+                raise ValueError(
+                    f"Override row must contain track_id or crop_name: {row}"
+                )
             overrides.append(
                 BrandOverride(
                     track_id=track_id,
@@ -107,10 +121,8 @@ def parse_track_id(value: str) -> int | None:
 
 
 def normalize_brand(value: str) -> str:
-    brand = value.strip().lower()
-    if brand == "+7":
-        brand = "plus7"
-    if brand not in VALID_BRANDS:
+    brand = normalize_brand_name(value)
+    if brand not in VALID_OVERRIDE_BRANDS:
         raise ValueError(f"Unsupported override brand: {value}")
     return brand
 
@@ -122,7 +134,9 @@ def apply_track_override(track: TrackRecord, brand: str, reason: str) -> None:
 
     track.final_brand = brand
     track.final_brand_conf = 1.0
-    track.final_status = "other" if brand == "other" else "detected_brand"
+    track.final_status = (
+        FinalStatus.OTHER if brand == "other" else FinalStatus.DETECTED_BRAND
+    )
     track.business_brand = brand
     track.business_visible = True
     track.final_status_reason = f"manual_override:{reason}"
@@ -135,7 +149,9 @@ def apply_track_override(track: TrackRecord, brand: str, reason: str) -> None:
     )
 
 
-def apply_detection_override(detection: DetectionRecord, brand: str, reason: str) -> None:
+def apply_detection_override(
+    detection: DetectionRecord, brand: str, reason: str
+) -> None:
     if brand == IGNORE_BRAND:
         apply_detection_ignore_override(detection, reason)
         return
@@ -144,8 +160,12 @@ def apply_detection_override(detection: DetectionRecord, brand: str, reason: str
     detection.brand_conf = 1.0
     detection.top1_brand = brand
     detection.top1_score = 1.0
-    detection.brand_status = "other" if brand == "other" else "detected_brand"
-    detection.final_status = "other" if brand == "other" else "detected_brand"
+    detection.brand_status = (
+        BrandStatus.OTHER if brand == "other" else BrandStatus.DETECTED_BRAND
+    )
+    detection.final_status = (
+        FinalStatus.OTHER if brand == "other" else FinalStatus.DETECTED_BRAND
+    )
     detection.business_brand = brand
     detection.business_visible = True
     detection.status_reason = f"manual_override:{reason}"
@@ -154,7 +174,7 @@ def apply_detection_override(detection: DetectionRecord, brand: str, reason: str
 def apply_track_ignore_override(track: TrackRecord, reason: str) -> None:
     track.final_brand = ""
     track.final_brand_conf = 0.0
-    track.final_status = "ignored"
+    track.final_status = FinalStatus.IGNORED
     track.business_brand = "other"
     track.business_visible = False
     track.final_status_reason = f"manual_ignore:{reason}"
@@ -166,8 +186,8 @@ def apply_detection_ignore_override(detection: DetectionRecord, reason: str) -> 
     detection.brand_conf = 0.0
     detection.top1_brand = ""
     detection.top1_score = 0.0
-    detection.brand_status = "ignored"
-    detection.final_status = "ignored"
+    detection.brand_status = BrandStatus.IGNORED
+    detection.final_status = FinalStatus.IGNORED
     detection.business_brand = "other"
     detection.business_visible = False
     detection.status_reason = f"manual_ignore:{reason}"

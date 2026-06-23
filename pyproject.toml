@@ -5,18 +5,25 @@ description = "Add your description here"
 readme = "ml/ad_detection/README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "alembic>=1.16.0",
     "easyocr>=1.7.2",
+    "fastapi>=0.115.0",
     "kaleido==0.2.1",
+    "minio>=7.2.15",
     "mypy>=2.1.0",
     "nbformat>=5.10.4",
     "pandas>=3.0.3",
     "pillow>=12.2.0",
     "plotly>=6.8.0",
+    "psycopg[binary]>=3.2.9",
+    "python-dotenv>=1.1.0",
     "pyyaml>=6.0.3",
     "ruff>=0.15.18",
     "scikit-learn>=1.9.0",
+    "sqlalchemy>=2.0.41",
     "timm>=1.0.27",
     "ultralytics>=8.4.63",
+    "uvicorn[standard]>=0.34.0",
 ]
 
 [tool.mypy]

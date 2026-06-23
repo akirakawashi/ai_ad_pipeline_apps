@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from scripts.config import PipelineConfig
-from scripts.schemas import DetectionRecord
+from .config import PipelineConfig
+from .schemas import DetectionRecord
 
 
 def assign_track_ids(detections: list[DetectionRecord], config: PipelineConfig) -> None:
@@ -26,7 +26,7 @@ def assign_track_ids(detections: list[DetectionRecord], config: PipelineConfig) 
                 frame_gap = frame_index - last_detection.frame_index
                 if frame_gap < 0:
                     continue
-                max_gap = config.frame_stride * max(1, config.max_track_gap_frames)
+                max_gap = config.frame_stride * max(1, config.tracking.max_gap_frames)
                 if frame_gap > max_gap:
                     continue
                 value = bbox_iou(detection.bbox_xyxy, last_detection.bbox_xyxy)
@@ -34,7 +34,7 @@ def assign_track_ids(detections: list[DetectionRecord], config: PipelineConfig) 
                     best_iou = value
                     best_track_id = track_id
 
-            if best_track_id is not None and best_iou >= config.tracking_iou_min:
+            if best_track_id is not None and best_iou >= config.tracking.iou_min:
                 detection.track_id = best_track_id
                 active[best_track_id] = detection
                 used_tracks.add(best_track_id)

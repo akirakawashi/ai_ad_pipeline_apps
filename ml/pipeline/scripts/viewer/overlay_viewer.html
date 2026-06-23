@@ -1,0 +1,639 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ad Pipeline Viewer</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #070d12;
+      --panel: rgba(10, 23, 30, 0.56);
+      --panel-strong: rgba(20, 38, 49, 0.72);
+      --line: rgba(255, 255, 255, 0.18);
+      --text: #f3fbff;
+      --muted: #b7c6cd;
+      --accent: #ffe600;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: radial-gradient(circle at 50% -10%, #182b38 0, var(--bg) 46%);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      letter-spacing: 0;
+    }
+
+    .app {
+      min-height: 100vh;
+      padding: 18px;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      gap: 12px;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .mark {
+      width: 28px;
+      height: 28px;
+      border-radius: 7px;
+      background: #0bd4b0;
+      color: #001816;
+      display: grid;
+      place-items: center;
+      font-weight: 800;
+      font-size: 13px;
+    }
+
+    .brand-title {
+      color: var(--text);
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .meta {
+      display: flex;
+      gap: 14px;
+      align-items: center;
+      min-width: 0;
+      justify-content: flex-end;
+    }
+
+    .stage {
+      min-height: 0;
+      display: grid;
+      place-items: center;
+    }
+
+    .video-shell {
+      position: relative;
+      max-width: min(100%, 1600px);
+      width: 100%;
+      background: #000;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      box-shadow: 0 18px 80px rgba(0, 0, 0, 0.48);
+      overflow: hidden;
+    }
+
+    video {
+      width: 100%;
+      height: auto;
+      display: block;
+      background: #000;
+    }
+
+    .overlay {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      overflow: hidden;
+    }
+
+    .bbox {
+      position: absolute;
+      border: 3px solid var(--object-color);
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.38), 0 0 18px color-mix(in srgb, var(--object-color) 40%, transparent);
+    }
+
+    .bbox-label {
+      position: absolute;
+      left: 0;
+      top: -28px;
+      min-width: 52px;
+      height: 24px;
+      padding: 2px 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--object-color);
+      background: rgba(7, 14, 18, 0.58);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 7px 7px 7px 0;
+      font-size: 15px;
+      line-height: 1;
+      font-weight: 850;
+      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.78);
+    }
+
+    .connector {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+
+    .card {
+      position: absolute;
+      width: 320px;
+      height: 286px;
+      padding: 18px 20px;
+      border-radius: 24px;
+      border: 1px solid rgba(255, 255, 255, 0.28);
+      background:
+        linear-gradient(150deg, rgba(255, 255, 255, 0.08), transparent 42%),
+        linear-gradient(160deg, var(--panel-strong), var(--panel));
+      box-shadow:
+        0 20px 52px rgba(0, 0, 0, 0.28),
+        inset 0 1px 0 rgba(255, 255, 255, 0.18),
+        inset 0 -1px 0 rgba(255, 255, 255, 0.08);
+      backdrop-filter: blur(20px) saturate(150%);
+      -webkit-backdrop-filter: blur(20px) saturate(150%);
+    }
+
+    .card::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--object-color) 32%, transparent);
+      pointer-events: none;
+    }
+
+    .card::after {
+      content: "";
+      position: absolute;
+      left: -1px;
+      top: 26px;
+      bottom: 26px;
+      width: 3px;
+      border-radius: 999px;
+      background: var(--object-color);
+      box-shadow: 0 0 16px color-mix(in srgb, var(--object-color) 58%, transparent);
+      opacity: 0.95;
+      pointer-events: none;
+    }
+
+    .metric {
+      display: grid;
+      grid-template-columns: 30px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 14px;
+      min-height: 40px;
+      padding: 8px 0;
+      border-bottom: 1px dashed var(--line);
+      font-size: 17px;
+    }
+
+    .metric:last-child { border-bottom: 0; }
+
+    .metric-icon {
+      width: 24px;
+      height: 24px;
+      color: var(--object-color);
+      filter: drop-shadow(0 1px 5px rgba(0, 0, 0, 0.42));
+    }
+
+    .metric-icon svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .metric-name {
+      color: var(--text);
+      font-weight: 760;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      text-shadow: 0 1px 8px rgba(0, 0, 0, 0.45);
+    }
+
+    .metric-value {
+      color: var(--object-color);
+      font-weight: 880;
+      text-align: right;
+      white-space: nowrap;
+      text-shadow: 0 1px 8px rgba(0, 0, 0, 0.45);
+    }
+
+    .empty-state {
+      position: absolute;
+      left: 16px;
+      bottom: 16px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      color: var(--muted);
+      background: rgba(0, 0, 0, 0.4);
+      font-size: 12px;
+      opacity: 0;
+      transition: opacity 120ms linear;
+    }
+
+    .empty-state.visible { opacity: 1; }
+
+    @media (max-width: 900px) {
+      .app { padding: 8px; }
+      .topbar { display: none; }
+      .card {
+        width: 248px;
+        height: 214px;
+        padding: 12px 14px;
+        border-radius: 18px;
+      }
+      .metric {
+        grid-template-columns: 22px minmax(0, 1fr) auto;
+        gap: 9px;
+        min-height: 31px;
+        font-size: 12px;
+        padding: 5px 0;
+      }
+      .metric-icon {
+        width: 18px;
+        height: 18px;
+      }
+      .bbox-label {
+        height: 20px;
+        top: -23px;
+        font-size: 12px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="mark">ai</div>
+        <div>
+          <div class="brand-title">Ad Pipeline Viewer</div>
+          <div>HTML/CSS overlay from pipeline objects</div>
+        </div>
+      </div>
+      <div class="meta">
+        <span id="frameMeta">frame -</span>
+        <span id="objectMeta">0 objects</span>
+      </div>
+    </header>
+
+    <section class="stage">
+      <div class="video-shell" id="videoShell">
+        <video id="video" controls preload="metadata"></video>
+        <div class="overlay" id="overlay"></div>
+        <div class="empty-state" id="emptyState">No visible objects in frame</div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const OVERLAY = __OVERLAY_JSON__;
+    const MAX_CARDS = OVERLAY.display?.max_cards_per_frame ?? 5;
+    const video = document.getElementById("video");
+    const shell = document.getElementById("videoShell");
+    const overlay = document.getElementById("overlay");
+    const frameMeta = document.getElementById("frameMeta");
+    const objectMeta = document.getElementById("objectMeta");
+    const emptyState = document.getElementById("emptyState");
+    const frameMap = new Map(OVERLAY.frames.map((frame) => [frame.frame_index, frame.objects]));
+    const slotByObject = new Map();
+    let rafId = 0;
+
+    const ICONS = {
+      class: [
+        ["path", { d: "M20.59 13.41 11 3.83A2.83 2.83 0 0 0 9 3H4a1 1 0 0 0-1 1v5c0 .75.3 1.47.83 2l9.59 9.59a2 2 0 0 0 2.82 0l4.35-4.35a2 2 0 0 0 0-2.83Z" }],
+        ["circle", { cx: "7.5", cy: "7.5", r: "1.5" }],
+      ],
+      detection: [
+        ["path", { d: "M4 19v-7" }],
+        ["path", { d: "M9 19V8" }],
+        ["path", { d: "M14 19v-4" }],
+        ["path", { d: "M19 19V5" }],
+      ],
+      brand: [
+        ["path", { d: "M12 3 4 7v10l8 4 8-4V7l-8-4Z" }],
+        ["path", { d: "m4 7 8 4 8-4" }],
+        ["path", { d: "M12 11v10" }],
+      ],
+      area: [
+        ["rect", { x: "4", y: "4", width: "16", height: "16", rx: "2", strokeDasharray: "4 3" }],
+      ],
+      visibility: [
+        ["path", { d: "M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" }],
+        ["circle", { cx: "12", cy: "12", r: "3" }],
+      ],
+      score: [
+        ["path", { d: "m12 3 2.9 5.88 6.5.94-4.7 4.58 1.1 6.47L12 17.82l-5.8 3.05 1.1-6.47-4.7-4.58 6.5-.94L12 3Z" }],
+      ],
+    };
+
+    video.src = OVERLAY.video.source;
+
+    function render() {
+      rafId = 0;
+      const fps = OVERLAY.video.fps || 25;
+      const frameIndex = Math.round(video.currentTime * fps);
+      const objects = frameMap.get(frameIndex) || [];
+      const rect = video.getBoundingClientRect();
+      const width = rect.width;
+      const height = rect.height;
+      const scaleX = width / Math.max(1, OVERLAY.video.width || video.videoWidth || width);
+      const scaleY = height / Math.max(1, OVERLAY.video.height || video.videoHeight || height);
+
+      overlay.replaceChildren();
+      emptyState.classList.toggle("visible", objects.length === 0 && !video.paused);
+      frameMeta.textContent = `frame ${frameIndex} · ${formatTime(video.currentTime)}`;
+      objectMeta.textContent = `${objects.length} objects`;
+
+      if (!objects.length || width <= 0 || height <= 0) {
+        return;
+      }
+
+      const scaledObjects = objects.map((object) => scaleObject(object, scaleX, scaleY));
+      const cardObjects = [...scaledObjects].sort(compareCardPriority).slice(0, MAX_CARDS);
+      const cardIds = new Set(cardObjects.map(objectKey));
+
+      const svg = createSvg();
+      overlay.appendChild(svg);
+
+      for (const object of scaledObjects) {
+        overlay.appendChild(createBox(object, cardIds.has(objectKey(object))));
+      }
+
+      const occupied = scaledObjects.map((object) => object.rect);
+      for (const object of cardObjects) {
+        const cardRect = chooseCardSlot(object, occupied, width, height);
+        occupied.push(cardRect);
+        overlay.appendChild(createCard(object, cardRect));
+        drawConnector(svg, object.rect, cardRect, object.color);
+      }
+    }
+
+    function requestRender() {
+      if (!rafId) {
+        rafId = requestAnimationFrame(render);
+      }
+    }
+
+    function scaleObject(object, scaleX, scaleY) {
+      const [x1, y1, x2, y2] = object.bbox;
+      const rect = {
+        x: x1 * scaleX,
+        y: y1 * scaleY,
+        w: Math.max(1, (x2 - x1) * scaleX),
+        h: Math.max(1, (y2 - y1) * scaleY),
+      };
+      return { ...object, rect };
+    }
+
+    function compareCardPriority(first, second) {
+      return (second.card_priority || 0) - (first.card_priority || 0);
+    }
+
+    function objectKey(object) {
+      return String(object.object_id ?? object.track_id ?? `${object.bbox[0]}-${object.bbox[1]}`);
+    }
+
+    function createBox(object, emphasized) {
+      const box = document.createElement("div");
+      box.className = "bbox";
+      box.style.setProperty("--object-color", object.color);
+      box.style.left = `${object.rect.x}px`;
+      box.style.top = `${object.rect.y}px`;
+      box.style.width = `${object.rect.w}px`;
+      box.style.height = `${object.rect.h}px`;
+      box.style.borderWidth = emphasized ? "3px" : "2px";
+
+      const label = document.createElement("div");
+      label.className = "bbox-label";
+      label.textContent = object.label;
+      box.appendChild(label);
+      return box;
+    }
+
+    function createCard(object, rect) {
+      const card = document.createElement("div");
+      card.className = "card";
+      card.style.setProperty("--object-color", object.color);
+      card.style.left = `${rect.x}px`;
+      card.style.top = `${rect.y}px`;
+      card.style.width = `${rect.w}px`;
+      card.style.height = `${rect.h}px`;
+
+      const rows = [
+        ["class", "Class", object.label],
+        ["detection", "Detection confidence", formatPercent(object.det_conf)],
+        ["brand", "Brand confidence", formatBrandConfidence(object)],
+        ["area", "Area in frame", formatAreaPercent(object.area_ratio)],
+        ["visibility", "Visibility score", formatScore(object.visibility_score)],
+        ["score", "Overall score", formatScore(object.overall_score)],
+      ];
+
+      for (const [icon, name, value] of rows) {
+        const row = document.createElement("div");
+        row.className = "metric";
+
+        const metricIcon = createMetricIcon(icon);
+
+        const label = document.createElement("div");
+        label.className = "metric-name";
+        label.textContent = name;
+
+        const metric = document.createElement("div");
+        metric.className = "metric-value";
+        metric.textContent = value;
+
+        row.append(metricIcon, label, metric);
+        card.appendChild(row);
+      }
+
+      return card;
+    }
+
+    function createMetricIcon(iconName) {
+      const wrapper = document.createElement("div");
+      wrapper.className = "metric-icon";
+
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.setAttribute("viewBox", "0 0 24 24");
+      svg.setAttribute("fill", "none");
+      svg.setAttribute("stroke", "currentColor");
+      svg.setAttribute("stroke-width", "2");
+      svg.setAttribute("stroke-linecap", "round");
+      svg.setAttribute("stroke-linejoin", "round");
+
+      for (const [tagName, attributes] of ICONS[iconName] || ICONS.score) {
+        const element = document.createElementNS("http://www.w3.org/2000/svg", tagName);
+        for (const [name, value] of Object.entries(attributes)) {
+          element.setAttribute(name, value);
+        }
+        svg.appendChild(element);
+      }
+
+      wrapper.appendChild(svg);
+      return wrapper;
+    }
+
+    function chooseCardSlot(object, occupied, width, height) {
+      const cardW = width < 900 ? 248 : 320;
+      const cardH = width < 900 ? 214 : 286;
+      const margin = width < 900 ? 8 : 18;
+      const controlsSafeBottom = width < 900 ? 72 : 96;
+      const slots = buildSlots(width, height, cardW, cardH, margin, controlsSafeBottom);
+      const key = objectKey(object);
+      const previousSlot = slotByObject.get(key);
+      let best = slots[0];
+      let bestPenalty = Number.POSITIVE_INFINITY;
+
+      for (const slot of slots) {
+        let penalty = 0;
+        for (const rect of occupied) {
+          penalty += intersectionArea(slot, rect);
+        }
+        penalty += distancePenalty(slot, object.rect);
+        if (previousSlot === slot.name) {
+          penalty -= 7000;
+        }
+        if (penalty < bestPenalty) {
+          bestPenalty = penalty;
+          best = slot;
+        }
+      }
+
+      slotByObject.set(key, best.name);
+      return best;
+    }
+
+    function buildSlots(width, height, cardW, cardH, margin, bottomSafe) {
+      const centerX = (width - cardW) / 2;
+      const maxY = Math.max(margin, height - cardH - bottomSafe);
+      const centerY = (margin + maxY) / 2;
+      return [
+        { name: "top-left", x: margin, y: margin, w: cardW, h: cardH },
+        { name: "top-right", x: width - cardW - margin, y: margin, w: cardW, h: cardH },
+        { name: "middle-left", x: margin, y: centerY, w: cardW, h: cardH },
+        { name: "middle-right", x: width - cardW - margin, y: centerY, w: cardW, h: cardH },
+        { name: "bottom-left", x: margin, y: maxY, w: cardW, h: cardH },
+        { name: "bottom-right", x: width - cardW - margin, y: maxY, w: cardW, h: cardH },
+        { name: "top-center", x: centerX, y: margin, w: cardW, h: cardH },
+        { name: "bottom-center", x: centerX, y: maxY, w: cardW, h: cardH },
+      ].map(clampSlot(width, height, margin, bottomSafe));
+    }
+
+    function clampSlot(width, height, margin, bottomSafe) {
+      return (slot) => ({
+        ...slot,
+        x: Math.max(margin, Math.min(slot.x, width - slot.w - margin)),
+        y: Math.max(margin, Math.min(slot.y, height - slot.h - bottomSafe)),
+      });
+    }
+
+    function distancePenalty(card, box) {
+      const cardCenter = center(card);
+      const boxCenter = center(box);
+      return Math.hypot(cardCenter.x - boxCenter.x, cardCenter.y - boxCenter.y) * 0.08;
+    }
+
+    function intersectionArea(first, second) {
+      const x = Math.max(0, Math.min(first.x + first.w, second.x + second.w) - Math.max(first.x, second.x));
+      const y = Math.max(0, Math.min(first.y + first.h, second.y + second.h) - Math.max(first.y, second.y));
+      return x * y;
+    }
+
+    function createSvg() {
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.classList.add("connector");
+      return svg;
+    }
+
+    function drawConnector(svg, box, card, color) {
+      const start = nearestPoint(box, center(card));
+      const end = nearestPoint(card, center(box));
+      const midX = (start.x + end.x) / 2;
+      const points = `${start.x},${start.y} ${midX},${start.y} ${midX},${end.y} ${end.x},${end.y}`;
+      const polyline = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+      polyline.setAttribute("points", points);
+      polyline.setAttribute("fill", "none");
+      polyline.setAttribute("stroke", color);
+      polyline.setAttribute("stroke-width", "3.5");
+      polyline.setAttribute("stroke-linejoin", "round");
+      polyline.setAttribute("stroke-linecap", "round");
+      polyline.setAttribute("opacity", "0.95");
+      svg.appendChild(polyline);
+
+      const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      dot.setAttribute("cx", String(start.x));
+      dot.setAttribute("cy", String(start.y));
+      dot.setAttribute("r", "6");
+      dot.setAttribute("fill", color);
+      dot.setAttribute("stroke", "rgba(255,255,255,0.9)");
+      dot.setAttribute("stroke-width", "3");
+      svg.appendChild(dot);
+    }
+
+    function center(rect) {
+      return { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 };
+    }
+
+    function nearestPoint(rect, target) {
+      const x = Math.max(rect.x, Math.min(target.x, rect.x + rect.w));
+      const y = Math.max(rect.y, Math.min(target.y, rect.y + rect.h));
+      return { x, y };
+    }
+
+    function formatPercent(value) {
+      if (!Number.isFinite(value) || value <= 0) return "0%";
+      return `${Math.round(value * 100)}%`;
+    }
+
+    function formatAreaPercent(value) {
+      if (!Number.isFinite(value) || value <= 0) return "0%";
+      const percent = value * 100;
+      if (percent < 0.1) return "<0.1%";
+      if (percent < 10) return `${percent.toFixed(1)}%`;
+      return `${Math.round(percent)}%`;
+    }
+
+    function formatBrandConfidence(object) {
+      if (object.brand === "other" && (!object.brand_conf || object.brand_conf <= 0)) {
+        return "n/a";
+      }
+      return formatPercent(object.brand_conf);
+    }
+
+    function formatScore(value) {
+      if (!Number.isFinite(value)) return "0.00";
+      return value.toFixed(2);
+    }
+
+    function formatTime(seconds) {
+      if (!Number.isFinite(seconds)) return "00:00";
+      const total = Math.max(0, Math.floor(seconds));
+      const minutes = Math.floor(total / 60);
+      const rest = total % 60;
+      return `${String(minutes).padStart(2, "0")}:${String(rest).padStart(2, "0")}`;
+    }
+
+    video.addEventListener("loadedmetadata", requestRender);
+    video.addEventListener("timeupdate", requestRender);
+    video.addEventListener("seeked", requestRender);
+    video.addEventListener("play", tick);
+    video.addEventListener("pause", requestRender);
+    window.addEventListener("resize", requestRender);
+
+    function tick() {
+      requestRender();
+      if (!video.paused && !video.ended) {
+        requestAnimationFrame(tick);
+      }
+    }
+  </script>
+</body>
+</html>

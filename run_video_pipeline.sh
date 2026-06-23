@@ -12,7 +12,7 @@ CLASSIFIER_MODEL="${CLASSIFIER_MODEL:-models/classification/best.pt}"
 BRAND_OVERRIDES="${BRAND_OVERRIDES:-ml/pipeline/brand_overrides.csv}"
 
 CMD=(
-  .venv/bin/python ml/pipeline/run_pipeline.py
+  .venv/bin/python -m ml.pipeline.run_pipeline
   --input "$INPUT" \
   --detector-model "$DETECTOR_MODEL" \
   --classifier-model "$CLASSIFIER_MODEL" \

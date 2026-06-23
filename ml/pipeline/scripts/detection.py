@@ -6,9 +6,9 @@ from typing import Any, cast
 
 from ultralytics import YOLO
 
-from scripts.config import PipelineConfig
-from scripts.schemas import DetectionRecord, FrameRecord, InputMetadata
-from scripts.visibility import fill_geometry_fields
+from .config import PipelineConfig
+from .schemas import DetectionRecord, FrameRecord, InputMetadata
+from .visibility import fill_geometry_fields
 
 
 def load_detector(config: PipelineConfig) -> YOLO:
@@ -28,12 +28,12 @@ def run_detection(
 
     for frame in frames:
         predict_kwargs: dict[str, object] = {
-            "conf": config.detector_conf_min,
-            "iou": config.detector_iou,
+            "conf": config.detection.confidence_min,
+            "iou": config.detection.iou,
             "verbose": False,
         }
-        if config.detector_imgsz:
-            predict_kwargs["imgsz"] = config.detector_imgsz
+        if config.detection.image_size:
+            predict_kwargs["imgsz"] = config.detection.image_size
         if config.device is not None:
             predict_kwargs["device"] = config.device
 
@@ -54,7 +54,9 @@ def run_detection(
                 area = width * height
                 area_ratio = area / max(1.0, frame.width * frame.height)
 
-                if not _passes_detection_gate(width, height, area_ratio, aspect_ratio, config):
+                if not _passes_detection_gate(
+                    width, height, area_ratio, aspect_ratio, config
+                ):
                     continue
 
                 detection = DetectionRecord(
@@ -99,8 +101,10 @@ def _passes_detection_gate(
     config: PipelineConfig,
 ) -> bool:
     return (
-        width >= config.min_detection_width
-        and height >= config.min_detection_height
-        and area_ratio >= config.min_detection_area_ratio
-        and config.min_detection_aspect_ratio <= aspect_ratio <= config.max_detection_aspect_ratio
+        width >= config.detection.min_width
+        and height >= config.detection.min_height
+        and area_ratio >= config.detection.min_area_ratio
+        and config.detection.min_aspect_ratio
+        <= aspect_ratio
+        <= config.detection.max_aspect_ratio
     )

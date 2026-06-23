@@ -53,8 +53,12 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Prepare a CVAT YOLO dataset with 80/20 split and train YOLO from scratch."
     )
-    parser.add_argument("--prepare-only", action="store_true", help="Prepare dataset, do not train.")
-    parser.add_argument("--cvat-zip", type=Path, default=Path("main.zip"), help="CVAT YOLO export zip.")
+    parser.add_argument(
+        "--prepare-only", action="store_true", help="Prepare dataset, do not train."
+    )
+    parser.add_argument(
+        "--cvat-zip", type=Path, default=Path("main.zip"), help="CVAT YOLO export zip."
+    )
     parser.add_argument(
         "--dataset-dir",
         type=Path,
@@ -66,8 +70,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Remove and rebuild --dataset-dir before preparing.",
     )
-    parser.add_argument("--val-ratio", type=float, default=0.20, help="Validation split ratio.")
-    parser.add_argument("--seed", type=int, default=42, help="Deterministic split seed.")
+    parser.add_argument(
+        "--val-ratio", type=float, default=0.20, help="Validation split ratio."
+    )
+    parser.add_argument(
+        "--seed", type=int, default=42, help="Deterministic split seed."
+    )
     parser.add_argument(
         "--model",
         default="yolo11m.yaml",
@@ -79,21 +87,31 @@ def parse_args() -> argparse.Namespace:
         default=Path("ml/runs/detection/detect/ad_surface_main_v1_from_scratch"),
         help="Ultralytics project directory.",
     )
-    parser.add_argument("--name", default="yolo11m_img960_main_v1_scratch", help="Ultralytics run name.")
+    parser.add_argument(
+        "--name", default="yolo11m_img960_main_v1_scratch", help="Ultralytics run name."
+    )
     parser.add_argument("--epochs", type=int, default=150)
     parser.add_argument("--imgsz", type=int, default=960)
     parser.add_argument("--batch", type=int, default=10)
     parser.add_argument("--patience", type=int, default=30)
     parser.add_argument("--workers", type=int, default=4)
-    parser.add_argument("--device", default=None, help="Torch/Ultralytics device, e.g. cpu or 0.")
-    parser.add_argument("--exist-ok", action="store_true", help="Allow Ultralytics to reuse run directory.")
-    parser.add_argument("--cache", action="store_true", help="Enable Ultralytics dataset caching.")
+    parser.add_argument(
+        "--device", default=None, help="Torch/Ultralytics device, e.g. cpu or 0."
+    )
+    parser.add_argument(
+        "--exist-ok",
+        action="store_true",
+        help="Allow Ultralytics to reuse run directory.",
+    )
+    parser.add_argument(
+        "--cache", action="store_true", help="Enable Ultralytics dataset caching."
+    )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
-    project_root = Path(__file__).resolve().parent
+    project_root = Path(__file__).resolve().parents[3]
     cvat_zip = resolve_project_path(project_root, args.cvat_zip)
     dataset_dir = resolve_project_path(project_root, args.dataset_dir)
     run_project = resolve_project_path(project_root, args.project)
@@ -163,7 +181,9 @@ def prepare_dataset_from_cvat_zip(
 ) -> PreparedDataset:
     if dataset_dir.exists():
         if not overwrite:
-            raise FileExistsError(f"{dataset_dir} already exists. Use --overwrite-dataset to rebuild it.")
+            raise FileExistsError(
+                f"{dataset_dir} already exists. Use --overwrite-dataset to rebuild it."
+            )
         shutil.rmtree(dataset_dir)
 
     images_train_dir = dataset_dir / "images" / "train"
@@ -192,7 +212,9 @@ def prepare_dataset_from_cvat_zip(
     val_txt = dataset_dir / "val.txt"
     data_yaml = dataset_dir / "data.yaml"
 
-    write_lines(train_txt, [require_path(record.image_path) for record in train_records])
+    write_lines(
+        train_txt, [require_path(record.image_path) for record in train_records]
+    )
     write_lines(val_txt, [require_path(record.image_path) for record in val_records])
     write_yaml(
         data_yaml,
@@ -246,9 +268,7 @@ def collect_archive_records(archive: zipfile.ZipFile) -> list[ArchiveRecord]:
     members = archive.namelist()
     image_members = sorted(member for member in members if is_image_member(member))
     label_members = {
-        Path(member).stem: member
-        for member in members
-        if is_label_member(member)
+        Path(member).stem: member for member in members if is_label_member(member)
     }
     if not image_members:
         raise ValueError("No images were found in CVAT export")
@@ -318,12 +338,17 @@ def extract_records(
         image_path = images_dir / record.output_name
         label_path = labels_dir / f"{Path(record.output_name).stem}.txt"
 
-        with archive.open(record.image_member) as source, image_path.open("wb") as target:
+        with (
+            archive.open(record.image_member) as source,
+            image_path.open("wb") as target,
+        ):
             shutil.copyfileobj(source, target)
 
         if record.label_member:
             label_text = archive.read(record.label_member).decode("utf-8").strip()
-            label_path.write_text(label_text + ("\n" if label_text else ""), encoding="utf-8")
+            label_path.write_text(
+                label_text + ("\n" if label_text else ""), encoding="utf-8"
+            )
         else:
             label_text = ""
             label_path.write_text("", encoding="utf-8")
@@ -356,7 +381,10 @@ def write_yaml(path: Path, data: dict[str, Any]) -> None:
 
 
 def write_json(path: Path, data: dict[str, Any]) -> None:
-    serializable = {key: str(value) if isinstance(value, Path) else value for key, value in data.items()}
+    serializable = {
+        key: str(value) if isinstance(value, Path) else value
+        for key, value in data.items()
+    }
     with path.open("w", encoding="utf-8") as handle:
         json.dump(serializable, handle, ensure_ascii=False, indent=2)
         handle.write("\n")
@@ -402,7 +430,9 @@ def print_prepared_summary(prepared: PreparedDataset) -> None:
     print(f"total boxes: {prepared.total_boxes}")
 
 
-def train_detector(args: argparse.Namespace, data_yaml: Path, run_project: Path) -> None:
+def train_detector(
+    args: argparse.Namespace, data_yaml: Path, run_project: Path
+) -> None:
     from ultralytics import YOLO
 
     train_kwargs: dict[str, Any] = {

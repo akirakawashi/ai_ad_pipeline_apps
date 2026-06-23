@@ -81,8 +81,12 @@ def parse_args() -> argparse.Namespace:
         default=Path("models/detection/best.pt"),
         help="YOLO detector model path.",
     )
-    parser.add_argument("--conf", type=float, default=0.50, help="Minimum detector confidence.")
-    parser.add_argument("--iou", type=float, default=0.50, help="YOLO NMS IoU threshold.")
+    parser.add_argument(
+        "--conf", type=float, default=0.50, help="Minimum detector confidence."
+    )
+    parser.add_argument(
+        "--iou", type=float, default=0.50, help="YOLO NMS IoU threshold."
+    )
     parser.add_argument(
         "--same-bbox-iou",
         type=float,
@@ -95,16 +99,24 @@ def parse_args() -> argparse.Namespace:
         default=5.0,
         help="Save the same bbox no more often than this interval.",
     )
-    parser.add_argument("--imgsz", type=int, default=960, help="YOLO inference image size.")
-    parser.add_argument("--device", default=None, help="Torch/Ultralytics device, e.g. cpu or 0.")
+    parser.add_argument(
+        "--imgsz", type=int, default=960, help="YOLO inference image size."
+    )
+    parser.add_argument(
+        "--device", default=None, help="Torch/Ultralytics device, e.g. cpu or 0."
+    )
     parser.add_argument(
         "--frame-stride",
         type=int,
         default=1,
         help="Process every Nth frame. Use 1 to scan every frame.",
     )
-    parser.add_argument("--start-sec", type=float, default=0.0, help="Start time in seconds.")
-    parser.add_argument("--end-sec", type=float, default=None, help="Optional end time in seconds.")
+    parser.add_argument(
+        "--start-sec", type=float, default=0.0, help="Start time in seconds."
+    )
+    parser.add_argument(
+        "--end-sec", type=float, default=None, help="Optional end time in seconds."
+    )
     parser.add_argument(
         "--jpeg-quality",
         type=int,
@@ -127,10 +139,14 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    project_root = Path(__file__).resolve().parent
+    project_root = Path(__file__).resolve().parents[3]
     input_path = resolve_path(project_root, args.input)
     model_path = resolve_path(project_root, args.model)
-    output_dir = resolve_path(project_root, args.output_dir) if args.output_dir else default_output_dir(project_root, input_path)
+    output_dir = (
+        resolve_path(project_root, args.output_dir)
+        if args.output_dir
+        else default_output_dir(project_root, input_path)
+    )
 
     if args.frame_stride < 1:
         raise ValueError("--frame-stride must be >= 1")
@@ -149,8 +165,12 @@ def main() -> int:
 
     model = YOLO(str(model_path))
     label_names = normalize_label_names(getattr(model, "names", {}) or {})
-    image_records = extract_frames(args, input_path, images_dir, preview_dir, model, label_names)
-    write_cvat_xml(output_dir / "annotations.xml", image_records, label_names, input_path)
+    image_records = extract_frames(
+        args, input_path, images_dir, preview_dir, model, label_names
+    )
+    write_cvat_xml(
+        output_dir / "annotations.xml", image_records, label_names, input_path
+    )
     write_detections_csv(output_dir / "detections.csv", image_records)
 
     print(f"input: {input_path}")
@@ -171,7 +191,12 @@ def resolve_path(project_root: Path, value: Path | None) -> Path:
 
 def default_output_dir(project_root: Path, input_path: Path) -> Path:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return project_root / "outputs" / "hard_negatives" / f"{timestamp}_{safe_stem(input_path.stem)}"
+    return (
+        project_root
+        / "outputs"
+        / "hard_negatives"
+        / f"{timestamp}_{safe_stem(input_path.stem)}"
+    )
 
 
 def safe_stem(value: str) -> str:
@@ -216,7 +241,9 @@ def extract_frames(
             should_process = frame_index % args.frame_stride == 0
             if should_process:
                 boxes = detect_boxes(model, frame, label_names, args)
-                boxes_to_save = filter_boxes_for_saving(boxes, bbox_memories, timestamp_sec, args)
+                boxes_to_save = filter_boxes_for_saving(
+                    boxes, bbox_memories, timestamp_sec, args
+                )
                 if boxes_to_save:
                     image_name = f"frame_{frame_index:06d}_t{timestamp_sec:09.3f}.jpg"
                     image_path = images_dir / image_name
@@ -262,14 +289,18 @@ def draw_preview(frame, boxes: list[BoxRecord]):
 
 def draw_box(image, box: BoxRecord) -> None:
     color = (0, 210, 255)
-    x1, y1, x2, y2 = [int(round(value)) for value in (box.xtl, box.ytl, box.xbr, box.ybr)]
+    x1, y1, x2, y2 = [
+        int(round(value)) for value in (box.xtl, box.ytl, box.xbr, box.ybr)
+    ]
     cv2.rectangle(image, (x1, y1), (x2, y2), color, 3)
 
     label = f"{box.label} {box.conf:.2f}"
     font = cv2.FONT_HERSHEY_SIMPLEX
     font_scale = 0.8
     thickness = 2
-    (text_width, text_height), baseline = cv2.getTextSize(label, font, font_scale, thickness)
+    (text_width, text_height), baseline = cv2.getTextSize(
+        label, font, font_scale, thickness
+    )
     text_x = max(0, min(x1, image.shape[1] - text_width - 4))
     text_y = max(text_height + baseline + 4, y1 - 6)
     background_top_left = (text_x, text_y - text_height - baseline - 4)
@@ -293,12 +324,16 @@ def filter_boxes_for_saving(
     timestamp_sec: float,
     args: argparse.Namespace,
 ) -> list[BoxRecord]:
-    prune_old_bbox_memories(bbox_memories, timestamp_sec, max(30.0, args.same_bbox_min_interval_sec * 3))
+    prune_old_bbox_memories(
+        bbox_memories, timestamp_sec, max(30.0, args.same_bbox_min_interval_sec * 3)
+    )
 
     boxes_to_save: list[BoxRecord] = []
     matched_memory_indices: set[int] = set()
     for box in boxes:
-        match_index = find_matching_bbox_memory(box, bbox_memories, args.same_bbox_iou, matched_memory_indices)
+        match_index = find_matching_bbox_memory(
+            box, bbox_memories, args.same_bbox_iou, matched_memory_indices
+        )
         if match_index is None:
             bbox_memories.append(
                 BBoxMemory(
@@ -316,7 +351,10 @@ def filter_boxes_for_saving(
 
         matched_memory_indices.add(match_index)
         memory = bbox_memories[match_index]
-        should_save = timestamp_sec - memory.last_saved_timestamp_sec >= args.same_bbox_min_interval_sec
+        should_save = (
+            timestamp_sec - memory.last_saved_timestamp_sec
+            >= args.same_bbox_min_interval_sec
+        )
         memory.update_seen(box, timestamp_sec)
         if should_save:
             memory.last_saved_timestamp_sec = timestamp_sec
@@ -404,7 +442,9 @@ def detect_boxes(
             if conf < args.conf:
                 continue
             class_id = int(box.cls[0].detach().cpu())
-            x1, y1, x2, y2 = [float(value) for value in box.xyxy[0].detach().cpu().tolist()]
+            x1, y1, x2, y2 = [
+                float(value) for value in box.xyxy[0].detach().cpu().tolist()
+            ]
             xtl = min(float(frame_width - 1), max(0.0, x1))
             ytl = min(float(frame_height - 1), max(0.0, y1))
             xbr = min(float(frame_width - 1), max(0.0, x2))
@@ -505,7 +545,9 @@ def write_cvat_xml(
                 },
             )
             add_attribute(box_node, "model_conf", f"{box.conf:.4f}")
-            add_attribute(box_node, "source_frame_index", str(record.source_frame_index))
+            add_attribute(
+                box_node, "source_frame_index", str(record.source_frame_index)
+            )
             add_attribute(box_node, "timestamp_sec", f"{record.timestamp_sec:.3f}")
 
     path.parent.mkdir(parents=True, exist_ok=True)

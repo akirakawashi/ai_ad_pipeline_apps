@@ -7,9 +7,13 @@ from pathlib import Path
 import shutil
 
 import cv2
+import numpy as np
 
-from scripts.config import PipelineConfig
-from scripts.schemas import DetectionRecord, FrameRecord, TrackRecord
+from .config import PipelineConfig
+from .domain import FinalStatus
+from .schemas import DetectionRecord, FrameRecord, TrackRecord
+
+CropBox = tuple[int, int, int, int]
 
 
 def save_detection_crops(
@@ -22,16 +26,21 @@ def save_detection_crops(
 
     for detection in detections:
         frame = frames_by_index[detection.frame_index]
-        crop, crop_box = crop_detection(frame, detection, config.crop_margin_ratio)
+        crop, crop_box = crop_detection(
+            frame, detection, config.classification.crop_margin_ratio
+        )
         if crop.size == 0:
             detection.crop_path = ""
             detection.crop_width = 0
             detection.crop_height = 0
             continue
 
-        crop_name = f"frame_{detection.frame_index:06d}_det_{detection.det_index:03d}.jpg"
+        crop_name = (
+            f"frame_{detection.frame_index:06d}_det_{detection.det_index:03d}.jpg"
+        )
         crop_path = crops_dir / crop_name
-        cv2.imwrite(str(crop_path), crop)
+        if not cv2.imwrite(str(crop_path), crop):
+            raise RuntimeError(f"Could not write crop: {crop_path}")
         detection.crop_path = str(crop_path)
         detection.crop_width = int(crop.shape[1])
         detection.crop_height = int(crop.shape[0])
@@ -46,7 +55,7 @@ def crop_detection(
     frame: FrameRecord,
     detection: DetectionRecord,
     margin_ratio: float,
-) -> tuple:
+) -> tuple[np.ndarray, CropBox]:
     x1, y1, x2, y2 = detection.bbox_xyxy
     width = x2 - x1
     height = y2 - y1
@@ -73,10 +82,10 @@ def copy_crops_by_status(
         track = tracks_by_id.get(detection.track_id or -1)
         if track is None:
             status_parts = ["unknown"]
-        elif getattr(track, "final_status") == "detected_brand" and getattr(track, "final_brand"):
-            status_parts = ["detected_brand", getattr(track, "final_brand")]
+        elif track.final_status == FinalStatus.DETECTED_BRAND and track.final_brand:
+            status_parts = [FinalStatus.DETECTED_BRAND, track.final_brand]
         else:
-            status_parts = [getattr(track, "final_status", "unknown")]
+            status_parts = [track.final_status]
 
         destination_dir = crops_root.joinpath(*status_parts)
         destination_dir.mkdir(parents=True, exist_ok=True)

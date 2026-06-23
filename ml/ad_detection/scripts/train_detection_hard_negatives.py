@@ -39,7 +39,9 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Prepare hard-negative dataset and continue fine-tuning the YOLO detector."
     )
-    parser.add_argument("--prepare-only", action="store_true", help="Prepare dataset, do not train.")
+    parser.add_argument(
+        "--prepare-only", action="store_true", help="Prepare dataset, do not train."
+    )
     parser.add_argument(
         "--hard-negative-zip",
         type=Path,
@@ -49,7 +51,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--base-data-yaml",
         type=Path,
-        default=Path("ml/data/detection/yolo/ad_surface_full_v1_finetune_cvat_corrections/data.yaml"),
+        default=Path(
+            "ml/data/detection/yolo/ad_surface_full_v1_finetune_cvat_corrections/data.yaml"
+        ),
         help="Existing YOLO dataset YAML. Its validation split is reused unchanged.",
     )
     parser.add_argument(
@@ -89,15 +93,26 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--lr0", type=float, default=0.001)
     parser.add_argument("--patience", type=int, default=5)
     parser.add_argument("--workers", type=int, default=4)
-    parser.add_argument("--device", default=None, help="Torch/Ultralytics device, e.g. cpu or 0.")
-    parser.add_argument("--freeze", type=int, default=0, help="Freeze first N layers. Default: no freeze.")
-    parser.add_argument("--exist-ok", action="store_true", help="Allow Ultralytics to reuse run directory.")
+    parser.add_argument(
+        "--device", default=None, help="Torch/Ultralytics device, e.g. cpu or 0."
+    )
+    parser.add_argument(
+        "--freeze",
+        type=int,
+        default=0,
+        help="Freeze first N layers. Default: no freeze.",
+    )
+    parser.add_argument(
+        "--exist-ok",
+        action="store_true",
+        help="Allow Ultralytics to reuse run directory.",
+    )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
-    project_root = Path(__file__).resolve().parent
+    project_root = Path(__file__).resolve().parents[3]
     hard_negative_zip = resolve_project_path(project_root, args.hard_negative_zip)
     base_data_yaml = resolve_project_path(project_root, args.base_data_yaml)
     weights = resolve_project_path(project_root, args.weights)
@@ -165,8 +180,12 @@ def load_prepared_dataset(dataset_dir: Path) -> PreparedDataset:
             base_train_count=int(summary.get("base_train_count", 0)),
             base_val_count=int(summary.get("base_val_count", 0)),
             hard_negative_count=int(summary.get("hard_negative_count", 0)),
-            hard_negative_positive_count=int(summary.get("hard_negative_positive_count", 0)),
-            hard_negative_background_count=int(summary.get("hard_negative_background_count", 0)),
+            hard_negative_positive_count=int(
+                summary.get("hard_negative_positive_count", 0)
+            ),
+            hard_negative_background_count=int(
+                summary.get("hard_negative_background_count", 0)
+            ),
         )
 
     hard_images_count = count_files(dataset_dir / "images" / "train")
@@ -195,11 +214,15 @@ def count_files(path: Path) -> int:
 def count_non_empty_files(path: Path) -> int:
     if not path.exists():
         return 0
-    return sum(1 for item in path.iterdir() if item.is_file() and item.stat().st_size > 0)
+    return sum(
+        1 for item in path.iterdir() if item.is_file() and item.stat().st_size > 0
+    )
 
 
 def count_lines(path: Path) -> int:
-    return sum(1 for line in path.read_text(encoding="utf-8").splitlines() if line.strip())
+    return sum(
+        1 for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
+    )
 
 
 def prepare_dataset(
@@ -210,7 +233,9 @@ def prepare_dataset(
 ) -> PreparedDataset:
     if dataset_dir.exists():
         if not overwrite:
-            raise FileExistsError(f"{dataset_dir} already exists. Use --overwrite-dataset to rebuild it.")
+            raise FileExistsError(
+                f"{dataset_dir} already exists. Use --overwrite-dataset to rebuild it."
+            )
         shutil.rmtree(dataset_dir)
 
     dataset_dir.mkdir(parents=True, exist_ok=True)
@@ -223,9 +248,15 @@ def prepare_dataset(
     base_root = resolve_base_dataset_root(base_data_yaml, base_yaml)
     names = base_yaml.get("names", {0: "ad_object"})
 
-    base_train_images = collect_split_images(base_yaml["train"], base_root, base_data_yaml.parent)
-    base_val_images = collect_split_images(base_yaml["val"], base_root, base_data_yaml.parent)
-    hard_manifest = extract_hard_negative_zip(hard_negative_zip, hard_images_dir, hard_labels_dir)
+    base_train_images = collect_split_images(
+        base_yaml["train"], base_root, base_data_yaml.parent
+    )
+    base_val_images = collect_split_images(
+        base_yaml["val"], base_root, base_data_yaml.parent
+    )
+    hard_manifest = extract_hard_negative_zip(
+        hard_negative_zip, hard_images_dir, hard_labels_dir
+    )
     hard_images = [row["image_path"] for row in hard_manifest]
 
     train_txt = dataset_dir / "train.txt"
@@ -242,7 +273,9 @@ def prepare_dataset(
             "names": names,
         },
     )
-    write_hard_negative_manifest(dataset_dir / "hard_negative_manifest.csv", hard_manifest)
+    write_hard_negative_manifest(
+        dataset_dir / "hard_negative_manifest.csv", hard_manifest
+    )
 
     hard_positive_count = sum(1 for row in hard_manifest if row["has_label"])
     prepared = PreparedDataset(
@@ -274,7 +307,10 @@ def write_yaml(path: Path, data: dict[str, Any]) -> None:
 
 
 def write_json(path: Path, data: dict[str, Any]) -> None:
-    serializable = {key: str(value) if isinstance(value, Path) else value for key, value in data.items()}
+    serializable = {
+        key: str(value) if isinstance(value, Path) else value
+        for key, value in data.items()
+    }
     with path.open("w", encoding="utf-8") as handle:
         json.dump(serializable, handle, ensure_ascii=False, indent=2)
         handle.write("\n")
@@ -291,7 +327,9 @@ def resolve_base_dataset_root(base_data_yaml: Path, base_yaml: dict[str, Any]) -
     return base_data_yaml.parent
 
 
-def collect_split_images(split_value: str | list[str], dataset_root: Path, yaml_dir: Path) -> list[Path]:
+def collect_split_images(
+    split_value: str | list[str], dataset_root: Path, yaml_dir: Path
+) -> list[Path]:
     values = split_value if isinstance(split_value, list) else [split_value]
     images: list[Path] = []
     for value in values:
@@ -303,7 +341,13 @@ def collect_split_images(split_value: str | list[str], dataset_root: Path, yaml_
         if path.suffix == ".txt":
             images.extend(read_image_list(path, dataset_root))
         elif path.is_dir():
-            images.extend(sorted(p.resolve() for p in path.rglob("*") if p.suffix.casefold() in IMAGE_EXTENSIONS))
+            images.extend(
+                sorted(
+                    p.resolve()
+                    for p in path.rglob("*")
+                    if p.suffix.casefold() in IMAGE_EXTENSIONS
+                )
+            )
         elif path.is_file() and path.suffix.casefold() in IMAGE_EXTENSIONS:
             images.append(path.resolve())
         else:
@@ -341,11 +385,14 @@ def extract_hard_negative_zip(
     labels_dir: Path,
 ) -> list[dict[str, Any]]:
     with zipfile.ZipFile(hard_negative_zip) as archive:
-        image_members = sorted(member for member in archive.namelist() if is_zip_image(member))
+        image_members = sorted(
+            member for member in archive.namelist() if is_zip_image(member)
+        )
         label_members = {
             Path(member).stem: member
             for member in archive.namelist()
-            if member.startswith(("labels/train/", "data/labels/train/")) and member.endswith(".txt")
+            if member.startswith(("labels/train/", "data/labels/train/"))
+            and member.endswith(".txt")
         }
 
         manifest: list[dict[str, Any]] = []
@@ -360,7 +407,10 @@ def extract_hard_negative_zip(
 
             label_member = label_members.get(Path(image_name).stem)
             if label_member:
-                with archive.open(label_member) as source, label_path.open("wb") as target:
+                with (
+                    archive.open(label_member) as source,
+                    label_path.open("wb") as target,
+                ):
                     shutil.copyfileobj(source, target)
                 has_label = label_path.stat().st_size > 0
             else:
@@ -381,9 +431,8 @@ def extract_hard_negative_zip(
 
 def is_zip_image(member: str) -> bool:
     path = Path(member)
-    return (
-        path.suffix.casefold() in IMAGE_EXTENSIONS
-        and any(member.startswith(prefix) for prefix in ("images/train/", "data/images/train/"))
+    return path.suffix.casefold() in IMAGE_EXTENSIONS and any(
+        member.startswith(prefix) for prefix in ("images/train/", "data/images/train/")
     )
 
 
@@ -394,7 +443,13 @@ def write_lines(path: Path, lines: list[Path]) -> None:
 
 
 def write_hard_negative_manifest(path: Path, rows: list[dict[str, Any]]) -> None:
-    fieldnames = ["image_path", "label_path", "image_member", "label_member", "has_label"]
+    fieldnames = [
+        "image_path",
+        "label_path",
+        "image_member",
+        "label_member",
+        "has_label",
+    ]
     with path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()

@@ -8,6 +8,13 @@ from typing import Any
 
 import numpy as np
 
+from .domain import (
+    BrandStatus,
+    ClassificationInputStatus,
+    CropQualityStatus,
+    FinalStatus,
+)
+
 
 @dataclass
 class InputMetadata:
@@ -62,10 +69,12 @@ class DetectionRecord:
     crop_path: str = ""
     crop_width: int = 0
     crop_height: int = 0
-    crop_quality_status: str = "rejected"
+    crop_quality_status: CropQualityStatus = CropQualityStatus.REJECTED
     crop_quality_reason: str = "not_evaluated"
     crop_quality_score: float = 0.0
-    classification_input_status: str = "rejected"
+    classification_input_status: ClassificationInputStatus = (
+        ClassificationInputStatus.REJECTED
+    )
     classification_attempted: bool = False
     brand_pred: str = ""
     brand_conf: float = 0.0
@@ -78,8 +87,8 @@ class DetectionRecord:
     video_visibility_score: float = 0.0
     video_visibility_weighted_seconds: float = 0.0
     overall_score: float = 0.0
-    brand_status: str = "not_classified"
-    final_status: str = "not_classified"
+    brand_status: BrandStatus = BrandStatus.NOT_CLASSIFIED
+    final_status: FinalStatus = FinalStatus.NOT_CLASSIFIED
     business_brand: str = "other"
     business_visible: bool = False
     status_reason: str = "not_classified_no_valid_crop"
@@ -126,7 +135,7 @@ class TrackRecord:
     video_visibility_weighted_seconds: float
     final_brand: str
     final_brand_conf: float
-    final_status: str
+    final_status: FinalStatus
     business_brand: str
     business_visible: bool
     final_status_reason: str
