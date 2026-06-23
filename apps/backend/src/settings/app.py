@@ -1,23 +1,14 @@
 from __future__ import annotations
 
-import os
-from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import quote_plus, urlparse
 
-from dotenv import load_dotenv
+from pydantic import BaseModel, ConfigDict, Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 def project_root() -> Path:
     return Path(__file__).resolve().parents[4]
-
-
-load_dotenv(project_root() / "apps" / "backend" / ".env")
-
-
-def env_int(name: str, default: int) -> int:
-    value = os.getenv(name)
-    return int(value) if value else default
 
 
 def endpoint_parts(value: str) -> tuple[str, bool]:
@@ -27,62 +18,35 @@ def endpoint_parts(value: str) -> tuple[str, bool]:
     return parsed.netloc, parsed.scheme == "https"
 
 
-@dataclass(frozen=True)
-class AppSettings:
+class FrozenModel(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+
+class AppSettings(FrozenModel):
     app_name: str = "AI Ad Pipeline API"
     app_version: str = "0.1.0"
     debug: bool = False
     api_v1_prefix: str = "/api/v1"
-    trusted_hosts: list[str] | None = None
-
-    @classmethod
-    def from_env(cls) -> AppSettings:
-        return cls(trusted_hosts=["*"])
+    trusted_hosts: list[str] = Field(default_factory=lambda: ["*"])
 
 
-@dataclass(frozen=True)
-class CorsSettings:
-    allow_origins: list[str]
-    allow_credentials: bool
-    allow_methods: list[str]
-    allow_headers: list[str]
-
-    @classmethod
-    def from_env(cls) -> CorsSettings:
-        return cls(
-            allow_origins=[
-                "http://localhost:5173",
-                "http://127.0.0.1:5173",
-            ],
-            allow_credentials=True,
-            allow_methods=["*"],
-            allow_headers=["*"],
-        )
+class CorsSettings(FrozenModel):
+    allow_origins: list[str] = Field(
+        default_factory=lambda: [
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+        ]
+    )
+    allow_credentials: bool = True
+    allow_methods: list[str] = Field(default_factory=lambda: ["*"])
+    allow_headers: list[str] = Field(default_factory=lambda: ["*"])
 
 
-@dataclass(frozen=True)
-class DatabaseSettings:
+class DatabaseSettings(FrozenModel):
     url: str
 
-    @classmethod
-    def from_env(cls) -> DatabaseSettings:
-        user = quote_plus(os.getenv("POSTGRES_USER", "ad_pipeline"))
-        password = quote_plus(
-            os.getenv("POSTGRES_PASSWORD", "ad_pipeline")
-        )
-        host = os.getenv("POSTGRES_HOST", "127.0.0.1")
-        port = env_int("POSTGRES_PORT", 5432)
-        database = quote_plus(os.getenv("POSTGRES_DB", "ad_pipeline"))
-        return cls(
-            url=(
-                f"postgresql+psycopg://{user}:{password}"
-                f"@{host}:{port}/{database}"
-            )
-        )
 
-
-@dataclass(frozen=True)
-class ObjectStorageSettings:
+class ObjectStorageSettings(FrozenModel):
     access_key: str
     secret_key: str
     bucket: str
@@ -92,60 +56,121 @@ class ObjectStorageSettings:
     public_secure: bool
     presigned_expiry_seconds: int
 
-    @classmethod
-    def from_env(cls) -> ObjectStorageSettings:
-        internal_raw = os.getenv(
-            "MINIO_INTERNAL_ENDPOINT",
-            "http://127.0.0.1:9000",
+
+class PipelineSettings(FrozenModel):
+    project_root: Path = Field(default_factory=project_root)
+    detector_model_path: Path = Field(
+        default_factory=lambda: (
+            project_root() / "models/detection/best.pt"
+        ).resolve()
+    )
+    classifier_model_path: Path = Field(
+        default_factory=lambda: (
+            project_root() / "models/classification/best.pt"
+        ).resolve()
+    )
+    brand_overrides_path: Path | None = Field(
+        default_factory=lambda: (
+            project_root() / "ml/pipeline/brand_overrides.csv"
+        ).resolve()
+    )
+    frame_stride: int = Field(default=1, ge=1)
+    device: str | None = "0"
+    worker_poll_interval_sec: float = Field(default=2.0, gt=0)
+    worker_temp_dir: Path = Path("/tmp/ad-pipeline")
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=project_root() / "apps/backend/.env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+        frozen=True,
+    )
+
+    postgres_db: str = Field(
+        default="ad_pipeline",
+        validation_alias="POSTGRES_DB",
+    )
+    postgres_user: str = Field(
+        default="ad_pipeline",
+        validation_alias="POSTGRES_USER",
+    )
+    postgres_password: str = Field(
+        default="ad_pipeline",
+        validation_alias="POSTGRES_PASSWORD",
+    )
+    postgres_host: str = Field(
+        default="127.0.0.1",
+        validation_alias="POSTGRES_HOST",
+    )
+    postgres_port: int = Field(
+        default=5432,
+        validation_alias="POSTGRES_PORT",
+        ge=1,
+        le=65535,
+    )
+
+    minio_root_user: str = Field(
+        default="ad_pipeline",
+        validation_alias="MINIO_ROOT_USER",
+    )
+    minio_root_password: str = Field(
+        default="ad_pipeline_secret",
+        validation_alias="MINIO_ROOT_PASSWORD",
+    )
+    minio_bucket: str = Field(
+        default="ad-pipeline",
+        validation_alias="MINIO_BUCKET",
+    )
+    minio_internal_endpoint: str = Field(
+        default="http://127.0.0.1:9000",
+        validation_alias="MINIO_INTERNAL_ENDPOINT",
+    )
+    minio_public_endpoint: str | None = Field(
+        default=None,
+        validation_alias="MINIO_PUBLIC_ENDPOINT",
+    )
+    minio_presigned_expiry_seconds: int = Field(
+        default=3600,
+        validation_alias="MINIO_PRESIGNED_EXPIRY_SECONDS",
+        gt=0,
+    )
+
+    app: AppSettings = Field(default_factory=AppSettings)
+    cors: CorsSettings = Field(default_factory=CorsSettings)
+    pipeline: PipelineSettings = Field(default_factory=PipelineSettings)
+
+    @property
+    def database(self) -> DatabaseSettings:
+        user = quote_plus(self.postgres_user)
+        password = quote_plus(self.postgres_password)
+        database = quote_plus(self.postgres_db)
+        return DatabaseSettings(
+            url=(
+                f"postgresql+psycopg://{user}:{password}"
+                f"@{self.postgres_host}:{self.postgres_port}/{database}"
+            )
         )
-        public_raw = os.getenv("MINIO_PUBLIC_ENDPOINT", internal_raw)
-        internal_endpoint, internal_secure = endpoint_parts(internal_raw)
-        public_endpoint, public_secure = endpoint_parts(public_raw)
-        return cls(
-            access_key=os.getenv("MINIO_ROOT_USER", "ad_pipeline"),
-            secret_key=os.getenv(
-                "MINIO_ROOT_PASSWORD",
-                "ad_pipeline_secret",
-            ),
-            bucket=os.getenv("MINIO_BUCKET", "ad-pipeline"),
+
+    @property
+    def object_storage(self) -> ObjectStorageSettings:
+        internal_endpoint, internal_secure = endpoint_parts(
+            self.minio_internal_endpoint
+        )
+        public_endpoint, public_secure = endpoint_parts(
+            self.minio_public_endpoint
+            or self.minio_internal_endpoint
+        )
+        return ObjectStorageSettings(
+            access_key=self.minio_root_user,
+            secret_key=self.minio_root_password,
+            bucket=self.minio_bucket,
             internal_endpoint=internal_endpoint,
             internal_secure=internal_secure,
             public_endpoint=public_endpoint,
             public_secure=public_secure,
-            presigned_expiry_seconds=env_int(
-                "MINIO_PRESIGNED_EXPIRY_SECONDS",
-                3600,
+            presigned_expiry_seconds=(
+                self.minio_presigned_expiry_seconds
             ),
-        )
-
-
-@dataclass(frozen=True)
-class PipelineSettings:
-    project_root: Path
-    detector_model_path: Path
-    classifier_model_path: Path
-    brand_overrides_path: Path | None
-    frame_stride: int
-    device: str | None
-    worker_poll_interval_sec: float
-    worker_temp_dir: Path
-
-    @classmethod
-    def from_env(cls) -> PipelineSettings:
-        root = project_root()
-        return cls(
-            project_root=root,
-            detector_model_path=(
-                root / "models/detection/best.pt"
-            ).resolve(),
-            classifier_model_path=(
-                root / "models/classification/best.pt"
-            ).resolve(),
-            brand_overrides_path=(
-                root / "ml/pipeline/brand_overrides.csv"
-            ).resolve(),
-            frame_stride=1,
-            device="0",
-            worker_poll_interval_sec=2.0,
-            worker_temp_dir=Path("/tmp/ad-pipeline"),
         )

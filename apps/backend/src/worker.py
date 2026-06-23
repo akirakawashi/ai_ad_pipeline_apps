@@ -14,7 +14,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from infrastructure.database.session import SessionFactory
+from infrastructure.database.session import create_session
 from infrastructure.repositories.sql_pipeline_run_repository import (
     SqlPipelineRunRepository,
 )
@@ -26,7 +26,7 @@ from ml.pipeline.scripts.runner import (
     load_pipeline_models,
     run_pipeline,
 )
-from settings.factory import ConfigFactory
+from settings.factory import get_settings
 
 
 logger = logging.getLogger("pipeline-worker")
@@ -85,7 +85,7 @@ class DatabaseProgressReporter(PipelineProgressReporter):
 
 class PipelineWorker:
     def __init__(self) -> None:
-        self._config = ConfigFactory()
+        self._config = get_settings()
         self._storage = MinioStorage(self._config.object_storage)
         self._worker_id = f"{socket.gethostname()}:{os.getpid()}"
         self._models: PipelineModels | None = None
@@ -101,18 +101,22 @@ class PipelineWorker:
                 )
 
     def process_next(self) -> bool:
-        with SessionFactory() as session:
+        with create_session() as session:
             repository = SqlPipelineRunRepository(session)
             run = repository.claim_next(self._worker_id)
             if run is None:
                 return False
 
             run_root = (
-                self._config.pipeline.worker_temp_dir / run.id
+                self._config.pipeline.worker_temp_dir
+                / run.pipeline_runs_id
             ).resolve()
             input_path = run_root / "input" / run.source_name
             output_path = run_root / "output"
-            reporter = DatabaseProgressReporter(repository, run.id)
+            reporter = DatabaseProgressReporter(
+                repository,
+                run.pipeline_runs_id,
+            )
 
             try:
                 if run_root.exists():
@@ -142,7 +146,7 @@ class PipelineWorker:
                     brand_overrides_path=(
                         self._config.pipeline.brand_overrides_path
                     ),
-                    run_id=run.id,
+                    run_id=run.pipeline_runs_id,
                     frame_stride=self._config.pipeline.frame_stride,
                     device=self._config.pipeline.device,
                 )
@@ -165,22 +169,28 @@ class PipelineWorker:
                 )
                 self._upload_artifacts(
                     repository,
-                    run.id,
+                    run.pipeline_runs_id,
                     output_path,
                 )
                 repository.mark_completed(
-                    run.id,
+                    run.pipeline_runs_id,
                     fps=result.metadata.fps,
                     frame_count=result.metadata.frame_count,
                     frame_stride=result.metadata.frame_stride,
                     width=result.metadata.width,
                     height=result.metadata.height,
                 )
-                logger.info("run completed: %s", run.id)
+                logger.info(
+                    "run completed: %s",
+                    run.pipeline_runs_id,
+                )
             except Exception as exc:
-                logger.exception("run failed: %s", run.id)
+                logger.exception(
+                    "run failed: %s",
+                    run.pipeline_runs_id,
+                )
                 repository.mark_failed(
-                    run.id,
+                    run.pipeline_runs_id,
                     error_code=exc.__class__.__name__,
                     error_message=traceback.format_exc(),
                 )

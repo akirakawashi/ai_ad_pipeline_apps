@@ -4,7 +4,7 @@ from collections.abc import Generator
 from functools import lru_cache
 
 from fastapi import Depends
-from sqlalchemy.orm import Session
+from sqlmodel import Session
 
 from application.services.pipeline_run_service import PipelineRunService
 from infrastructure.database.session import get_db_session
@@ -12,17 +12,12 @@ from infrastructure.repositories.sql_pipeline_run_repository import (
     SqlPipelineRunRepository,
 )
 from infrastructure.storage.minio_storage import MinioStorage
-from settings.factory import ConfigFactory
-
-
-@lru_cache
-def get_config() -> ConfigFactory:
-    return ConfigFactory()
+from settings.factory import get_settings
 
 
 @lru_cache
 def get_object_storage() -> MinioStorage:
-    return MinioStorage(get_config().object_storage)
+    return MinioStorage(get_settings().object_storage)
 
 
 def get_session() -> Generator[Session, None, None]:

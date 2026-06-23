@@ -9,11 +9,7 @@ from typing import Any
 
 import pandas as pd
 
-from application.services.run_serialization import (
-    artifact_to_dict,
-    run_to_dict,
-)
-from infrastructure.database.models import PipelineArtifactModel
+from infrastructure.database.models import PipelineArtifact, PipelineRun
 from infrastructure.repositories.sql_pipeline_run_repository import (
     SqlPipelineRunRepository,
 )
@@ -28,6 +24,8 @@ ALLOWED_VIDEO_EXTENSIONS = {
     ".mp4",
     ".webm",
 }
+
+
 class PipelineRunNotFoundError(LookupError):
     pass
 
@@ -75,7 +73,7 @@ class PipelineRunService:
         )
 
         return {
-            "run_id": run.id,
+            "run_id": run.pipeline_runs_id,
             "status": run.status,
             "upload": {
                 "method": "PUT",
@@ -87,15 +85,15 @@ class PipelineRunService:
             },
         }
 
-    def complete_upload(self, run_id: str) -> dict[str, Any]:
-        run = self._require_run(run_id)
+    def complete_upload(self, run_id: str) -> PipelineRun:
+        run = self._require_run(run_id, with_artifacts=False)
         if run.status not in {"uploading", "upload_failed"}:
             raise InvalidVideoError(
                 f"Upload cannot be completed from status {run.status}"
             )
         object_stat = self._storage.stat(run.source_object_key)
         self._repository.add_artifact(
-            run_id=run.id,
+            run_id=run.pipeline_runs_id,
             artifact_type="source_video",
             object_key=run.source_object_key,
             content_type=run.source_content_type
@@ -106,7 +104,7 @@ class PipelineRunService:
             run,
             actual_size_bytes=object_stat.size,
         )
-        return run_to_dict(run)
+        return run
 
     def list_runs(
         self,
@@ -121,25 +119,18 @@ class PipelineRunService:
             status=status,
         )
         return {
-            "items": [
-                run_to_dict(run, include_artifacts=True) for run in runs
-            ],
+            "items": runs,
             "page": page,
             "page_size": page_size,
             "total": total,
         }
 
-    def get_run(self, run_id: str) -> dict[str, Any]:
-        run = self._require_run(run_id, with_events=True)
-        return run_to_dict(
-            run,
-            include_artifacts=True,
-            include_events=True,
-        )
+    def get_run(self, run_id: str) -> PipelineRun:
+        return self._require_run(run_id, with_events=True)
 
-    def get_artifacts(self, run_id: str) -> list[dict[str, Any]]:
+    def get_artifacts(self, run_id: str) -> list[PipelineArtifact]:
         run = self._require_run(run_id)
-        return [artifact_to_dict(artifact) for artifact in run.artifacts]
+        return run.artifacts
 
     def get_artifact_url(
         self,
@@ -151,7 +142,7 @@ class PipelineRunService:
             (
                 item
                 for item in run.artifacts
-                if item.id == artifact_id
+                if item.pipeline_artifacts_id == artifact_id
             ),
             None,
         )
@@ -160,7 +151,7 @@ class PipelineRunService:
                 f"Artifact {artifact_id} was not found"
             )
         return {
-            "artifact_id": artifact.id,
+            "artifact_id": artifact.pipeline_artifacts_id,
             "url": self._storage.presigned_get(artifact.object_key),
         }
 
@@ -201,7 +192,7 @@ class PipelineRunService:
             for row in brands
         )
         return {
-            "run": run_to_dict(run, include_artifacts=True),
+            "run": run,
             "totals": {
                 "total_objects": total_objects,
                 "visibility_index": total_visibility,
@@ -308,9 +299,14 @@ class PipelineRunService:
         self,
         run_id: str,
         *,
+        with_artifacts: bool = True,
         with_events: bool = False,
-    ):
-        run = self._repository.get(run_id, with_events=with_events)
+    ) -> PipelineRun:
+        run = self._repository.get(
+            run_id,
+            with_artifacts=with_artifacts,
+            with_events=with_events,
+        )
         if run is None:
             raise PipelineRunNotFoundError(
                 f"Pipeline run {run_id} was not found"
@@ -321,7 +317,7 @@ class PipelineRunService:
         self,
         run_id: str,
         artifact_type: str,
-    ) -> PipelineArtifactModel:
+    ) -> PipelineArtifact:
         run = self._require_run(run_id)
         artifact = self._find_artifact(run.artifacts, artifact_type)
         if artifact is None:
@@ -332,9 +328,9 @@ class PipelineRunService:
 
     @staticmethod
     def _find_artifact(
-        artifacts: list[PipelineArtifactModel],
+        artifacts: list[PipelineArtifact],
         artifact_type: str,
-    ) -> PipelineArtifactModel | None:
+    ) -> PipelineArtifact | None:
         return next(
             (
                 artifact
@@ -344,7 +340,7 @@ class PipelineRunService:
             None,
         )
 
-    def _read_csv(self, artifact: PipelineArtifactModel) -> pd.DataFrame:
+    def _read_csv(self, artifact: PipelineArtifact) -> pd.DataFrame:
         value = self._storage.read_bytes(artifact.object_key)
         if not value:
             return pd.DataFrame()

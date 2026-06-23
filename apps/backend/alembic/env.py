@@ -4,8 +4,8 @@ from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
+from sqlmodel import SQLModel
 
-from infrastructure.database.base import Base
 from infrastructure.database import models  # noqa: F401
 from settings.factory import ConfigFactory
 
@@ -16,7 +16,7 @@ if config.config_file_name is not None:
 
 settings = ConfigFactory()
 config.set_main_option("sqlalchemy.url", settings.database.url)
-target_metadata = Base.metadata
+target_metadata = SQLModel.metadata
 
 
 def run_migrations_offline() -> None:

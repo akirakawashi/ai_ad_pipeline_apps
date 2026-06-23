@@ -10,10 +10,10 @@ from infrastructure.storage.minio_storage import MinioStorage
 from presentation.http.exception_handlers import setup_exception_handlers
 from presentation.http.routers.healthcheck import healthcheck_router
 from presentation.http.routers.v1.router import api_v1_router
-from settings.factory import ConfigFactory
+from settings.factory import get_settings
 
 
-config = ConfigFactory()
+config = get_settings()
 
 
 @asynccontextmanager

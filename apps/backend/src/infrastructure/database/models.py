@@ -5,6 +5,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     BigInteger,
+    Column,
     DateTime,
     Float,
     ForeignKey,
@@ -15,76 +16,174 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-
-from infrastructure.database.base import Base
+from sqlmodel import Field, Relationship, SQLModel
 
 
 def uuid_string() -> str:
     return str(uuid.uuid4())
 
 
-class PipelineRunModel(Base):
+class PipelineRun(SQLModel, table=True):
     __tablename__ = "pipeline_runs"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
-        primary_key=True,
-        default=uuid_string,
+    pipeline_runs_id: str = Field(
+        default_factory=uuid_string,
+        sa_column=Column(
+            String(36),
+            primary_key=True,
+            default=uuid_string,
+            nullable=False,
+        ),
     )
-    source_name: Mapped[str] = mapped_column(String(512))
-    source_object_key: Mapped[str] = mapped_column(String(1024), unique=True)
-    source_content_type: Mapped[str | None] = mapped_column(String(255))
-    source_size_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
+    source_name: str = Field(
+        sa_column=Column(String(512), nullable=False),
+    )
+    source_object_key: str = Field(
+        sa_column=Column(
+            String(1024),
+            unique=True,
+            nullable=False,
+        ),
+    )
+    source_content_type: str | None = Field(
+        default=None,
+        sa_column=Column(String(255), nullable=True),
+    )
+    source_size_bytes: int = Field(
+        default=0,
+        sa_column=Column(
+            BigInteger,
+            default=0,
+            nullable=False,
+        ),
+    )
 
-    status: Mapped[str] = mapped_column(
-        String(32),
-        index=True,
+    status: str = Field(
         default="uploading",
+        sa_column=Column(
+            String(32),
+            default="uploading",
+            index=True,
+            nullable=False,
+        ),
     )
-    stage: Mapped[str] = mapped_column(String(64), default="upload")
-    progress: Mapped[int] = mapped_column(Integer, default=0)
-    status_message: Mapped[str | None] = mapped_column(String(1024))
-    error_code: Mapped[str | None] = mapped_column(String(128))
-    error_message: Mapped[str | None] = mapped_column(Text)
+    stage: str = Field(
+        default="upload",
+        sa_column=Column(
+            String(64),
+            default="upload",
+            nullable=False,
+        ),
+    )
+    progress: int = Field(
+        default=0,
+        ge=0,
+        le=100,
+        sa_column=Column(
+            Integer,
+            default=0,
+            nullable=False,
+        ),
+    )
+    status_message: str | None = Field(
+        default=None,
+        sa_column=Column(String(1024), nullable=True),
+    )
+    error_code: str | None = Field(
+        default=None,
+        sa_column=Column(String(128), nullable=True),
+    )
+    error_message: str | None = Field(
+        default=None,
+        sa_column=Column(Text, nullable=True),
+    )
 
-    fps: Mapped[float | None] = mapped_column(Float)
-    frame_count: Mapped[int | None] = mapped_column(Integer)
-    frame_stride: Mapped[int | None] = mapped_column(Integer)
-    duration_sec: Mapped[float | None] = mapped_column(Float)
-    width: Mapped[int | None] = mapped_column(Integer)
-    height: Mapped[int | None] = mapped_column(Integer)
-
-    worker_id: Mapped[str | None] = mapped_column(String(255), index=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        index=True,
+    fps: float | None = Field(
+        default=None,
+        sa_column=Column(Float, nullable=True),
     )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        onupdate=func.now(),
+    frame_count: int | None = Field(
+        default=None,
+        sa_column=Column(Integer, nullable=True),
     )
-    upload_completed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True)
+    frame_stride: int | None = Field(
+        default=None,
+        sa_column=Column(Integer, nullable=True),
     )
-    started_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True)
+    duration_sec: float | None = Field(
+        default=None,
+        sa_column=Column(Float, nullable=True),
     )
-    completed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True)
+    width: int | None = Field(
+        default=None,
+        sa_column=Column(Integer, nullable=True),
+    )
+    height: int | None = Field(
+        default=None,
+        sa_column=Column(Integer, nullable=True),
     )
 
-    artifacts: Mapped[list["PipelineArtifactModel"]] = relationship(
+    worker_id: str | None = Field(
+        default=None,
+        sa_column=Column(
+            String(255),
+            index=True,
+            nullable=True,
+        ),
+    )
+    created_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(
+            DateTime(timezone=True),
+            server_default=func.now(),
+            nullable=False,
+            index=True,
+        ),
+    )
+    updated_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(
+            DateTime(timezone=True),
+            server_default=func.now(),
+            onupdate=func.now(),
+            nullable=False,
+        ),
+    )
+    upload_completed_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(
+            DateTime(timezone=True),
+            nullable=True,
+        ),
+    )
+    started_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(
+            DateTime(timezone=True),
+            nullable=True,
+        ),
+    )
+    completed_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(
+            DateTime(timezone=True),
+            nullable=True,
+        ),
+    )
+
+    artifacts: list["PipelineArtifact"] = Relationship(
         back_populates="run",
-        cascade="all, delete-orphan",
-        order_by="PipelineArtifactModel.created_at",
+        cascade_delete=True,
+        sa_relationship_kwargs={
+            "order_by": "PipelineArtifact.created_at",
+        },
     )
-    events: Mapped[list["PipelineRunEventModel"]] = relationship(
+    events: list["PipelineRunEvent"] = Relationship(
         back_populates="run",
-        cascade="all, delete-orphan",
-        order_by="PipelineRunEventModel.created_at",
+        cascade_delete=True,
+        sa_relationship_kwargs={
+            "order_by": "PipelineRunEvent.created_at",
+        },
     )
 
     __table_args__ = (
@@ -96,37 +195,75 @@ class PipelineRunModel(Base):
     )
 
 
-class PipelineArtifactModel(Base):
+class PipelineArtifact(SQLModel, table=True):
     __tablename__ = "pipeline_artifacts"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
-        primary_key=True,
-        default=uuid_string,
+    pipeline_artifacts_id: str = Field(
+        default_factory=uuid_string,
+        sa_column=Column(
+            String(36),
+            primary_key=True,
+            default=uuid_string,
+            nullable=False,
+        ),
     )
-    run_id: Mapped[str] = mapped_column(
-        ForeignKey("pipeline_runs.id", ondelete="CASCADE"),
-        index=True,
+    pipeline_runs_id: str = Field(
+        sa_column=Column(
+            String(36),
+            ForeignKey(
+                "pipeline_runs.pipeline_runs_id",
+                ondelete="CASCADE",
+            ),
+            index=True,
+            nullable=False,
+        ),
     )
-    artifact_type: Mapped[str] = mapped_column(String(64), index=True)
-    object_key: Mapped[str] = mapped_column(String(1024), unique=True)
-    content_type: Mapped[str] = mapped_column(
-        String(255),
+    artifact_type: str = Field(
+        sa_column=Column(
+            String(64),
+            index=True,
+            nullable=False,
+        ),
+    )
+    object_key: str = Field(
+        sa_column=Column(
+            String(1024),
+            unique=True,
+            nullable=False,
+        ),
+    )
+    content_type: str = Field(
         default="application/octet-stream",
+        sa_column=Column(
+            String(255),
+            default="application/octet-stream",
+            nullable=False,
+        ),
     )
-    size_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=func.now(),
+    size_bytes: int = Field(
+        default=0,
+        sa_column=Column(
+            BigInteger,
+            default=0,
+            nullable=False,
+        ),
+    )
+    created_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(
+            DateTime(timezone=True),
+            server_default=func.now(),
+            nullable=False,
+        ),
     )
 
-    run: Mapped["PipelineRunModel"] = relationship(
-        back_populates="artifacts"
+    run: PipelineRun | None = Relationship(
+        back_populates="artifacts",
     )
 
     __table_args__ = (
         UniqueConstraint(
-            "run_id",
+            "pipeline_runs_id",
             "artifact_type",
             "object_key",
             name="uq_pipeline_artifact_run_type_key",
@@ -134,25 +271,49 @@ class PipelineArtifactModel(Base):
     )
 
 
-class PipelineRunEventModel(Base):
+class PipelineRunEvent(SQLModel, table=True):
     __tablename__ = "pipeline_run_events"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
-        primary_key=True,
-        default=uuid_string,
+    pipeline_run_events_id: str = Field(
+        default_factory=uuid_string,
+        sa_column=Column(
+            String(36),
+            primary_key=True,
+            default=uuid_string,
+            nullable=False,
+        ),
     )
-    run_id: Mapped[str] = mapped_column(
-        ForeignKey("pipeline_runs.id", ondelete="CASCADE"),
-        index=True,
+    pipeline_runs_id: str = Field(
+        sa_column=Column(
+            String(36),
+            ForeignKey(
+                "pipeline_runs.pipeline_runs_id",
+                ondelete="CASCADE",
+            ),
+            index=True,
+            nullable=False,
+        ),
     )
-    stage: Mapped[str] = mapped_column(String(64))
-    progress: Mapped[int] = mapped_column(Integer)
-    message: Mapped[str | None] = mapped_column(String(1024))
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        index=True,
+    stage: str = Field(
+        sa_column=Column(String(64), nullable=False),
+    )
+    progress: int = Field(
+        ge=0,
+        le=100,
+        sa_column=Column(Integer, nullable=False),
+    )
+    message: str | None = Field(
+        default=None,
+        sa_column=Column(String(1024), nullable=True),
+    )
+    created_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(
+            DateTime(timezone=True),
+            server_default=func.now(),
+            nullable=False,
+            index=True,
+        ),
     )
 
-    run: Mapped["PipelineRunModel"] = relationship(back_populates="events")
+    run: PipelineRun | None = Relationship(back_populates="events")

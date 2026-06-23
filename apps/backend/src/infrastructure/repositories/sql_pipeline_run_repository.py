@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import func, select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy import func
+from sqlalchemy.orm import noload, selectinload
+from sqlmodel import Session, select
 
 from infrastructure.database.models import (
-    PipelineArtifactModel,
-    PipelineRunEventModel,
-    PipelineRunModel,
+    PipelineArtifact,
+    PipelineRun,
+    PipelineRunEvent,
 )
 
 
@@ -24,9 +25,9 @@ class SqlPipelineRunRepository:
         source_object_key: str,
         content_type: str | None,
         size_bytes: int,
-    ) -> PipelineRunModel:
-        run = PipelineRunModel(
-            id=run_id,
+    ) -> PipelineRun:
+        run = PipelineRun(
+            pipeline_runs_id=run_id,
             source_name=source_name,
             source_object_key=source_object_key,
             source_content_type=content_type,
@@ -39,7 +40,7 @@ class SqlPipelineRunRepository:
         self._session.add(run)
         self._session.flush()
         self.add_event(
-            run.id,
+            run.pipeline_runs_id,
             stage="upload",
             progress=0,
             message="Run создан",
@@ -54,23 +55,29 @@ class SqlPipelineRunRepository:
         page: int,
         page_size: int,
         status: str | None = None,
-    ) -> tuple[list[PipelineRunModel], int]:
+    ) -> tuple[list[PipelineRun], int]:
         filters = []
         if status:
-            filters.append(PipelineRunModel.status == status)
+            filters.append(PipelineRun.status == status)
 
-        total = self._session.scalar(
-            select(func.count(PipelineRunModel.id)).where(*filters)
-        )
+        total = self._session.exec(
+            select(func.count(PipelineRun.pipeline_runs_id)).where(
+                *filters
+            )
+        ).one()
         statement = (
-            select(PipelineRunModel)
+            select(PipelineRun)
             .where(*filters)
-            .options(selectinload(PipelineRunModel.artifacts))
-            .order_by(PipelineRunModel.created_at.desc())
+            .options(
+                selectinload(PipelineRun.artifacts),
+                noload(PipelineRun.events),
+            )
+            .order_by(PipelineRun.created_at.desc())
             .offset((page - 1) * page_size)
             .limit(page_size)
         )
-        return list(self._session.scalars(statement)), int(total or 0)
+        runs = self._session.exec(statement).all()
+        return list(runs), int(total)
 
     def get(
         self,
@@ -78,23 +85,27 @@ class SqlPipelineRunRepository:
         *,
         with_artifacts: bool = True,
         with_events: bool = False,
-    ) -> PipelineRunModel | None:
-        statement = select(PipelineRunModel).where(
-            PipelineRunModel.id == run_id
+    ) -> PipelineRun | None:
+        statement = select(PipelineRun).where(
+            PipelineRun.pipeline_runs_id == run_id
         )
         if with_artifacts:
             statement = statement.options(
-                selectinload(PipelineRunModel.artifacts)
+                selectinload(PipelineRun.artifacts)
             )
+        else:
+            statement = statement.options(noload(PipelineRun.artifacts))
         if with_events:
             statement = statement.options(
-                selectinload(PipelineRunModel.events)
+                selectinload(PipelineRun.events)
             )
-        return self._session.scalar(statement)
+        else:
+            statement = statement.options(noload(PipelineRun.events))
+        return self._session.exec(statement).one_or_none()
 
     def mark_upload_complete(
         self,
-        run: PipelineRunModel,
+        run: PipelineRun,
         *,
         actual_size_bytes: int,
     ) -> None:
@@ -105,7 +116,7 @@ class SqlPipelineRunRepository:
         run.status_message = "Видео загружено и поставлено в очередь"
         run.upload_completed_at = datetime.now(timezone.utc)
         self.add_event(
-            run.id,
+            run.pipeline_runs_id,
             stage="queued",
             progress=0,
             message=run.status_message,
@@ -120,9 +131,9 @@ class SqlPipelineRunRepository:
         object_key: str,
         content_type: str,
         size_bytes: int,
-    ) -> PipelineArtifactModel:
-        artifact = PipelineArtifactModel(
-            run_id=run_id,
+    ) -> PipelineArtifact:
+        artifact = PipelineArtifact(
+            pipeline_runs_id=run_id,
             artifact_type=artifact_type,
             object_key=object_key,
             content_type=content_type,
@@ -141,8 +152,8 @@ class SqlPipelineRunRepository:
         message: str | None,
     ) -> None:
         self._session.add(
-            PipelineRunEventModel(
-                run_id=run_id,
+            PipelineRunEvent(
+                pipeline_runs_id=run_id,
                 stage=stage,
                 progress=progress,
                 message=message,
@@ -152,15 +163,15 @@ class SqlPipelineRunRepository:
     def commit(self) -> None:
         self._session.commit()
 
-    def claim_next(self, worker_id: str) -> PipelineRunModel | None:
+    def claim_next(self, worker_id: str) -> PipelineRun | None:
         statement = (
-            select(PipelineRunModel)
-            .where(PipelineRunModel.status == "queued")
-            .order_by(PipelineRunModel.created_at)
+            select(PipelineRun)
+            .where(PipelineRun.status == "queued")
+            .order_by(PipelineRun.created_at)
             .with_for_update(skip_locked=True)
             .limit(1)
         )
-        run = self._session.scalar(statement)
+        run = self._session.exec(statement).first()
         if run is None:
             self._session.rollback()
             return None
@@ -172,7 +183,7 @@ class SqlPipelineRunRepository:
         run.worker_id = worker_id
         run.started_at = datetime.now(timezone.utc)
         self.add_event(
-            run.id,
+            run.pipeline_runs_id,
             stage=run.stage,
             progress=run.progress,
             message=run.status_message,

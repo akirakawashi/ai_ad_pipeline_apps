@@ -3,40 +3,47 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Generic, TypeVar
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 T = TypeVar("T")
 
 
-class OkResponse(BaseModel, Generic[T]):
+class ApiModel(BaseModel):
+    model_config = ConfigDict(
+        from_attributes=True,
+        populate_by_name=True,
+    )
+
+
+class OkResponse(ApiModel, Generic[T]):
     data: T
 
 
-class ErrorResponse(BaseModel):
+class ErrorResponse(ApiModel):
     detail: str
 
 
-class UploadTargetResponse(BaseModel):
+class UploadTargetResponse(ApiModel):
     method: str
     url: str
     headers: dict[str, str]
 
 
-class CreateRunRequest(BaseModel):
+class CreateRunRequest(ApiModel):
     file_name: str = Field(min_length=1, max_length=512)
     content_type: str | None = Field(default=None, max_length=255)
     size_bytes: int = Field(gt=0)
 
 
-class CreateRunResponse(BaseModel):
+class CreateRunResponse(ApiModel):
     run_id: str
     status: str
     upload: UploadTargetResponse
 
 
-class RunArtifactResponse(BaseModel):
-    id: str
+class RunArtifactResponse(ApiModel):
+    id: str = Field(validation_alias="pipeline_artifacts_id")
     artifact_type: str
     object_key: str
     content_type: str
@@ -44,16 +51,16 @@ class RunArtifactResponse(BaseModel):
     created_at: datetime
 
 
-class RunEventResponse(BaseModel):
-    id: str
+class RunEventResponse(ApiModel):
+    id: str = Field(validation_alias="pipeline_run_events_id")
     stage: str
     progress: int
     message: str | None
     created_at: datetime
 
 
-class PipelineRunResponse(BaseModel):
-    run_id: str
+class PipelineRunResponse(ApiModel):
+    run_id: str = Field(validation_alias="pipeline_runs_id")
     source_name: str
     source_content_type: str | None
     source_size_bytes: int
@@ -78,35 +85,35 @@ class PipelineRunResponse(BaseModel):
     events: list[RunEventResponse] = Field(default_factory=list)
 
 
-class PaginatedRunsResponse(BaseModel):
+class PaginatedRunsResponse(ApiModel):
     items: list[PipelineRunResponse]
     page: int
     page_size: int
     total: int
 
 
-class RunSummaryResponse(BaseModel):
+class RunSummaryResponse(ApiModel):
     run: PipelineRunResponse
     totals: dict[str, Any]
     brands: list[dict[str, Any]]
 
 
-class RunObjectsResponse(BaseModel):
+class RunObjectsResponse(ApiModel):
     run_id: str
     objects: list[dict[str, Any]]
 
 
-class RunTimelineResponse(BaseModel):
+class RunTimelineResponse(ApiModel):
     run_id: str
     bucket_seconds: int
     points: list[dict[str, Any]]
 
 
-class ArtifactUrlResponse(BaseModel):
+class ArtifactUrlResponse(ApiModel):
     artifact_id: str
     url: str
 
 
-class PlaybackResponse(BaseModel):
+class PlaybackResponse(ApiModel):
     source_url: str | None
     annotated_url: str | None

@@ -63,7 +63,7 @@ Backend и worker используют одну кодовую базу, но з
 Worker выбирает одну задачу:
 
 ```sql
-SELECT id
+SELECT pipeline_runs_id
 FROM pipeline_runs
 WHERE status = 'queued'
 ORDER BY created_at
@@ -116,7 +116,7 @@ MINIO_BUCKET=ad-pipeline
 Одна строка — одна загрузка и одна независимая обработка.
 
 ```text
-id                          UUID / run_id
+pipeline_runs_id            UUID, primary key
 source_name                 исходное имя файла
 source_object_key           ключ исходного видео в MinIO
 source_content_type
@@ -151,8 +151,8 @@ worker_id
 ### 4.2. `pipeline_artifacts`
 
 ```text
-id
-run_id
+pipeline_artifacts_id       UUID, primary key
+pipeline_runs_id            FK -> pipeline_runs.pipeline_runs_id
 artifact_type
 object_key
 content_type
@@ -179,8 +179,8 @@ report
 Необязательная, но полезная таблица для истории обработки:
 
 ```text
-id
-run_id
+pipeline_run_events_id      UUID, primary key
+pipeline_runs_id            FK -> pipeline_runs.pipeline_runs_id
 stage
 progress
 message

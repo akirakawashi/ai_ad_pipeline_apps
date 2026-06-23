@@ -2,28 +2,27 @@ from __future__ import annotations
 
 from collections.abc import Generator
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
+from sqlmodel import Session, create_engine
 
-from settings.factory import ConfigFactory
+from settings.factory import get_settings
 
 
-config = ConfigFactory()
+config = get_settings()
 
 engine = create_engine(
     config.database.url,
     pool_pre_ping=True,
 )
-SessionFactory = sessionmaker(
-    bind=engine,
-    autoflush=False,
-    expire_on_commit=False,
-)
+
+
+def create_session() -> Session:
+    return Session(
+        engine,
+        autoflush=False,
+        expire_on_commit=False,
+    )
 
 
 def get_db_session() -> Generator[Session, None, None]:
-    session = SessionFactory()
-    try:
+    with create_session() as session:
         yield session
-    finally:
-        session.close()

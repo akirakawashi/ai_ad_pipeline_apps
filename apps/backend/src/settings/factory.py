@@ -1,18 +1,14 @@
 from __future__ import annotations
 
-from settings.app import (
-    AppSettings,
-    CorsSettings,
-    DatabaseSettings,
-    ObjectStorageSettings,
-    PipelineSettings,
-)
+from functools import lru_cache
+
+from settings.app import Settings
 
 
-class ConfigFactory:
-    def __init__(self) -> None:
-        self.app = AppSettings.from_env()
-        self.cors = CorsSettings.from_env()
-        self.database = DatabaseSettings.from_env()
-        self.object_storage = ObjectStorageSettings.from_env()
-        self.pipeline = PipelineSettings.from_env()
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()
+
+
+# Backward compatibility for Alembic configuration maintained separately.
+ConfigFactory = Settings
