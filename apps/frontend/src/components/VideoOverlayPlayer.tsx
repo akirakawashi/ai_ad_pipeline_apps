@@ -579,30 +579,30 @@ function OverlayCard({
     label: string
     value: string
   }[] = [
-    { icon: 'class', label: 'Class', value: object.label },
+    { icon: 'class', label: 'Тип', value: object.label },
     {
       icon: 'detection',
-      label: 'Detection confidence',
+      label: 'Уверенность поиска',
       value: formatPercent(object.det_conf),
     },
     {
       icon: 'brand',
-      label: 'Brand confidence',
+      label: 'Уверенность бренда',
       value: formatBrandConfidence(object),
     },
     {
       icon: 'area',
-      label: 'Area in frame',
+      label: 'Доля в кадре',
       value: formatAreaPercent(object.area_ratio),
     },
     {
       icon: 'visibility',
-      label: 'Visibility score',
+      label: 'Индекс видимости',
       value: formatScore(object.visibility_score),
     },
     {
       icon: 'score',
-      label: 'Overall score',
+      label: 'Итоговый балл',
       value: formatScore(object.overall_score),
     },
   ]
@@ -701,7 +701,7 @@ function formatBrandConfidence(object: OverlayObject): string {
     object.brand === 'other' &&
     (!object.brand_conf || object.brand_conf <= 0)
   ) {
-    return 'n/a'
+    return '—'
   }
   return formatPercent(object.brand_conf)
 }

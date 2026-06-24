@@ -144,8 +144,8 @@ export function RunCharts({
 
   return (
     <>
-      <section className="charts-toolbar" aria-label="Фильтр брендов">
-        <span>Бренды на графиках</span>
+      <section className="charts-toolbar" aria-label="Выбор брендов на графиках">
+        <span>Показать бренды</span>
         <div className="brand-filter">
           {availableBrands.map((brand) => {
             const hidden = hiddenBrands.has(brand)
@@ -172,7 +172,7 @@ export function RunCharts({
         <section className="panel chart-card">
           <header>
             <h3>Объекты по брендам</h3>
-            <p>Количество уникальных рекламных объектов</p>
+            <p>Сколько уникальных рекламных объектов найдено по каждому бренду</p>
           </header>
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={brandRows}>
@@ -180,32 +180,9 @@ export function RunCharts({
               <XAxis dataKey="brand_label" stroke="#8d9298" />
               <YAxis allowDecimals={false} stroke="#8d9298" />
               <Tooltip contentStyle={tooltipStyle} />
-              <Bar dataKey="object_count" name="Объекты" radius={[6, 6, 0, 0]}>
-                {brandRows.map((entry) => (
-                  <Cell
-                    key={entry.brand_key}
-                    fill={getBrandColor(entry.brand_key)}
-                  />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </section>
-
-        <section className="panel chart-card">
-          <header>
-            <h3>Индекс заметности</h3>
-            <p>Взвешенное время присутствия брендов</p>
-          </header>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={brandRows}>
-              <CartesianGrid stroke="rgba(255,255,255,.08)" vertical={false} />
-              <XAxis dataKey="brand_label" stroke="#8d9298" />
-              <YAxis stroke="#8d9298" />
-              <Tooltip contentStyle={tooltipStyle} />
               <Bar
-                dataKey="visibility_index"
-                name="Visibility index"
+                dataKey="object_count"
+                name="Объекты"
                 radius={[6, 6, 0, 0]}
               >
                 {brandRows.map((entry) => (
@@ -221,8 +198,35 @@ export function RunCharts({
 
         <section className="panel chart-card">
           <header>
-            <h3>Доля видимости</h3>
-            <p>Процентная доля visibility index</p>
+            <h3>Индекс заметности</h3>
+            <p>Суммарная заметность брендов в видео</p>
+          </header>
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart data={brandRows}>
+              <CartesianGrid stroke="rgba(255,255,255,.08)" vertical={false} />
+              <XAxis dataKey="brand_label" stroke="#8d9298" />
+              <YAxis stroke="#8d9298" />
+              <Tooltip contentStyle={tooltipStyle} />
+              <Bar
+                dataKey="visibility_index"
+                name="Индекс заметности"
+                radius={[6, 6, 0, 0]}
+              >
+                {brandRows.map((entry) => (
+                  <Cell
+                    key={entry.brand_key}
+                    fill={getBrandColor(entry.brand_key)}
+                  />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </section>
+
+        <section className="panel chart-card">
+          <header>
+            <h3>Доля заметности</h3>
+            <p>Как распределилась заметность между брендами</p>
           </header>
           <ResponsiveContainer width="100%" height={300}>
             <PieChart>
@@ -248,8 +252,8 @@ export function RunCharts({
 
         <section className="panel chart-card">
           <header>
-            <h3>Объекты vs заметность</h3>
-            <p>Количество объектов и visibility index на одной шкале брендов</p>
+            <h3>Количество и заметность</h3>
+            <p>Сравнение числа объектов с их вкладом в заметность</p>
           </header>
           <ResponsiveContainer width="100%" height={300}>
             <ComposedChart data={brandRows}>
@@ -278,7 +282,7 @@ export function RunCharts({
                 yAxisId="visibility"
                 type="monotone"
                 dataKey="visibility_index"
-                name="Visibility index"
+                name="Индекс заметности"
                 stroke="#05c3a1"
                 strokeWidth={3}
                 dot={{ r: 5 }}
@@ -289,8 +293,8 @@ export function RunCharts({
 
         <section className="panel chart-card">
           <header>
-            <h3>Уверенность классификации</h3>
-            <p>Средняя confidence итогового бренда</p>
+            <h3>Уверенность по брендам</h3>
+            <p>Средняя уверенность определения бренда</p>
           </header>
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={brandRows}>
@@ -304,7 +308,7 @@ export function RunCharts({
               <Tooltip contentStyle={tooltipStyle} />
               <Bar
                 dataKey="mean_confidence_percent"
-                name="Brand confidence, %"
+                name="Уверенность, %"
                 radius={[6, 6, 0, 0]}
               >
                 {brandRows.map((entry) => (
@@ -320,8 +324,8 @@ export function RunCharts({
 
         <section className="panel chart-card wide-chart">
           <header>
-            <h3>Топ заметных объектов</h3>
-            <p>Клик по строке перематывает видео на лучший момент объекта</p>
+            <h3>Самые заметные объекты</h3>
+            <p>Нажмите на строку, чтобы открыть лучший момент</p>
           </header>
           <ResponsiveContainer width="100%" height={360}>
             <BarChart
@@ -344,7 +348,7 @@ export function RunCharts({
               <Tooltip contentStyle={tooltipStyle} />
               <Bar
                 dataKey="visibility_index"
-                name="Visibility index"
+                name="Индекс заметности"
                 radius={[0, 8, 8, 0]}
               >
                 {topObjectRows.map((entry) => (
@@ -360,8 +364,8 @@ export function RunCharts({
 
         <section className="panel chart-card wide-chart">
           <header>
-            <h3>Timeline видимости</h3>
-            <p>Нажмите на столбец, чтобы перейти к моменту видео</p>
+            <h3>Заметность по времени</h3>
+            <p>Нажмите на столбец, чтобы перейти к этому моменту</p>
           </header>
           <ResponsiveContainer width="100%" height={340}>
             <BarChart
@@ -397,8 +401,8 @@ export function RunCharts({
 
         <section className="panel chart-card wide-chart">
           <header>
-            <h3>Детекции по времени</h3>
-            <p>Количество видимых детекций по временным окнам</p>
+            <h3>Найденные объекты по времени</h3>
+            <p>Сколько объектов появлялось в каждом отрезке видео</p>
           </header>
           <ResponsiveContainer width="100%" height={320}>
             <BarChart

@@ -75,9 +75,11 @@ class PipelineRunService:
     ) -> dict[str, Any]:
         safe_name = safe_file_name(file_name)
         if Path(safe_name).suffix.casefold() not in ALLOWED_VIDEO_EXTENSIONS:
-            raise InvalidVideoError("Unsupported video extension")
+            raise InvalidVideoError(
+                "Этот формат видео не поддерживается. Загрузите MP4, MOV, MKV или WebM."
+            )
         if size_bytes <= 0:
-            raise InvalidVideoError("Video size must be greater than zero")
+            raise InvalidVideoError("Файл пустой. Выберите другое видео.")
 
         run_id = str(uuid.uuid4())
         source_object_key = f"runs/{run_id}/source/{safe_name}"
@@ -106,7 +108,7 @@ class PipelineRunService:
         run = self._require_run(run_id, with_artifacts=False)
         if run.status not in {"uploading", "upload_failed"}:
             raise InvalidVideoError(
-                f"Upload cannot be completed from status {run.status}"
+                "Загрузка уже завершена или обработка уже началась."
             )
         object_stat = self._storage.stat(run.source_object_key)
         self._repository.add_artifact(
@@ -163,7 +165,7 @@ class PipelineRunService:
             None,
         )
         if artifact is None:
-            raise PipelineRunNotFoundError(f"Artifact {artifact_id} was not found")
+            raise PipelineRunNotFoundError("Файл результата не найден.")
         return {
             "artifact_id": artifact.pipeline_artifacts_id,
             "url": self._storage.presigned_get(artifact.object_key),
@@ -306,7 +308,7 @@ class PipelineRunService:
             with_events=with_events,
         )
         if run is None:
-            raise PipelineRunNotFoundError(f"Pipeline run {run_id} was not found")
+            raise PipelineRunNotFoundError("Обработка не найдена.")
         return run
 
     def _require_artifact(
@@ -317,7 +319,7 @@ class PipelineRunService:
         run = self._require_run(run_id)
         artifact = self._find_artifact(run.artifacts, artifact_type)
         if artifact is None:
-            raise PipelineRunNotFoundError(f"Artifact {artifact_type} was not found")
+            raise PipelineRunNotFoundError("Файл результата не найден.")
         return artifact
 
     @staticmethod

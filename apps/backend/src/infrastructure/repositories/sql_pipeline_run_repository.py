@@ -35,7 +35,7 @@ class SqlPipelineRunRepository:
             status="uploading",
             stage="upload",
             progress=0,
-            status_message="Ожидание загрузки видео",
+            status_message="Ждём загрузку видео",
         )
         self._session.add(run)
         self._session.flush()
@@ -43,7 +43,7 @@ class SqlPipelineRunRepository:
             run.pipeline_runs_id,
             stage="upload",
             progress=0,
-            message="Run создан",
+            message="Обработка создана",
         )
         self._session.commit()
         self._session.refresh(run)
@@ -105,7 +105,7 @@ class SqlPipelineRunRepository:
         run.status = "queued"
         run.stage = "queued"
         run.progress = 0
-        run.status_message = "Видео загружено и поставлено в очередь"
+        run.status_message = "Видео загружено. Анализ скоро начнётся"
         run.upload_completed_at = datetime.now(timezone.utc)
         self.add_event(
             run.pipeline_runs_id,
@@ -171,7 +171,7 @@ class SqlPipelineRunRepository:
         run.status = "processing"
         run.stage = "preparing"
         run.progress = 1
-        run.status_message = "Подготовка к обработке"
+        run.status_message = "Готовим видео к анализу"
         run.worker_id = worker_id
         run.started_at = datetime.now(timezone.utc)
         self.add_event(
@@ -224,7 +224,7 @@ class SqlPipelineRunRepository:
         run.status = "completed"
         run.stage = "completed"
         run.progress = 100
-        run.status_message = "Обработка завершена"
+        run.status_message = "Анализ готов"
         run.fps = fps
         run.frame_count = frame_count
         run.frame_stride = frame_stride
@@ -253,7 +253,7 @@ class SqlPipelineRunRepository:
             return
         run.status = "processing_failed"
         run.stage = "failed"
-        run.status_message = "Обработка завершилась с ошибкой"
+        run.status_message = "Анализ остановился с ошибкой"
         run.error_code = error_code
         run.error_message = error_message
         run.completed_at = datetime.now(timezone.utc)

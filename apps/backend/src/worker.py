@@ -131,7 +131,7 @@ class PipelineWorker:
                 reporter.update(
                     "preparing",
                     1,
-                    "Скачивание исходного видео",
+                    "Загружаем исходное видео для анализа",
                 )
                 self._storage.download_file(
                     run.source_object_key,
@@ -163,7 +163,7 @@ class PipelineWorker:
                 reporter.update(
                     "uploading_artifacts",
                     96,
-                    "Загрузка результатов в MinIO",
+                    "Сохраняем результаты анализа",
                 )
                 self._upload_artifacts(
                     repository,

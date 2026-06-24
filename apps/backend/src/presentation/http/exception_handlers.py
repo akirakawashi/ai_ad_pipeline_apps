@@ -39,5 +39,5 @@ def setup_exception_handlers(app: FastAPI) -> None:
         status_code = 404 if exc.code in {"NoSuchKey", "NoSuchBucket"} else 502
         return JSONResponse(
             status_code=status_code,
-            content={"detail": f"Object storage error: {exc.code}"},
+            content={"detail": "Не удалось получить файл из хранилища."},
         )

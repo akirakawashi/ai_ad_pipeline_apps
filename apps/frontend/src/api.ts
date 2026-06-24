@@ -67,10 +67,11 @@ export function uploadVideo(
         onProgress(100)
         resolve()
       } else {
-        reject(new Error(`Upload failed: HTTP ${request.status}`))
+        reject(new Error('Не удалось загрузить видео. Попробуйте ещё раз.'))
       }
     }
-    request.onerror = () => reject(new Error('Upload connection failed'))
+    request.onerror = () =>
+      reject(new Error('Связь оборвалась во время загрузки видео.'))
     request.send(file)
   })
 }

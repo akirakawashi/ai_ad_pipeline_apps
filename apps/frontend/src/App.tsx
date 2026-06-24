@@ -56,18 +56,18 @@ const PIPELINE_STAGES = [
   },
   {
     key: 'aggregation',
-    label: 'Агрегация',
-    description: 'Считаем объекты, видимость, confidence и таймлайн и т. д.',
+    label: 'Расчёт метрик',
+    description: 'Считаем количество объектов, заметность и уверенность по брендам.',
   },
   {
     key: 'rendering',
-    label: 'Рендеринг',
-    description: 'Готовим итоговое видео с разметкой, оверлеем, отчётами и т. д.',
+    label: 'Подготовка просмотра',
+    description: 'Готовим видео с разметкой и данные для графиков.',
   },
   {
     key: 'uploading_artifacts',
     label: 'Сохранение результата',
-    description: 'Сохраняем таблицы, кадры, отчеты, графики, итоговое видео.',
+    description: 'Сохраняем таблицы, кадры объектов, графики и итоговое видео.',
   },
 ]
 
@@ -103,14 +103,14 @@ function App() {
             onClick={() => navigate('/runs')}
           >
             <span>▦</span>
-            История
+            Архив
           </button>
           <button
             className={route.page === 'new' ? 'active' : ''}
             onClick={() => navigate('/runs/new')}
           >
             <span>↑</span>
-            Загрузка
+            Новое видео
           </button>
         </nav>
       </aside>
@@ -124,13 +124,13 @@ function App() {
                 </button>
               )}
               <div className="topbar-title">
-                <span>AI Ad Pipeline</span>
+                <span>Аналитика рекламы</span>
                 <strong>{workspaceTitle(route)}</strong>
               </div>
             </div>
             <div className="topbar-status">
               <span />
-              MVP workspace
+              Сервис активен
             </div>
           </div>
         </header>
@@ -174,11 +174,11 @@ function RunsPage() {
   return (
     <div className="page">
       <PageHeader
-        eyebrow="Библиотека"
+        eyebrow="Архив"
         title="Обработанные видео"
         actions={
           <button className="primary" onClick={() => navigate('/runs/new')}>
-            Загрузить видео
+            Добавить видео
           </button>
         }
       />
@@ -186,10 +186,10 @@ function RunsPage() {
       {error && <ErrorBanner text={error} />}
       {!loading && !runs.length && (
         <EmptyState
-          text="Видео ещё не загружались."
+          text="Здесь пока нет обработанных видео."
           action={
             <button className="primary" onClick={() => navigate('/runs/new')}>
-              Загрузить первое видео
+              Добавить первое видео
             </button>
           }
         />
@@ -257,10 +257,10 @@ function UploadPage() {
       <PageHeader
         eyebrow="Загрузка"
         title="Добавьте видео маршрута"
-        description="Выберите файл или перетащите его сюда. После загрузки обработка начнётся сама."
+        description="Выберите файл или перетащите его в окно. Мы загрузим видео и сразу запустим анализ."
         actions={
           <button className="secondary" onClick={() => navigate('/runs')}>
-            К истории
+            В архив
           </button>
         }
       />
@@ -290,7 +290,7 @@ function UploadPage() {
         <h2>{file ? 'Файл выбран' : 'Перетащите видео сюда'}</h2>
         <p>
           {file
-            ? 'Если это нужное видео, запускайте обработку.'
+            ? 'Если всё верно, можно начинать анализ.'
             : 'Подойдут MP4, MOV, MKV и WebM'}
         </p>
 
@@ -319,8 +319,8 @@ function UploadPage() {
             <div>
               <h3>Загружаем видео</h3>
               <p>
-                Отправляем файл в хранилище. Большие ролики могут занять пару
-                минут.
+                Сохраняем исходный файл. Если ролик большой, это может занять
+                пару минут.
               </p>
             </div>
             <ProgressBar progress={progress} label="Файл загружается" animated />
@@ -332,7 +332,7 @@ function UploadPage() {
           disabled={!file || busy}
           onClick={() => void startUpload()}
         >
-          {busy ? 'Загружаем…' : 'Начать обработку'}
+          {busy ? 'Загружаем…' : 'Начать анализ'}
         </button>
       </section>
     </div>
@@ -366,7 +366,7 @@ function RunPage({ runId }: { runId: string }) {
   }, [runId])
 
   if (error) return <ErrorBanner text={error} />
-  if (!run) return <EmptyState text="Открываем обработку…" />
+  if (!run) return <EmptyState text="Открываем анализ…" />
   if (run.status !== 'completed') return <ProcessingPage run={run} />
   return <ResultPage run={run} />
 }
@@ -382,10 +382,10 @@ function ProcessingPage({ run }: { run: PipelineRun }) {
         actions={
           <div className="page-actions">
             <button className="secondary" onClick={() => navigate('/runs')}>
-              К истории
+              В архив
             </button>
             <button className="primary" onClick={() => navigate('/runs/new')}>
-              Загрузить ещё
+              Добавить видео
             </button>
           </div>
         }
@@ -412,7 +412,7 @@ function ProcessingPage({ run }: { run: PipelineRun }) {
         <PipelineSteps activeStage={run.stage} failed={failed} />
         {failed && (
           <ErrorBanner
-            text={run.error_message ?? 'Pipeline завершился с ошибкой'}
+            text={run.error_message ?? 'Анализ остановился с ошибкой'}
           />
         )}
       </section>
@@ -466,26 +466,26 @@ function ResultPage({ run }: { run: PipelineRun }) {
       setCopied(true)
       window.setTimeout(() => setCopied(false), 1600)
     } catch {
-      setError('Не удалось скопировать ссылку на результат')
+      setError('Не удалось скопировать ссылку')
     }
   }
 
   return (
     <div className="page">
       <PageHeader
-        eyebrow="Результат"
+        eyebrow="Результат анализа"
         title={run.source_name}
         description={`${formatDuration(run.duration_sec)} · ${run.width ?? 0}×${run.height ?? 0}`}
         actions={
           <div className="page-actions">
             <button className="secondary" onClick={() => navigate('/runs')}>
-              История
+              В архив
             </button>
             <button className="secondary" onClick={() => void copyResultLink()}>
               {copied ? 'Скопировано' : 'Копировать ссылку'}
             </button>
             <button className="primary" onClick={() => navigate('/runs/new')}>
-              Новое видео
+              Добавить видео
             </button>
           </div>
         }
@@ -495,11 +495,11 @@ function ResultPage({ run }: { run: PipelineRun }) {
         <div className="summary-grid">
           <Metric label="Объектов" value={summary.totals.total_objects ?? '—'} />
           <Metric
-            label="Visibility index"
+            label="Индекс заметности"
             value={formatNumber(summary.totals.visibility_index)}
           />
-          <Metric label="FPS" value={run.fps?.toFixed(1) ?? '—'} />
-          <Metric label="Кадров" value={run.frame_count ?? '—'} />
+          <Metric label="Частота кадров" value={run.fps?.toFixed(1) ?? '—'} />
+          <Metric label="Кадров в видео" value={run.frame_count ?? '—'} />
         </div>
       ) : (
         <MetricSkeletonGrid />
@@ -532,8 +532,8 @@ function ResultPage({ run }: { run: PipelineRun }) {
       {objects ? (
         <section className="panel objects-panel">
           <header>
-            <h2>Лучшие объекты</h2>
-            <p>Клик по карточке перематывает видео на лучший кадр.</p>
+            <h2>Самые заметные объекты</h2>
+            <p>Нажмите на карточку, чтобы перейти к лучшему кадру.</p>
           </header>
           {topObjects.length ? (
             <div className="objects-grid">
@@ -546,7 +546,7 @@ function ResultPage({ run }: { run: PipelineRun }) {
                   {object.crop_url ? (
                     <img src={object.crop_url} alt={object.business_brand} />
                   ) : (
-                    <div className="crop-placeholder">AD</div>
+                    <div className="crop-placeholder">Кадр</div>
                   )}
                   <strong>{object.business_brand.toUpperCase()}</strong>
                   <span>
@@ -557,7 +557,7 @@ function ResultPage({ run }: { run: PipelineRun }) {
               ))}
             </div>
           ) : (
-            <EmptyState text="Лучшие объекты не найдены." />
+            <EmptyState text="Заметные объекты не найдены." />
           )}
         </section>
       ) : (
@@ -695,7 +695,7 @@ function PipelineSteps({
 
 function RunsSkeleton() {
   return (
-    <div className="runs-grid skeleton-grid" aria-label="Загрузка истории">
+    <div className="runs-grid skeleton-grid" aria-label="Загружаем архив">
       {Array.from({ length: 6 }).map((_, index) => (
         <div className="run-card skeleton-card" key={index}>
           <SkeletonBlock className="run-preview-skeleton" />
@@ -712,7 +712,7 @@ function RunsSkeleton() {
 
 function MetricSkeletonGrid() {
   return (
-    <div className="summary-grid" aria-label="Загрузка метрик">
+    <div className="summary-grid" aria-label="Загружаем метрики">
       {Array.from({ length: 4 }).map((_, index) => (
         <div className="metric-card skeleton-card" key={index}>
           <SkeletonBlock className="skeleton-line short" />
@@ -733,7 +733,7 @@ function PlayerSkeleton() {
 
 function ChartsSkeleton() {
   return (
-    <div className="charts-grid charts-skeleton" aria-label="Загрузка графиков">
+    <div className="charts-grid charts-skeleton" aria-label="Загружаем графики">
       <section className="panel chart-card skeleton-card">
         <SkeletonBlock className="skeleton-line wide" />
         <SkeletonBlock className="chart-skeleton-frame" />
@@ -754,7 +754,7 @@ function ObjectsSkeleton() {
   return (
     <section
       className="panel objects-panel skeleton-card"
-      aria-label="Загрузка объектов"
+      aria-label="Загружаем объекты"
     >
       <header>
         <SkeletonBlock className="skeleton-line wide" />
@@ -802,11 +802,11 @@ function ErrorBanner({ text }: { text: string }) {
 function statusLabel(status: string) {
   return (
     {
-      uploading: 'Загрузка',
+      uploading: 'Загружается',
       queued: 'В очереди',
-      processing: 'Обработка',
+      processing: 'Идёт анализ',
       completed: 'Готово',
-      processing_failed: 'Ошибка',
+      processing_failed: 'Ошибка анализа',
     }[status] ?? status
   )
 }
@@ -820,7 +820,7 @@ function stageDescription(stage: string) {
   if (stage === 'completed') return 'Готово. Можно смотреть видео и графики.'
   return (
     PIPELINE_STAGES.find((item) => item.key === stage)?.description ??
-    'Ждём обновление от обработчика.'
+    'Ждём обновление статуса.'
   )
 }
 
@@ -844,8 +844,8 @@ function formatNumber(value: number | undefined) {
 
 function workspaceTitle(route: Route) {
   if (route.page === 'new') return 'Загрузка видео'
-  if (route.page === 'run') return 'Видео'
-  return 'История'
+  if (route.page === 'run') return 'Результат'
+  return 'Архив'
 }
 
 export default App

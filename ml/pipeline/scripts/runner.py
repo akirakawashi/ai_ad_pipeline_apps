@@ -95,7 +95,7 @@ def run_pipeline(
     config.output_dir.mkdir(parents=True, exist_ok=True)
     log_run_configuration(config)
     reporter = progress_reporter or LoggingProgressReporter()
-    reporter.update("preparing", 1, "Подготовка моделей и входного видео")
+    reporter.update("preparing", 1, "Готовим видео и модели к анализу")
 
     active_models = models or load_pipeline_models(
         config,
@@ -108,19 +108,19 @@ def run_pipeline(
     )
     logger.info("detections after gate: %s", len(context.detections))
 
-    reporter.update("tracking", 66, "Связывание детекций в объекты")
+    reporter.update("tracking", 66, "Объединяем находки в объекты")
     run_tracking_stage(context)
-    reporter.update("classification", 71, "Классификация лучших crop")
+    reporter.update("classification", 71, "Определяем бренды по лучшим фрагментам")
     run_classification_stage(context, active_models)
-    reporter.update("aggregation", 83, "Агрегация результатов")
+    reporter.update("aggregation", 83, "Считаем итоговые метрики")
     run_final_aggregation_stage(context)
     run_business_rules_stage(context)
-    reporter.update("rendering", 88, "Формирование видео и отчётов")
+    reporter.update("rendering", 88, "Готовим видео с разметкой и отчёты")
     write_artifacts_stage(context)
     reporter.update(
         "uploading_artifacts",
         96,
-        "Локальные артефакты готовы",
+        "Файлы результата готовы к сохранению",
     )
 
     logger.info("tracks: %s", len(context.tracks))
@@ -183,7 +183,7 @@ def run_detection_stage(
         progress_reporter.update(
             "detection",
             65,
-            "Изображение обработано",
+            "Изображение проанализировано",
         )
     return PipelineContext(
         config=config,
@@ -331,7 +331,7 @@ def run_video_detection_stream(
                 "detection",
                 detection_progress,
                 (
-                    f"Обработано кадров: {processed_frames}"
+                    f"Проверено кадров: {processed_frames}"
                     f" из {sampled_frame_count}"
                 ),
             )
@@ -354,6 +354,6 @@ def run_video_detection_stream(
         progress_reporter.update(
             "detection",
             65,
-            f"Обработано кадров: {processed_frames}",
+            f"Проверено кадров: {processed_frames}",
         )
     return detections
