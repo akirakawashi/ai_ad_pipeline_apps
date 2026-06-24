@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   completeUpload,
   createRun,
@@ -28,6 +28,49 @@ type Route =
   | { page: 'new' }
   | { page: 'run'; runId: string }
 
+const PIPELINE_STAGES = [
+  {
+    key: 'queued',
+    label: 'В очереди',
+    description: 'Видео ждёт свободный worker для запуска обработки.',
+  },
+  {
+    key: 'preparing',
+    label: 'Подготовка',
+    description: 'Скачиваем исходное видео и читаем параметры потока.',
+  },
+  {
+    key: 'detection',
+    label: 'Детекция',
+    description: 'Модель проходит по кадрам и ищет рекламные объекты.',
+  },
+  {
+    key: 'tracking',
+    label: 'Трекинг',
+    description: 'Связываем детекции между кадрами в устойчивые объекты.',
+  },
+  {
+    key: 'classification',
+    label: 'Классификация',
+    description: 'Определяем бренд по лучшим crop-кадрам объектов.',
+  },
+  {
+    key: 'aggregation',
+    label: 'Агрегация',
+    description: 'Собираем метрики, visibility index и итоговые таблицы.',
+  },
+  {
+    key: 'rendering',
+    label: 'Рендеринг',
+    description: 'Готовим overlay, отчёты и визуальные артефакты.',
+  },
+  {
+    key: 'uploading_artifacts',
+    label: 'Сохранение результатов',
+    description: 'Загружаем артефакты в хранилище и обновляем run.',
+  },
+]
+
 function currentRoute(): Route {
   if (window.location.pathname === '/runs/new') return { page: 'new' }
   const match = window.location.pathname.match(/^\/runs\/([^/]+)$/)
@@ -51,7 +94,9 @@ function App() {
   return (
     <div className="app-shell">
       <aside className="side-rail" aria-label="Навигация">
-        <div className="rail-spacer" />
+        <div className="rail-brand">
+          <span>AI</span>
+        </div>
         <nav className="rail-nav">
           <button
             className={route.page === 'runs' ? 'active' : ''}
@@ -71,16 +116,25 @@ function App() {
       </aside>
       <div className="workspace">
         <header className="workspace-header">
-          {route.page !== 'runs' ? (
-            <button className="back-button" onClick={() => navigate('/runs')}>
-              ‹ Назад
-            </button>
-          ) : (
-            <span className="back-placeholder" />
-          )}
-          <h1>{workspaceTitle(route)}</h1>
+          <div className="workspace-header-inner">
+            <div className="topbar-left">
+              {route.page !== 'runs' && (
+                <button className="back-button" onClick={() => navigate('/runs')}>
+                  ‹ Назад
+                </button>
+              )}
+              <div className="topbar-title">
+                <span>AI Ad Pipeline</span>
+                <strong>{workspaceTitle(route)}</strong>
+              </div>
+            </div>
+            <div className="topbar-status">
+              <span />
+              MVP workspace
+            </div>
+          </div>
         </header>
-        <main>
+        <main className="workspace-main">
           {route.page === 'runs' && <RunsPage />}
           {route.page === 'new' && <UploadPage />}
           {route.page === 'run' && <RunPage runId={route.runId} />}
@@ -122,11 +176,23 @@ function RunsPage() {
       <PageHeader
         eyebrow="Библиотека"
         title="Обработанные видео"
+        actions={
+          <button className="primary" onClick={() => navigate('/runs/new')}>
+            Загрузить видео
+          </button>
+        }
       />
-      {loading && <EmptyState text="Загрузка истории…" />}
+      {loading && <RunsSkeleton />}
       {error && <ErrorBanner text={error} />}
       {!loading && !runs.length && (
-        <EmptyState text="Видео ещё не загружались." />
+        <EmptyState
+          text="Видео ещё не загружались."
+          action={
+            <button className="primary" onClick={() => navigate('/runs/new')}>
+              Загрузить первое видео
+            </button>
+          }
+        />
       )}
       <div className="runs-grid">
         {runs.map((run) => (
@@ -160,11 +226,20 @@ function UploadPage() {
   const [file, setFile] = useState<File | null>(null)
   const [progress, setProgress] = useState(0)
   const [busy, setBusy] = useState(false)
+  const [dragActive, setDragActive] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const selectFile = (nextFile: File | null) => {
+    if (busy) return
+    setFile(nextFile)
+    setProgress(0)
+    setError(null)
+  }
 
   const startUpload = async () => {
     if (!file) return
     setBusy(true)
+    setProgress(0)
     setError(null)
     try {
       const run = await createRun(file)
@@ -183,32 +258,71 @@ function UploadPage() {
         eyebrow="Новая обработка"
         title="Загрузите видео маршрута"
         description="После загрузки видео автоматически попадёт в очередь ML pipeline."
+        actions={
+          <button className="secondary" onClick={() => navigate('/runs')}>
+            История
+          </button>
+        }
       />
       <section
-        className="upload-panel"
-        onDragOver={(event) => event.preventDefault()}
+        className={`upload-panel${dragActive ? ' drag-active' : ''}${
+          busy ? ' busy' : ''
+        }`}
+        onDragEnter={(event) => {
+          event.preventDefault()
+          setDragActive(true)
+        }}
+        onDragOver={(event) => {
+          event.preventDefault()
+          setDragActive(true)
+        }}
+        onDragLeave={(event) => {
+          event.preventDefault()
+          setDragActive(false)
+        }}
         onDrop={(event) => {
           event.preventDefault()
-          setFile(event.dataTransfer.files[0] ?? null)
+          setDragActive(false)
+          selectFile(event.dataTransfer.files[0] ?? null)
         }}
       >
         <div className="upload-icon">↑</div>
-        <h2>{file ? file.name : 'Перетащите видео сюда'}</h2>
+        <h2>{file ? 'Видео готово к загрузке' : 'Перетащите видео сюда'}</h2>
         <p>
           {file
-            ? `${formatBytes(file.size)} · ${file.type || 'video'}`
+            ? 'Проверьте файл и запускайте обработку.'
             : 'MP4, MOV, MKV или WebM'}
         </p>
-        <label className="file-button">
-          Выбрать файл
-          <input
-            type="file"
-            accept="video/*,.mkv"
-            disabled={busy}
-            onChange={(event) => setFile(event.target.files?.[0] ?? null)}
-          />
-        </label>
-        {busy && <ProgressBar progress={progress} label="Загрузка в MinIO" />}
+
+        {file && <FileCard file={file} />}
+
+        <div className="upload-actions">
+          <label className="secondary file-button">
+            {file ? 'Заменить файл' : 'Выбрать файл'}
+            <input
+              type="file"
+              accept="video/*,.mkv"
+              disabled={busy}
+              onChange={(event) => selectFile(event.target.files?.[0] ?? null)}
+            />
+          </label>
+          {file && !busy && (
+            <button className="ghost-button" onClick={() => selectFile(null)}>
+              Убрать
+            </button>
+          )}
+        </div>
+
+        {busy && (
+          <div className="upload-progress-card">
+            <InfinityLoader compact />
+            <div>
+              <h3>Загрузка в MinIO</h3>
+              <p>Передаём исходное видео в хранилище.</p>
+            </div>
+            <ProgressBar progress={progress} label="Передача файла" animated />
+          </div>
+        )}
         {error && <ErrorBanner text={error} />}
         <button
           className="primary action-button"
@@ -262,29 +376,37 @@ function ProcessingPage({ run }: { run: PipelineRun }) {
         eyebrow={failed ? 'Ошибка обработки' : 'Pipeline работает'}
         title={run.source_name}
         description={run.status_message ?? 'Ожидание обновления статуса'}
+        actions={
+          <div className="page-actions">
+            <button className="secondary" onClick={() => navigate('/runs')}>
+              История
+            </button>
+            <button className="primary" onClick={() => navigate('/runs/new')}>
+              Новое видео
+            </button>
+          </div>
+        }
       />
-      <section className="processing-panel">
-        <div className="progress-number">{run.progress}%</div>
-        <ProgressBar progress={run.progress} label={stageLabel(run.stage)} />
-        <div className="steps">
-          {[
-            'preparing',
-            'detection',
-            'tracking',
-            'classification',
-            'aggregation',
-            'rendering',
-            'uploading_artifacts',
-          ].map((stage) => (
-            <div
-              key={stage}
-              className={stage === run.stage ? 'step active' : 'step'}
-            >
-              <span />
-              {stageLabel(stage)}
+      <section className={`processing-panel${failed ? ' failed' : ''}`}>
+        <div className="processing-hero">
+          <InfinityLoader />
+          <div>
+            <div className="progress-number">{run.progress}%</div>
+            <div className="processing-now">
+              <strong>
+                {stageLabel(run.stage)}
+                {!failed && <AnimatedDots />}
+              </strong>
+              <p>{stageDescription(run.stage)}</p>
             </div>
-          ))}
+          </div>
         </div>
+        <ProgressBar
+          progress={run.progress}
+          label={stageLabel(run.stage)}
+          animated={!failed}
+        />
+        <PipelineSteps activeStage={run.stage} failed={failed} />
         {failed && (
           <ErrorBanner
             text={run.error_message ?? 'Pipeline завершился с ошибкой'}
@@ -303,6 +425,7 @@ function ResultPage({ run }: { run: PipelineRun }) {
   const [overlay, setOverlay] = useState<OverlayPayload | null>(null)
   const [seek, setSeek] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
     void Promise.all([
@@ -334,23 +457,50 @@ function ResultPage({ run }: { run: PipelineRun }) {
 
   const topObjects = useMemo(() => objects?.objects.slice(0, 12) ?? [], [objects])
 
+  const copyResultLink = async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1600)
+    } catch {
+      setError('Не удалось скопировать ссылку на результат')
+    }
+  }
+
   return (
     <div className="page">
       <PageHeader
         eyebrow="Результат"
         title={run.source_name}
         description={`${formatDuration(run.duration_sec)} · ${run.width ?? 0}×${run.height ?? 0}`}
+        actions={
+          <div className="page-actions">
+            <button className="secondary" onClick={() => navigate('/runs')}>
+              История
+            </button>
+            <button className="secondary" onClick={() => void copyResultLink()}>
+              {copied ? 'Скопировано' : 'Копировать ссылку'}
+            </button>
+            <button className="primary" onClick={() => navigate('/runs/new')}>
+              Новое видео
+            </button>
+          </div>
+        }
       />
 
-      <div className="summary-grid">
-        <Metric label="Объектов" value={summary?.totals.total_objects ?? '—'} />
-        <Metric
-          label="Visibility index"
-          value={formatNumber(summary?.totals.visibility_index)}
-        />
-        <Metric label="FPS" value={run.fps?.toFixed(1) ?? '—'} />
-        <Metric label="Кадров" value={run.frame_count ?? '—'} />
-      </div>
+      {summary ? (
+        <div className="summary-grid">
+          <Metric label="Объектов" value={summary.totals.total_objects ?? '—'} />
+          <Metric
+            label="Visibility index"
+            value={formatNumber(summary.totals.visibility_index)}
+          />
+          <Metric label="FPS" value={run.fps?.toFixed(1) ?? '—'} />
+          <Metric label="Кадров" value={run.frame_count ?? '—'} />
+        </div>
+      ) : (
+        <MetricSkeletonGrid />
+      )}
 
       {error && <ErrorBanner text={error} />}
 
@@ -363,7 +513,7 @@ function ResultPage({ run }: { run: PipelineRun }) {
           />
         </section>
       ) : (
-        <EmptyState text="Подготовка player…" />
+        <PlayerSkeleton />
       )}
 
       {summary && timeline && (
@@ -373,33 +523,42 @@ function ResultPage({ run }: { run: PipelineRun }) {
           onSeek={setSeek}
         />
       )}
+      {(!summary || !timeline) && <ChartsSkeleton />}
 
-      <section className="panel objects-panel">
-        <header>
-          <h2>Лучшие объекты</h2>
-          <p>Клик по карточке перематывает видео на лучший кадр.</p>
-        </header>
-        <div className="objects-grid">
-          {topObjects.map((object) => (
-            <button
-              key={`${object.object_id}-${object.track_id}`}
-              className="object-card"
-              onClick={() => setSeek(object.best_timestamp_sec)}
-            >
-              {object.crop_url ? (
-                <img src={object.crop_url} alt={object.business_brand} />
-              ) : (
-                <div className="crop-placeholder">AD</div>
-              )}
-              <strong>{object.business_brand.toUpperCase()}</strong>
-              <span>
-                {Math.round(object.final_brand_conf * 100)}% ·{' '}
-                {object.best_timestamp_sec.toFixed(1)}s
-              </span>
-            </button>
-          ))}
-        </div>
-      </section>
+      {objects ? (
+        <section className="panel objects-panel">
+          <header>
+            <h2>Лучшие объекты</h2>
+            <p>Клик по карточке перематывает видео на лучший кадр.</p>
+          </header>
+          {topObjects.length ? (
+            <div className="objects-grid">
+              {topObjects.map((object) => (
+                <button
+                  key={`${object.object_id}-${object.track_id}`}
+                  className="object-card"
+                  onClick={() => setSeek(object.best_timestamp_sec)}
+                >
+                  {object.crop_url ? (
+                    <img src={object.crop_url} alt={object.business_brand} />
+                  ) : (
+                    <div className="crop-placeholder">AD</div>
+                  )}
+                  <strong>{object.business_brand.toUpperCase()}</strong>
+                  <span>
+                    {Math.round(object.final_brand_conf * 100)}% ·{' '}
+                    {object.best_timestamp_sec.toFixed(1)}s
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <EmptyState text="Лучшие объекты не найдены." />
+          )}
+        </section>
+      ) : (
+        <ObjectsSkeleton />
+      )}
     </div>
   )
 }
@@ -408,23 +567,36 @@ function PageHeader({
   eyebrow,
   title,
   description,
+  actions,
 }: {
   eyebrow: string
   title: string
   description?: string
+  actions?: ReactNode
 }) {
   return (
     <header className="page-header">
-      <span>{eyebrow}</span>
-      <h1>{title}</h1>
-      {description && <p>{description}</p>}
+      <div>
+        <span>{eyebrow}</span>
+        <h1>{title}</h1>
+        {description && <p>{description}</p>}
+      </div>
+      {actions && <div className="page-header-actions">{actions}</div>}
     </header>
   )
 }
 
-function ProgressBar({ progress, label }: { progress: number; label: string }) {
+function ProgressBar({
+  progress,
+  label,
+  animated = false,
+}: {
+  progress: number
+  label: string
+  animated?: boolean
+}) {
   return (
-    <div className="progress-block">
+    <div className={`progress-block${animated ? ' animated' : ''}`}>
       <div>
         <span>{label}</span>
         <strong>{progress}%</strong>
@@ -436,6 +608,171 @@ function ProgressBar({ progress, label }: { progress: number; label: string }) {
   )
 }
 
+function FileCard({ file }: { file: File }) {
+  return (
+    <div className="file-card">
+      <div className="file-card-icon">▶</div>
+      <div>
+        <strong>{file.name}</strong>
+        <span>
+          {formatBytes(file.size)} · {file.type || 'video'}
+        </span>
+      </div>
+    </div>
+  )
+}
+
+function InfinityLoader({ compact = false }: { compact?: boolean }) {
+  return (
+    <div className={`infinity-loader${compact ? ' compact' : ''}`} aria-hidden>
+      <svg viewBox="0 0 120 60" role="img">
+        <path
+          className="infinity-path infinity-path-base"
+          d="M30 30 C30 11 55 11 60 30 C65 49 90 49 90 30 C90 11 65 11 60 30 C55 49 30 49 30 30"
+        />
+        <path
+          className="infinity-path infinity-path-active"
+          d="M30 30 C30 11 55 11 60 30 C65 49 90 49 90 30 C90 11 65 11 60 30 C55 49 30 49 30 30"
+        />
+      </svg>
+    </div>
+  )
+}
+
+function AnimatedDots() {
+  return (
+    <span className="animated-dots" aria-hidden>
+      <span />
+      <span />
+      <span />
+    </span>
+  )
+}
+
+function PipelineSteps({
+  activeStage,
+  failed,
+}: {
+  activeStage: string
+  failed: boolean
+}) {
+  const activeIndex = PIPELINE_STAGES.findIndex(
+    (stage) => stage.key === activeStage,
+  )
+  return (
+    <div className="steps">
+      {PIPELINE_STAGES.map((stage, index) => {
+        const done = activeIndex !== -1 && index < activeIndex
+        const active = stage.key === activeStage
+        const failedActive = failed && active
+        return (
+          <div
+            key={stage.key}
+            className={[
+              'step',
+              done ? 'done' : '',
+              active ? 'active' : '',
+              failedActive ? 'failed' : '',
+            ]
+              .filter(Boolean)
+              .join(' ')}
+          >
+            <span />
+            <div>
+              <strong>{stage.label}</strong>
+              <small>{stage.description}</small>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function RunsSkeleton() {
+  return (
+    <div className="runs-grid skeleton-grid" aria-label="Загрузка истории">
+      {Array.from({ length: 6 }).map((_, index) => (
+        <div className="run-card skeleton-card" key={index}>
+          <SkeletonBlock className="run-preview-skeleton" />
+          <div className="run-copy">
+            <SkeletonBlock className="skeleton-pill" />
+            <SkeletonBlock className="skeleton-line wide" />
+            <SkeletonBlock className="skeleton-line" />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function MetricSkeletonGrid() {
+  return (
+    <div className="summary-grid" aria-label="Загрузка метрик">
+      {Array.from({ length: 4 }).map((_, index) => (
+        <div className="metric-card skeleton-card" key={index}>
+          <SkeletonBlock className="skeleton-line short" />
+          <SkeletonBlock className="skeleton-value" />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function PlayerSkeleton() {
+  return (
+    <section className="panel player-panel player-skeleton">
+      <SkeletonBlock className="player-skeleton-frame" />
+    </section>
+  )
+}
+
+function ChartsSkeleton() {
+  return (
+    <div className="charts-grid charts-skeleton" aria-label="Загрузка графиков">
+      <section className="panel chart-card skeleton-card">
+        <SkeletonBlock className="skeleton-line wide" />
+        <SkeletonBlock className="chart-skeleton-frame" />
+      </section>
+      <section className="panel chart-card skeleton-card">
+        <SkeletonBlock className="skeleton-line wide" />
+        <SkeletonBlock className="chart-skeleton-frame" />
+      </section>
+      <section className="panel chart-card timeline-chart skeleton-card">
+        <SkeletonBlock className="skeleton-line wide" />
+        <SkeletonBlock className="timeline-skeleton-frame" />
+      </section>
+    </div>
+  )
+}
+
+function ObjectsSkeleton() {
+  return (
+    <section
+      className="panel objects-panel skeleton-card"
+      aria-label="Загрузка объектов"
+    >
+      <header>
+        <SkeletonBlock className="skeleton-line wide" />
+        <SkeletonBlock className="skeleton-line" />
+      </header>
+      <div className="objects-grid">
+        {Array.from({ length: 8 }).map((_, index) => (
+          <div className="object-card object-skeleton-card" key={index}>
+            <SkeletonBlock className="object-skeleton-image" />
+            <SkeletonBlock className="skeleton-line wide" />
+            <SkeletonBlock className="skeleton-line" />
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function SkeletonBlock({ className = '' }: { className?: string }) {
+  return <span className={`skeleton-block ${className}`} />
+}
+
 function Metric({ label, value }: { label: string; value: string | number }) {
   return (
     <div className="metric-card">
@@ -445,8 +782,13 @@ function Metric({ label, value }: { label: string; value: string | number }) {
   )
 }
 
-function EmptyState({ text }: { text: string }) {
-  return <div className="empty-state">{text}</div>
+function EmptyState({ text, action }: { text: string; action?: ReactNode }) {
+  return (
+    <div className="empty-state">
+      <span>{text}</span>
+      {action && <div className="empty-action">{action}</div>}
+    </div>
+  )
 }
 
 function ErrorBanner({ text }: { text: string }) {
@@ -466,18 +808,15 @@ function statusLabel(status: string) {
 }
 
 function stageLabel(stage: string) {
+  if (stage === 'completed') return 'Готово'
+  return PIPELINE_STAGES.find((item) => item.key === stage)?.label ?? stage
+}
+
+function stageDescription(stage: string) {
+  if (stage === 'completed') return 'Обработка завершена, результат готов.'
   return (
-    {
-      queued: 'В очереди',
-      preparing: 'Подготовка',
-      detection: 'Детекция',
-      tracking: 'Трекинг',
-      classification: 'Классификация',
-      aggregation: 'Агрегация',
-      rendering: 'Рендеринг',
-      uploading_artifacts: 'Сохранение результатов',
-      completed: 'Готово',
-    }[stage] ?? stage
+    PIPELINE_STAGES.find((item) => item.key === stage)?.description ??
+    'Ожидание обновления состояния pipeline.'
   )
 }
 
