@@ -17,9 +17,16 @@ import type { BrandSummary, RunTimeline } from '../types'
 
 const BRAND_COLORS: Record<string, string> = {
   mts: '#ff4d4d',
-  miranda: '#38d77a',
-  plus7: '#38bdf8',
-  other: '#facc15',
+  miranda: '#05c3a1',
+  plus7: '#58a6ff',
+  other: '#b8bec6',
+}
+
+const tooltipStyle = {
+  background: '#151515',
+  border: '1px solid rgba(255,255,255,.14)',
+  borderRadius: 8,
+  color: '#f4f4f4',
 }
 
 interface RunChartsProps {
@@ -60,9 +67,9 @@ export function RunCharts({ brands, timeline, onSeek }: RunChartsProps) {
         <ResponsiveContainer width="100%" height={300}>
           <BarChart data={brands}>
             <CartesianGrid stroke="rgba(255,255,255,.08)" vertical={false} />
-            <XAxis dataKey="brand" stroke="#83909c" />
-            <YAxis allowDecimals={false} stroke="#83909c" />
-            <Tooltip />
+            <XAxis dataKey="brand" stroke="#8d9298" />
+            <YAxis allowDecimals={false} stroke="#8d9298" />
+            <Tooltip contentStyle={tooltipStyle} />
             <Bar dataKey="object_count" radius={[6, 6, 0, 0]}>
               {brands.map((entry) => (
                 <Cell
@@ -97,7 +104,7 @@ export function RunCharts({ brands, timeline, onSeek }: RunChartsProps) {
                 />
               ))}
             </Pie>
-            <Tooltip />
+            <Tooltip contentStyle={tooltipStyle} />
             <Legend />
           </PieChart>
         </ResponsiveContainer>
@@ -125,11 +132,14 @@ export function RunCharts({ brands, timeline, onSeek }: RunChartsProps) {
             <CartesianGrid stroke="rgba(255,255,255,.08)" vertical={false} />
             <XAxis
               dataKey="time"
-              stroke="#83909c"
+              stroke="#8d9298"
               tickFormatter={(value) => `${value}s`}
             />
-            <YAxis stroke="#83909c" />
-            <Tooltip labelFormatter={(value) => `${value} сек.`} />
+            <YAxis stroke="#8d9298" />
+            <Tooltip
+              contentStyle={tooltipStyle}
+              labelFormatter={(value) => `${value} сек.`}
+            />
             <Legend />
             {Object.keys(BRAND_COLORS).map((brand) => (
               <Bar
@@ -139,7 +149,7 @@ export function RunCharts({ brands, timeline, onSeek }: RunChartsProps) {
                 fill={BRAND_COLORS[brand]}
               />
             ))}
-            <Brush dataKey="time" height={24} stroke="#ffe600" />
+            <Brush dataKey="time" height={24} stroke="#05c3a1" />
           </BarChart>
         </ResponsiveContainer>
       </section>

@@ -40,6 +40,23 @@ def safe_file_name(value: str) -> str:
     return stem or "video.mp4"
 
 
+def crop_object_key(run_id: str, crop_path: str) -> str | None:
+    if not crop_path:
+        return None
+
+    path_parts = [part for part in crop_path.replace("\\", "/").split("/") if part]
+    try:
+        crops_index = path_parts.index("crops")
+    except ValueError:
+        return None
+
+    crop_relative_path = "/".join(path_parts[crops_index:])
+    if not crop_relative_path:
+        return None
+
+    return f"runs/{run_id}/artifacts/{crop_relative_path}"
+
+
 class PipelineRunService:
     def __init__(
         self,
@@ -220,20 +237,9 @@ class PipelineRunService:
         rows = self._native_rows(dataframe)
         for row in rows:
             crop_path = str(row.get("best_crop_path") or "")
-            crop_name = Path(crop_path).name
-            crop_artifact = next(
-                (
-                    item
-                    for item in run.artifacts
-                    if item.artifact_type == "crop"
-                    and item.object_key.endswith(f"/{crop_name}")
-                ),
-                None,
-            )
+            object_key = crop_object_key(run_id, crop_path)
             row["crop_url"] = (
-                self._storage.presigned_get(crop_artifact.object_key)
-                if crop_artifact
-                else None
+                self._storage.presigned_get(object_key) if object_key else None
             )
         return {"run_id": run_id, "objects": rows}
 

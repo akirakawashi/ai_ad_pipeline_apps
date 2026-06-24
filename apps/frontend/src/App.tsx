@@ -50,26 +50,42 @@ function App() {
 
   return (
     <div className="app-shell">
-      <header className="topbar">
-        <button className="brand" onClick={() => navigate('/runs')}>
-          <span className="brand-mark">V</span>
-          <span>
-            <strong>Volna Vision</strong>
-            <small>Outdoor analytics</small>
-          </span>
-        </button>
-        <nav>
-          <button onClick={() => navigate('/runs')}>История</button>
-          <button className="primary" onClick={() => navigate('/runs/new')}>
-            Загрузить видео
+      <aside className="side-rail" aria-label="Навигация">
+        <div className="rail-spacer" />
+        <nav className="rail-nav">
+          <button
+            className={route.page === 'runs' ? 'active' : ''}
+            onClick={() => navigate('/runs')}
+          >
+            <span>▦</span>
+            История
+          </button>
+          <button
+            className={route.page === 'new' ? 'active' : ''}
+            onClick={() => navigate('/runs/new')}
+          >
+            <span>↑</span>
+            Загрузка
           </button>
         </nav>
-      </header>
-      <main>
-        {route.page === 'runs' && <RunsPage />}
-        {route.page === 'new' && <UploadPage />}
-        {route.page === 'run' && <RunPage runId={route.runId} />}
-      </main>
+      </aside>
+      <div className="workspace">
+        <header className="workspace-header">
+          {route.page !== 'runs' ? (
+            <button className="back-button" onClick={() => navigate('/runs')}>
+              ‹ Назад
+            </button>
+          ) : (
+            <span className="back-placeholder" />
+          )}
+          <h1>{workspaceTitle(route)}</h1>
+        </header>
+        <main>
+          {route.page === 'runs' && <RunsPage />}
+          {route.page === 'new' && <UploadPage />}
+          {route.page === 'run' && <RunPage runId={route.runId} />}
+        </main>
+      </div>
     </div>
   )
 }
@@ -482,6 +498,12 @@ function formatNumber(value: number | undefined) {
   return value === undefined
     ? '—'
     : new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(value)
+}
+
+function workspaceTitle(route: Route) {
+  if (route.page === 'new') return 'Новая обработка'
+  if (route.page === 'run') return 'Видео'
+  return 'История'
 }
 
 export default App

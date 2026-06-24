@@ -126,6 +126,7 @@ export interface OverlayObject {
   area_ratio: number
   visibility_score: number
   overall_score: number
+  card_priority?: number
 }
 
 export interface OverlayFrame {
@@ -141,6 +142,10 @@ export interface OverlayPayload {
     fps: number
     frame_count: number
     frame_stride: number
+  }
+  display?: {
+    max_cards_per_frame?: number
+    fields?: string[]
   }
   frames: OverlayFrame[]
 }

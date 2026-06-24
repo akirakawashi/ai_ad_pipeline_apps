@@ -13,6 +13,9 @@ from minio.helpers import ObjectWriteResult
 from settings.app import ObjectStorageSettings
 
 
+MINIO_DEFAULT_REGION = "us-east-1"
+
+
 class MinioStorage:
     def __init__(self, settings: ObjectStorageSettings) -> None:
         self._settings = settings
@@ -21,12 +24,14 @@ class MinioStorage:
             access_key=settings.access_key,
             secret_key=settings.secret_key,
             secure=settings.internal_secure,
+            region=MINIO_DEFAULT_REGION,
         )
         self._public = Minio(
             settings.public_endpoint,
             access_key=settings.access_key,
             secret_key=settings.secret_key,
             secure=settings.public_secure,
+            region=MINIO_DEFAULT_REGION,
         )
 
     @property

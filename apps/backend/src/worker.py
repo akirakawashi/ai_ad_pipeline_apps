@@ -54,6 +54,10 @@ def artifact_type(relative_path: Path) -> str:
     }.get(name, "artifact")
 
 
+def should_register_artifact(relative_path: Path) -> bool:
+    return relative_path.parts[:1] != ("crops",)
+
+
 class DatabaseProgressReporter(PipelineProgressReporter):
     def __init__(
         self,
@@ -210,6 +214,8 @@ class PipelineWorker:
                 object_key,
                 content_type=content_type,
             )
+            if not should_register_artifact(relative):
+                continue
             repository.add_artifact(
                 run_id=run_id,
                 artifact_type=artifact_type(relative),
