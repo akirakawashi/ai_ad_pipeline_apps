@@ -32,42 +32,42 @@ const PIPELINE_STAGES = [
   {
     key: 'queued',
     label: 'В очереди',
-    description: 'Видео ждёт свободный worker для запуска обработки.',
+    description: 'Файл загружен в хранилище. Ждём, когда освободится обработчик.',
   },
   {
     key: 'preparing',
     label: 'Подготовка',
-    description: 'Скачиваем исходное видео и читаем параметры потока.',
+    description: 'Видео обрабатывается, проверяем длительность, FPS, размер кадра и т. д.',
   },
   {
     key: 'detection',
     label: 'Детекция',
-    description: 'Модель проходит по кадрам и ищет рекламные объекты.',
+    description: 'Анализ видео - ищем рекламные конструкции в кадрах.',
   },
   {
     key: 'tracking',
     label: 'Трекинг',
-    description: 'Связываем детекции между кадрами в устойчивые объекты.',
+    description: 'Собираем трек по видеопотоку и объединяем с объектами на видео.',
   },
   {
     key: 'classification',
     label: 'Классификация',
-    description: 'Определяем бренд по лучшим crop-кадрам объектов.',
+    description: 'Лучшие фрагменты отдаем классификатору и определяем бренд.',
   },
   {
     key: 'aggregation',
     label: 'Агрегация',
-    description: 'Собираем метрики, visibility index и итоговые таблицы.',
+    description: 'Считаем объекты, видимость, confidence и таймлайн и т. д.',
   },
   {
     key: 'rendering',
     label: 'Рендеринг',
-    description: 'Готовим overlay, отчёты и визуальные артефакты.',
+    description: 'Готовим итоговое видео с разметкой, оверлеем, отчётами и т. д.',
   },
   {
     key: 'uploading_artifacts',
-    label: 'Сохранение результатов',
-    description: 'Загружаем артефакты в хранилище и обновляем run.',
+    label: 'Сохранение результата',
+    description: 'Сохраняем таблицы, кадры, отчеты, графики, итоговое видео.',
   },
 ]
 
@@ -255,12 +255,12 @@ function UploadPage() {
   return (
     <div className="page narrow-page">
       <PageHeader
-        eyebrow="Новая обработка"
-        title="Загрузите видео маршрута"
-        description="После загрузки видео автоматически попадёт в очередь ML pipeline."
+        eyebrow="Загрузка"
+        title="Добавьте видео маршрута"
+        description="Выберите файл или перетащите его сюда. После загрузки обработка начнётся сама."
         actions={
           <button className="secondary" onClick={() => navigate('/runs')}>
-            История
+            К истории
           </button>
         }
       />
@@ -287,18 +287,18 @@ function UploadPage() {
         }}
       >
         <div className="upload-icon">↑</div>
-        <h2>{file ? 'Видео готово к загрузке' : 'Перетащите видео сюда'}</h2>
+        <h2>{file ? 'Файл выбран' : 'Перетащите видео сюда'}</h2>
         <p>
           {file
-            ? 'Проверьте файл и запускайте обработку.'
-            : 'MP4, MOV, MKV или WebM'}
+            ? 'Если это нужное видео, запускайте обработку.'
+            : 'Подойдут MP4, MOV, MKV и WebM'}
         </p>
 
         {file && <FileCard file={file} />}
 
         <div className="upload-actions">
           <label className="secondary file-button">
-            {file ? 'Заменить файл' : 'Выбрать файл'}
+            {file ? 'Выбрать другое' : 'Выбрать видео'}
             <input
               type="file"
               accept="video/*,.mkv"
@@ -308,7 +308,7 @@ function UploadPage() {
           </label>
           {file && !busy && (
             <button className="ghost-button" onClick={() => selectFile(null)}>
-              Убрать
+              Убрать файл
             </button>
           )}
         </div>
@@ -317,10 +317,13 @@ function UploadPage() {
           <div className="upload-progress-card">
             <InfinityLoader compact />
             <div>
-              <h3>Загрузка в MinIO</h3>
-              <p>Передаём исходное видео в хранилище.</p>
+              <h3>Загружаем видео</h3>
+              <p>
+                Отправляем файл в хранилище. Большие ролики могут занять пару
+                минут.
+              </p>
             </div>
-            <ProgressBar progress={progress} label="Передача файла" animated />
+            <ProgressBar progress={progress} label="Файл загружается" animated />
           </div>
         )}
         {error && <ErrorBanner text={error} />}
@@ -329,7 +332,7 @@ function UploadPage() {
           disabled={!file || busy}
           onClick={() => void startUpload()}
         >
-          {busy ? 'Загрузка…' : 'Запустить обработку'}
+          {busy ? 'Загружаем…' : 'Начать обработку'}
         </button>
       </section>
     </div>
@@ -363,7 +366,7 @@ function RunPage({ runId }: { runId: string }) {
   }, [runId])
 
   if (error) return <ErrorBanner text={error} />
-  if (!run) return <EmptyState text="Загрузка run…" />
+  if (!run) return <EmptyState text="Открываем обработку…" />
   if (run.status !== 'completed') return <ProcessingPage run={run} />
   return <ResultPage run={run} />
 }
@@ -373,16 +376,16 @@ function ProcessingPage({ run }: { run: PipelineRun }) {
   return (
     <div className="page narrow-page">
       <PageHeader
-        eyebrow={failed ? 'Ошибка обработки' : 'Pipeline работает'}
+        eyebrow={failed ? 'Обработка не прошла' : 'Видео обрабатывается'}
         title={run.source_name}
-        description={run.status_message ?? 'Ожидание обновления статуса'}
+        description={run.status_message ?? 'Ждём первый статус от обработчика'}
         actions={
           <div className="page-actions">
             <button className="secondary" onClick={() => navigate('/runs')}>
-              История
+              К истории
             </button>
             <button className="primary" onClick={() => navigate('/runs/new')}>
-              Новое видео
+              Загрузить ещё
             </button>
           </div>
         }
@@ -519,6 +522,7 @@ function ResultPage({ run }: { run: PipelineRun }) {
       {summary && timeline && (
         <RunCharts
           brands={summary.brands}
+          objects={objects?.objects ?? []}
           timeline={timeline}
           onSeek={setSeek}
         />
@@ -813,10 +817,10 @@ function stageLabel(stage: string) {
 }
 
 function stageDescription(stage: string) {
-  if (stage === 'completed') return 'Обработка завершена, результат готов.'
+  if (stage === 'completed') return 'Готово. Можно смотреть видео и графики.'
   return (
     PIPELINE_STAGES.find((item) => item.key === stage)?.description ??
-    'Ожидание обновления состояния pipeline.'
+    'Ждём обновление от обработчика.'
   )
 }
 
@@ -839,7 +843,7 @@ function formatNumber(value: number | undefined) {
 }
 
 function workspaceTitle(route: Route) {
-  if (route.page === 'new') return 'Новая обработка'
+  if (route.page === 'new') return 'Загрузка видео'
   if (route.page === 'run') return 'Видео'
   return 'История'
 }
