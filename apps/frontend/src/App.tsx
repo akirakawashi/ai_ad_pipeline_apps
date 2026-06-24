@@ -122,7 +122,6 @@ function RunsPage() {
       <PageHeader
         eyebrow="Библиотека"
         title="Обработанные видео"
-        description="Все загрузки сохраняются как независимые runs."
       />
       {loading && <EmptyState text="Загрузка истории…" />}
       {error && <ErrorBanner text={error} />}
@@ -412,13 +411,13 @@ function PageHeader({
 }: {
   eyebrow: string
   title: string
-  description: string
+  description?: string
 }) {
   return (
     <header className="page-header">
       <span>{eyebrow}</span>
       <h1>{title}</h1>
-      <p>{description}</p>
+      {description && <p>{description}</p>}
     </header>
   )
 }

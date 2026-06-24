@@ -37,6 +37,13 @@ interface Connector {
   start: { x: number; y: number }
 }
 
+interface VideoContentRect {
+  left: number
+  top: number
+  width: number
+  height: number
+}
+
 interface OverlayLayout {
   objects: ScaledObject[]
   cards: { object: ScaledObject; rect: CardRect }[]
@@ -51,6 +58,13 @@ const EMPTY_LAYOUT: OverlayLayout = {
   connectors: [],
 }
 
+const EMPTY_VIDEO_CONTENT_RECT: VideoContentRect = {
+  left: 0,
+  top: 0,
+  width: 0,
+  height: 0,
+}
+
 export function VideoOverlayPlayer({
   sourceUrl,
   overlay,
@@ -59,7 +73,9 @@ export function VideoOverlayPlayer({
   const videoRef = useRef<HTMLVideoElement>(null)
   const slotByObjectRef = useRef(new Map<string, string>())
   const [currentFrame, setCurrentFrame] = useState(0)
-  const [videoSize, setVideoSize] = useState({ width: 0, height: 0 })
+  const [videoContentRect, setVideoContentRect] = useState<VideoContentRect>(
+    EMPTY_VIDEO_CONTENT_RECT,
+  )
   const [layout, setLayout] = useState<OverlayLayout>(EMPTY_LAYOUT)
 
   const frameMap = useMemo(
@@ -85,15 +101,21 @@ export function VideoOverlayPlayer({
     if (!video) return
 
     const updateSize = () => {
-      const rect = video.getBoundingClientRect()
-      setVideoSize({ width: rect.width, height: rect.height })
+      const nextRect = getVideoContentRect(video, overlay.video)
+      setVideoContentRect((previousRect) =>
+        isSameContentRect(previousRect, nextRect) ? previousRect : nextRect,
+      )
     }
     updateSize()
 
     const observer = new ResizeObserver(updateSize)
     observer.observe(video)
-    return () => observer.disconnect()
-  }, [])
+    video.addEventListener('loadedmetadata', updateSize)
+    return () => {
+      observer.disconnect()
+      video.removeEventListener('loadedmetadata', updateSize)
+    }
+  }, [overlay.video])
 
   useEffect(() => {
     const video = videoRef.current
@@ -160,7 +182,7 @@ export function VideoOverlayPlayer({
     setLayout(
       buildOverlayLayout(
         frameMap.get(currentFrame) ?? [],
-        videoSize,
+        videoContentRect,
         overlay.video,
         overlay.display?.max_cards_per_frame ?? 5,
         slotByObjectRef.current,
@@ -171,16 +193,23 @@ export function VideoOverlayPlayer({
     frameMap,
     overlay.display?.max_cards_per_frame,
     overlay.video,
-    videoSize,
+    videoContentRect,
   ])
+
+  const overlayStyle = {
+    left: videoContentRect.left,
+    top: videoContentRect.top,
+    width: videoContentRect.width,
+    height: videoContentRect.height,
+  } as CSSProperties
 
   return (
     <div className="video-shell">
       <video ref={videoRef} src={sourceUrl} controls preload="metadata" />
-      <div className="video-overlay">
+      <div className="video-overlay" style={overlayStyle}>
         <svg
           className="overlay-connectors"
-          viewBox={`0 0 ${videoSize.width} ${videoSize.height}`}
+          viewBox={`0 0 ${videoContentRect.width} ${videoContentRect.height}`}
           preserveAspectRatio="none"
         >
           {layout.connectors.map((connector) => (
@@ -221,9 +250,64 @@ export function VideoOverlayPlayer({
   )
 }
 
+function getVideoContentRect(
+  videoElement: HTMLVideoElement,
+  video: OverlayPayload['video'],
+): VideoContentRect {
+  const elementRect = videoElement.getBoundingClientRect()
+  const elementWidth = elementRect.width
+  const elementHeight = elementRect.height
+  const sourceWidth = videoElement.videoWidth || video.width
+  const sourceHeight = videoElement.videoHeight || video.height
+
+  if (
+    elementWidth <= 0 ||
+    elementHeight <= 0 ||
+    sourceWidth <= 0 ||
+    sourceHeight <= 0
+  ) {
+    return EMPTY_VIDEO_CONTENT_RECT
+  }
+
+  const elementRatio = elementWidth / elementHeight
+  const sourceRatio = sourceWidth / sourceHeight
+
+  if (elementRatio > sourceRatio) {
+    const height = elementHeight
+    const width = height * sourceRatio
+    return {
+      left: (elementWidth - width) / 2,
+      top: 0,
+      width,
+      height,
+    }
+  }
+
+  const width = elementWidth
+  const height = width / sourceRatio
+  return {
+    left: 0,
+    top: (elementHeight - height) / 2,
+    width,
+    height,
+  }
+}
+
+function isSameContentRect(
+  first: VideoContentRect,
+  second: VideoContentRect,
+): boolean {
+  return (
+    Math.abs(first.left - second.left) < 0.5 &&
+    Math.abs(first.top - second.top) < 0.5 &&
+    Math.abs(first.width - second.width) < 0.5 &&
+    Math.abs(first.height - second.height) < 0.5
+  )
+}
+
 function buildOverlayLayout(
   objects: OverlayObject[],
-  size: { width: number; height: number },
+  size: VideoContentRect,
   video: OverlayPayload['video'],
   maxCards: number,
   slotByObject: Map<string, string>,
