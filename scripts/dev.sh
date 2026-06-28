@@ -7,6 +7,7 @@ project_root="$(
   pwd
 )"
 runtime_dir="$project_root/.runtime"
+backend_env_file="$project_root/apps/backend/.env"
 worker_pid_file="$runtime_dir/worker.pid"
 worker_path="$project_root/apps/backend/src/worker.py"
 python_path="$project_root/.venv/bin/python"
@@ -126,6 +127,11 @@ start_worker() {
 
   rm -f "$worker_pid_file"
   echo "Starting local worker"
+  if [[ -f "$backend_env_file" ]]; then
+    set -a
+    source "$backend_env_file"
+    set +a
+  fi
   "$python_path" "$worker_path" &
   local worker_pid=$!
   echo "$worker_pid" >"$worker_pid_file"

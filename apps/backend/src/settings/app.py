@@ -1,89 +1,19 @@
 from __future__ import annotations
 
-from pathlib import Path
-from urllib.parse import quote_plus, urlparse
-
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-
-def project_root() -> Path:
-    return Path(__file__).resolve().parents[4]
-
-
-def endpoint_parts(value: str) -> tuple[str, bool]:
-    parsed = urlparse(value if "://" in value else f"http://{value}")
-    if not parsed.netloc:
-        raise ValueError(f"Invalid endpoint: {value}")
-    return parsed.netloc, parsed.scheme == "https"
-
-
-class FrozenModel(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
-
-class AppSettings(FrozenModel):
-    app_name: str = "AI Ad Pipeline API"
-    app_version: str = "0.1.0"
-    debug: bool = False
-    api_v1_prefix: str = "/api/v1"
-    trusted_hosts: list[str] = Field(default_factory=lambda: ["*"])
-
-
-class CorsSettings(FrozenModel):
-    allow_origins: list[str] = Field(
-        default_factory=lambda: [
-            "http://localhost:5173",
-            "http://127.0.0.1:5173",
-        ]
-    )
-    allow_credentials: bool = True
-    allow_methods: list[str] = Field(default_factory=lambda: ["*"])
-    allow_headers: list[str] = Field(default_factory=lambda: ["*"])
-
-
-class DatabaseSettings(FrozenModel):
-    url: str
-
-
-class ObjectStorageSettings(FrozenModel):
-    access_key: str
-    secret_key: str
-    bucket: str
-    internal_endpoint: str
-    internal_secure: bool
-    public_endpoint: str
-    public_secure: bool
-    presigned_expiry_seconds: int
-
-
-class PipelineSettings(FrozenModel):
-    project_root: Path = Field(default_factory=project_root)
-    detector_model_path: Path = Field(
-        default_factory=lambda: (project_root() / "models/detection/best.pt").resolve()
-    )
-    classifier_model_path: Path = Field(
-        default_factory=lambda: (
-            project_root() / "models/classification/best.pt"
-        ).resolve()
-    )
-    brand_overrides_path: Path | None = Field(
-        default_factory=lambda: (
-            project_root() / "ml/pipeline/brand_overrides.csv"
-        ).resolve()
-    )
-    frame_stride: int = Field(default=1, ge=1)
-    device: str | None = "0"
-    worker_poll_interval_sec: float = Field(default=2.0, gt=0)
-    worker_temp_dir: Path = Field(
-        default_factory=lambda: project_root() / ".runtime/worker"
-    )
+from settings.database import DatabaseSettings, build_database_settings
+from settings.http import AppSettings, CorsSettings
+from settings.object_storage import (
+    ObjectStorageSettings,
+    build_object_storage_settings,
+)
+from settings.pipeline import PipelineSettings
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=project_root() / "apps/backend/.env",
-        env_file_encoding="utf-8",
         extra="ignore",
         frozen=True,
     )
@@ -143,31 +73,21 @@ class Settings(BaseSettings):
 
     @property
     def database(self) -> DatabaseSettings:
-        user = quote_plus(self.postgres_user)
-        password = quote_plus(self.postgres_password)
-        database = quote_plus(self.postgres_db)
-        return DatabaseSettings(
-            url=(
-                f"postgresql+psycopg://{user}:{password}"
-                f"@{self.postgres_host}:{self.postgres_port}/{database}"
-            )
+        return build_database_settings(
+            postgres_db=self.postgres_db,
+            postgres_user=self.postgres_user,
+            postgres_password=self.postgres_password,
+            postgres_host=self.postgres_host,
+            postgres_port=self.postgres_port,
         )
 
     @property
     def object_storage(self) -> ObjectStorageSettings:
-        internal_endpoint, internal_secure = endpoint_parts(
-            self.minio_internal_endpoint
-        )
-        public_endpoint, public_secure = endpoint_parts(
-            self.minio_public_endpoint or self.minio_internal_endpoint
-        )
-        return ObjectStorageSettings(
-            access_key=self.minio_root_user,
-            secret_key=self.minio_root_password,
-            bucket=self.minio_bucket,
-            internal_endpoint=internal_endpoint,
-            internal_secure=internal_secure,
-            public_endpoint=public_endpoint,
-            public_secure=public_secure,
-            presigned_expiry_seconds=(self.minio_presigned_expiry_seconds),
+        return build_object_storage_settings(
+            minio_root_user=self.minio_root_user,
+            minio_root_password=self.minio_root_password,
+            minio_bucket=self.minio_bucket,
+            minio_internal_endpoint=self.minio_internal_endpoint,
+            minio_public_endpoint=self.minio_public_endpoint,
+            minio_presigned_expiry_seconds=self.minio_presigned_expiry_seconds,
         )
