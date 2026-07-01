@@ -27,11 +27,24 @@ const BRAND_COLORS: Record<string, string> = {
 const BRAND_ORDER = ['mts', 'miranda', 'plus7', 'other']
 const FALLBACK_COLORS = ['#e7c84d', '#a78bfa', '#fb923c', '#22d3ee']
 
-const tooltipStyle = {
+const tooltipStyle: CSSProperties = {
   background: '#151515',
   border: '1px solid rgba(255,255,255,.14)',
   borderRadius: 8,
   color: '#f4f4f4',
+}
+
+const tooltipLabelStyle: CSSProperties = {
+  color: '#f4f4f4',
+  fontWeight: 600,
+}
+
+const tooltipItemStyle: CSSProperties = {
+  color: '#f4f4f4',
+}
+
+const tooltipCursor = {
+  fill: 'rgba(255,255,255,.06)',
 }
 
 interface RunChartsProps {
@@ -46,6 +59,7 @@ interface BrandChartRow {
   brand_label: string
   object_count: number
   visibility_index: number
+  visibility_percent: number
   mean_confidence_percent: number
 }
 
@@ -76,12 +90,22 @@ export function RunCharts({
     [availableBrands, hiddenBrands],
   )
 
+  const totalBrandVisibility = useMemo(
+    () =>
+      brands.reduce(
+        (total, brand) =>
+          total + Number(brand.video_visibility_weighted_seconds ?? 0),
+        0,
+      ),
+    [brands],
+  )
+
   const brandRows = useMemo(
     () =>
       brands
-        .map(toBrandChartRow)
+        .map((brand) => toBrandChartRow(brand, totalBrandVisibility))
         .filter((brand) => !hiddenBrands.has(brand.brand_key)),
-    [brands, hiddenBrands],
+    [brands, hiddenBrands, totalBrandVisibility],
   )
 
   const visibilityTimelineRows = useMemo(
@@ -107,7 +131,7 @@ export function RunCharts({
   const pieData = brandRows.map((brand) => ({
     name: brand.brand_label,
     brand_key: brand.brand_key,
-    value: brand.visibility_index,
+    value: brand.visibility_percent,
   }))
 
   const topObjectRows = useMemo(
@@ -179,7 +203,12 @@ export function RunCharts({
               <CartesianGrid stroke="rgba(255,255,255,.08)" vertical={false} />
               <XAxis dataKey="brand_label" stroke="#8d9298" />
               <YAxis allowDecimals={false} stroke="#8d9298" />
-              <Tooltip contentStyle={tooltipStyle} />
+              <Tooltip
+                contentStyle={tooltipStyle}
+                cursor={tooltipCursor}
+                itemStyle={tooltipItemStyle}
+                labelStyle={tooltipLabelStyle}
+              />
               <Bar
                 dataKey="object_count"
                 name="Объекты"
@@ -198,18 +227,28 @@ export function RunCharts({
 
         <section className="panel chart-card">
           <header>
-            <h3>Индекс заметности</h3>
-            <p>Суммарная заметность брендов в видео</p>
+            <h3>Доля заметности</h3>
+            <p>Доля бренда в суммарной заметности видео</p>
           </header>
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={brandRows}>
               <CartesianGrid stroke="rgba(255,255,255,.08)" vertical={false} />
               <XAxis dataKey="brand_label" stroke="#8d9298" />
-              <YAxis stroke="#8d9298" />
-              <Tooltip contentStyle={tooltipStyle} />
+              <YAxis
+                domain={[0, 100]}
+                stroke="#8d9298"
+                tickFormatter={(value) => formatPercent(Number(value))}
+              />
+              <Tooltip
+                contentStyle={tooltipStyle}
+                cursor={tooltipCursor}
+                formatter={percentTooltipFormatter}
+                itemStyle={tooltipItemStyle}
+                labelStyle={tooltipLabelStyle}
+              />
               <Bar
-                dataKey="visibility_index"
-                name="Индекс заметности"
+                dataKey="visibility_percent"
+                name="Доля заметности"
                 radius={[6, 6, 0, 0]}
               >
                 {brandRows.map((entry) => (
@@ -245,7 +284,12 @@ export function RunCharts({
                   />
                 ))}
               </Pie>
-              <Tooltip contentStyle={tooltipStyle} />
+              <Tooltip
+                contentStyle={tooltipStyle}
+                formatter={percentTooltipFormatter}
+                itemStyle={tooltipItemStyle}
+                labelStyle={tooltipLabelStyle}
+              />
             </PieChart>
           </ResponsiveContainer>
         </section>
@@ -266,10 +310,18 @@ export function RunCharts({
               />
               <YAxis
                 yAxisId="visibility"
+                domain={[0, 100]}
                 orientation="right"
                 stroke="#05c3a1"
+                tickFormatter={(value) => formatPercent(Number(value))}
               />
-              <Tooltip contentStyle={tooltipStyle} />
+              <Tooltip
+                contentStyle={tooltipStyle}
+                cursor={tooltipCursor}
+                formatter={mixedTooltipFormatter}
+                itemStyle={tooltipItemStyle}
+                labelStyle={tooltipLabelStyle}
+              />
               <Legend />
               <Bar
                 yAxisId="count"
@@ -281,8 +333,8 @@ export function RunCharts({
               <Line
                 yAxisId="visibility"
                 type="monotone"
-                dataKey="visibility_index"
-                name="Индекс заметности"
+                dataKey="visibility_percent"
+                name="Доля заметности"
                 stroke="#05c3a1"
                 strokeWidth={3}
                 dot={{ r: 5 }}
@@ -305,7 +357,13 @@ export function RunCharts({
                 domain={[0, 100]}
                 tickFormatter={(value) => `${value}%`}
               />
-              <Tooltip contentStyle={tooltipStyle} />
+              <Tooltip
+                contentStyle={tooltipStyle}
+                cursor={tooltipCursor}
+                formatter={percentTooltipFormatter}
+                itemStyle={tooltipItemStyle}
+                labelStyle={tooltipLabelStyle}
+              />
               <Bar
                 dataKey="mean_confidence_percent"
                 name="Уверенность, %"
@@ -345,7 +403,12 @@ export function RunCharts({
                 width={130}
                 stroke="#8d9298"
               />
-              <Tooltip contentStyle={tooltipStyle} />
+              <Tooltip
+                contentStyle={tooltipStyle}
+                cursor={tooltipCursor}
+                itemStyle={tooltipItemStyle}
+                labelStyle={tooltipLabelStyle}
+              />
               <Bar
                 dataKey="visibility_index"
                 name="Индекс заметности"
@@ -384,7 +447,10 @@ export function RunCharts({
               <YAxis stroke="#8d9298" />
               <Tooltip
                 contentStyle={tooltipStyle}
+                cursor={tooltipCursor}
+                itemStyle={tooltipItemStyle}
                 labelFormatter={(value) => `${value} сек.`}
+                labelStyle={tooltipLabelStyle}
               />
               {visibleBrandKeys.map((brand) => (
                 <Bar
@@ -421,7 +487,10 @@ export function RunCharts({
               <YAxis allowDecimals={false} stroke="#8d9298" />
               <Tooltip
                 contentStyle={tooltipStyle}
+                cursor={tooltipCursor}
+                itemStyle={tooltipItemStyle}
                 labelFormatter={(value) => `${value} сек.`}
+                labelStyle={tooltipLabelStyle}
               />
               {visibleBrandKeys.map((brand) => (
                 <Bar
@@ -440,15 +509,33 @@ export function RunCharts({
   )
 }
 
-function toBrandChartRow(brand: BrandSummary): BrandChartRow {
+function toBrandChartRow(
+  brand: BrandSummary,
+  totalVisibility: number,
+): BrandChartRow {
   const brandKey = normalizeBrand(brand.brand)
+  const visibilityIndex = Number(brand.video_visibility_weighted_seconds ?? 0)
   return {
     brand_key: brandKey,
     brand_label: formatBrandLabel(brandKey),
     object_count: Number(brand.object_count ?? 0),
-    visibility_index: Number(brand.video_visibility_weighted_seconds ?? 0),
+    visibility_index: visibilityIndex,
+    visibility_percent:
+      totalVisibility > 0 ? (visibilityIndex / totalVisibility) * 100 : 0,
     mean_confidence_percent: Number(brand.mean_final_brand_conf ?? 0) * 100,
   }
+}
+
+function percentTooltipFormatter(value: unknown, name: unknown) {
+  return [formatPercent(Number(value)), String(name)]
+}
+
+function mixedTooltipFormatter(value: unknown, name: unknown) {
+  const label = String(name)
+  if (label === 'Доля заметности') {
+    return [formatPercent(Number(value)), label]
+  }
+  return [formatNumber(Number(value)), label]
 }
 
 function buildTimelineRows(
@@ -513,6 +600,19 @@ function formatBrandLabel(brand: string): string {
 
 function formatDurationLabel(seconds: number): string {
   return `${seconds.toFixed(1)}s`
+}
+
+function formatPercent(value: number): string {
+  if (!Number.isFinite(value) || value === 0) return '0%'
+  if (Math.abs(value) < 0.1) return '<0.1%'
+  return `${value.toFixed(1)}%`
+}
+
+function formatNumber(value: number): string {
+  if (!Number.isFinite(value)) return '0'
+  return new Intl.NumberFormat('ru-RU', {
+    maximumFractionDigits: 2,
+  }).format(value)
 }
 
 function getBrandColor(brand: string): string {
