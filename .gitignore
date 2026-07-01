@@ -8,6 +8,8 @@ wheels/
 *.egg-info
 .ipynb_checkpoints/
 *.png
+!apps/frontend/src/assets/aisigroup-logo.png
+!apps/frontend/src/assets/aisigroup-mark.png
 *.jpg
 *.jpeg
 *.txt
