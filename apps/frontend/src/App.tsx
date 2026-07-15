@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import logoUrl from './assets/aisigroup-logo.png'
 import markUrl from './assets/aisigroup-mark.png'
+import { CitiesPage } from './pages/CitiesPage'
 import { LandingPage } from './pages/LandingPage'
 import { RoutesPage } from './pages/RoutesPage'
 import { RunPage } from './pages/RunPage'
@@ -12,6 +13,16 @@ import {
   type Route,
 } from './routing'
 import './App.css'
+
+function backlink(route: Route): { label: string; to: string } | null {
+  if (route.page === 'new' || route.page === 'run') {
+    return { label: '← Назад к архиву', to: '/runs' }
+  }
+  if (route.page === 'routes') {
+    return { label: '← Назад к городам', to: '/routes' }
+  }
+  return null
+}
 
 function App() {
   const [route, setRoute] = useState<Route>(currentRoute)
@@ -46,7 +57,7 @@ function App() {
             Архив
           </button>
           <button
-            className={route.page === 'routes' ? 'active' : ''}
+            className={route.page === 'cities' || route.page === 'routes' ? 'active' : ''}
             onClick={() => navigate('/routes')}
           >
             <span>⚑</span>
@@ -80,16 +91,20 @@ function App() {
           </div>
         </header>
         <main className="workspace-main">
-          {route.page !== 'runs' && route.page !== 'home' && route.page !== 'routes' && (
+          {backlink(route) && (
             <div className="workspace-backline">
-              <button className="workspace-backlink" onClick={() => navigate('/runs')}>
-                ← Назад к архиву
+              <button
+                className="workspace-backlink"
+                onClick={() => navigate(backlink(route)!.to)}
+              >
+                {backlink(route)!.label}
               </button>
             </div>
           )}
           {route.page === 'home' && <LandingPage />}
           {route.page === 'runs' && <RunsPage />}
-          {route.page === 'routes' && <RoutesPage />}
+          {route.page === 'cities' && <CitiesPage />}
+          {route.page === 'routes' && <RoutesPage key={route.cityId} cityId={route.cityId} />}
           {route.page === 'new' && <UploadPage />}
           {route.page === 'run' && <RunPage runId={route.runId} />}
         </main>

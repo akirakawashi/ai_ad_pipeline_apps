@@ -1,8 +1,10 @@
 import { useEffect, useState, type CSSProperties } from 'react'
 import { RouteMap, type GeoFeatureCollection } from '../components/RouteMap'
-import { ErrorBanner } from '../components/common/Feedback'
+import { EmptyState, ErrorBanner } from '../components/common/Feedback'
 import { PageHeader } from '../components/common/PageHeader'
 import { RouteMapSkeleton } from '../components/common/Skeletons'
+import { findCity } from '../data/cities'
+import { navigate } from '../routing'
 
 interface RouteMeta {
   id: string
@@ -11,29 +13,42 @@ interface RouteMeta {
   file: string
 }
 
-const ROUTES_META: RouteMeta[] = [
-  { id: 'route-1', name: 'Севастопольская | пр. Победы', colorLabel: 'Красная линия', file: 'route_1.geojson' },
-  { id: 'route-2', name: 'Московская | Киевская', colorLabel: 'Синяя линия', file: 'route_2.geojson' },
-  { id: 'route-3', name: 'Объездная дорога', colorLabel: 'Зелёная линия', file: 'route_3.geojson' },
-  { id: 'route-4', name: 'Евпаторийское шоссе', colorLabel: 'Жёлтая линия', file: 'route_4.geojson' },
-]
+interface CityRoutesData {
+  routes: RouteMeta[]
+  colors: string[]
+}
 
-const ROUTE_COLORS = ['#ff3b3f', '#3b8cff', '#32c26b', '#f3c944']
+const CITY_ROUTES: Record<string, CityRoutesData> = {
+  simferopol: {
+    routes: [
+      { id: 'route-1', name: 'Севастопольская | пр. Победы', colorLabel: 'Красная линия', file: 'route_1.geojson' },
+      { id: 'route-2', name: 'Московская | Киевская', colorLabel: 'Синяя линия', file: 'route_2.geojson' },
+      { id: 'route-3', name: 'Объездная дорога', colorLabel: 'Зелёная линия', file: 'route_3.geojson' },
+      { id: 'route-4', name: 'Евпаторийское шоссе', colorLabel: 'Жёлтая линия', file: 'route_4.geojson' },
+    ],
+    colors: ['#ff3b3f', '#3b8cff', '#32c26b', '#f3c944'],
+  },
+}
 
-export function RoutesPage() {
+export function RoutesPage({ cityId }: { cityId: string }) {
+  const city = findCity(cityId)
+  const cityData = CITY_ROUTES[cityId]
+
   const [roads, setRoads] = useState<GeoFeatureCollection | null>(null)
   const [routes, setRoutes] = useState<GeoFeatureCollection[] | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(() => Boolean(cityData))
   const [error, setError] = useState<string | null>(null)
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
 
   useEffect(() => {
+    if (!cityData) return
+
     let disposed = false
 
     Promise.all([
-      fetch('/routes/export.geojson'),
-      ...ROUTES_META.map((route) => fetch(`/routes/${route.file}`)),
+      fetch(`/routes/${cityId}/export.geojson`),
+      ...cityData.routes.map((route) => fetch(`/routes/${cityId}/${route.file}`)),
     ])
       .then(async (responses) => {
         if (responses.some((response) => !response.ok)) {
@@ -54,10 +69,29 @@ export function RoutesPage() {
     return () => {
       disposed = true
     }
-  }, [])
+  }, [cityId, cityData])
+
+  if (!cityData) {
+    return (
+      <div className="page">
+        <PageHeader eyebrow="Маршруты" title="Город не найден" />
+        <EmptyState
+          text="Такого города пока нет в списке."
+          action={
+            <button className="primary" onClick={() => navigate('/routes')}>
+              Выбрать город
+            </button>
+          }
+        />
+      </div>
+    )
+  }
+
+  const routesMeta = cityData.routes
+  const routeColors = cityData.colors
 
   const focusedIndex = hoveredIndex ?? selectedIndex
-  const focusedMeta = focusedIndex !== null ? ROUTES_META[focusedIndex] : null
+  const focusedMeta = focusedIndex !== null ? routesMeta[focusedIndex] : null
   const focusedSegmentCount = focusedIndex !== null ? routes?.[focusedIndex]?.features.length : undefined
 
   const handleReset = () => {
@@ -68,7 +102,7 @@ export function RoutesPage() {
   return (
     <div className="page">
       <PageHeader
-        eyebrow="Маршруты"
+        eyebrow={city?.name ?? 'Маршруты'}
         title="Выберите маршрут"
         description="Наведите курсор на линию на карте или выберите направление в списке."
         actions={
@@ -86,14 +120,14 @@ export function RoutesPage() {
         <div className="content-grid">
           <section className="panel map-card">
             <div className="map-toolbar">
-              <span className="city-label">Симферополь</span>
+              <span className="city-label">{city?.name ?? cityId}</span>
               <span className="map-hint">Интерактивная схема</span>
             </div>
             <RouteMap
               roads={roads}
               routes={routes}
-              colors={ROUTE_COLORS}
-              routeNames={ROUTES_META.map((route) => route.name)}
+              colors={routeColors}
+              routeNames={routesMeta.map((route) => route.name)}
               hoveredIndex={hoveredIndex}
               selectedIndex={selectedIndex}
               onHoverChange={setHoveredIndex}
@@ -107,18 +141,18 @@ export function RoutesPage() {
                 <p className="panel-kicker">Направления</p>
                 <h2>Куда поедем?</h2>
               </div>
-              <span className="route-count">{String(ROUTES_META.length).padStart(2, '0')}</span>
+              <span className="route-count">{String(routesMeta.length).padStart(2, '0')}</span>
             </div>
 
             <div className="route-options" role="group" aria-label="Доступные маршруты">
-              {ROUTES_META.map((route, index) => (
+              {routesMeta.map((route, index) => (
                 <button
                   key={route.id}
                   type="button"
                   className={`route-option${focusedIndex === index ? ' is-active' : ''}${
                     selectedIndex === index ? ' is-selected' : ''
                   }`}
-                  style={{ '--route-color': ROUTE_COLORS[index] } as CSSProperties}
+                  style={{ '--route-color': routeColors[index] } as CSSProperties}
                   aria-pressed={selectedIndex === index}
                   onMouseEnter={() => setHoveredIndex(index)}
                   onMouseLeave={() => setHoveredIndex(null)}
