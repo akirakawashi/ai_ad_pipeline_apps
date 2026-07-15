@@ -78,6 +78,23 @@ export function ObjectsSkeleton() {
   )
 }
 
+export function RouteMapSkeleton() {
+  return (
+    <div className="content-grid" aria-label="Загружаем маршруты">
+      <section className="panel map-card skeleton-card">
+        <SkeletonBlock className="route-map-skeleton-frame" />
+      </section>
+      <aside className="panel side-panel skeleton-card">
+        <SkeletonBlock className="skeleton-line short" />
+        <SkeletonBlock className="skeleton-value" />
+        {Array.from({ length: 4 }).map((_, index) => (
+          <SkeletonBlock className="route-option-skeleton" key={index} />
+        ))}
+      </aside>
+    </div>
+  )
+}
+
 function SkeletonBlock({ className = '' }: { className?: string }) {
   return <span className={`skeleton-block ${className}`} />
 }

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import logoUrl from './assets/aisigroup-logo.png'
 import markUrl from './assets/aisigroup-mark.png'
 import { LandingPage } from './pages/LandingPage'
+import { RoutesPage } from './pages/RoutesPage'
 import { RunPage } from './pages/RunPage'
 import { RunsPage } from './pages/RunsPage'
 import { UploadPage } from './pages/UploadPage'
@@ -45,6 +46,13 @@ function App() {
             Архив
           </button>
           <button
+            className={route.page === 'routes' ? 'active' : ''}
+            onClick={() => navigate('/routes')}
+          >
+            <span>⚑</span>
+            Маршруты
+          </button>
+          <button
             className={route.page === 'new' ? 'active' : ''}
             onClick={() => navigate('/runs/new')}
           >
@@ -72,7 +80,7 @@ function App() {
           </div>
         </header>
         <main className="workspace-main">
-          {route.page !== 'runs' && route.page !== 'home' && (
+          {route.page !== 'runs' && route.page !== 'home' && route.page !== 'routes' && (
             <div className="workspace-backline">
               <button className="workspace-backlink" onClick={() => navigate('/runs')}>
                 ← Назад к архиву
@@ -81,6 +89,7 @@ function App() {
           )}
           {route.page === 'home' && <LandingPage />}
           {route.page === 'runs' && <RunsPage />}
+          {route.page === 'routes' && <RoutesPage />}
           {route.page === 'new' && <UploadPage />}
           {route.page === 'run' && <RunPage runId={route.runId} />}
         </main>

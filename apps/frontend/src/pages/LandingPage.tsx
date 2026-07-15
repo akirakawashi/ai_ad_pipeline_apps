@@ -20,6 +20,9 @@ export function LandingPage() {
             <button className="primary" onClick={() => navigate('/runs/new')}>
               Добавить видео
             </button>
+            <button className="secondary" onClick={() => navigate('/routes')}>
+              Открыть маршруты
+            </button>
             <button className="secondary" onClick={() => navigate('/runs')}>
               Открыть архив
             </button>
