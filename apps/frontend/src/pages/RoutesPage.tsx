@@ -4,31 +4,8 @@ import { EmptyState, ErrorBanner } from '../components/common/Feedback'
 import { PageHeader } from '../components/common/PageHeader'
 import { RouteMapSkeleton } from '../components/common/Skeletons'
 import { findCity } from '../data/cities'
+import { CITY_ROUTES } from '../data/routes'
 import { navigate } from '../routing'
-
-interface RouteMeta {
-  id: string
-  name: string
-  colorLabel: string
-  file: string
-}
-
-interface CityRoutesData {
-  routes: RouteMeta[]
-  colors: string[]
-}
-
-const CITY_ROUTES: Record<string, CityRoutesData> = {
-  simferopol: {
-    routes: [
-      { id: 'route-1', name: 'Севастопольская | пр. Победы', colorLabel: 'Красная линия', file: 'route_1.geojson' },
-      { id: 'route-2', name: 'Московская | Киевская', colorLabel: 'Синяя линия', file: 'route_2.geojson' },
-      { id: 'route-3', name: 'Объездная дорога', colorLabel: 'Зелёная линия', file: 'route_3.geojson' },
-      { id: 'route-4', name: 'Евпаторийское шоссе', colorLabel: 'Жёлтая линия', file: 'route_4.geojson' },
-    ],
-    colors: ['#ff3b3f', '#3b8cff', '#32c26b', '#f3c944'],
-  },
-}
 
 export function RoutesPage({ cityId }: { cityId: string }) {
   const city = findCity(cityId)
@@ -176,9 +153,11 @@ export function RoutesPage({ cityId }: { cityId: string }) {
               <p className="panel-kicker">Текущий фокус</p>
               <h3>{focusedMeta ? focusedMeta.name : 'Маршрут не выбран'}</h3>
               <p className="route-description">
-                {focusedMeta
-                  ? `Наведите курсор на карту или нажмите «Выбрать маршрут», чтобы закрепить его. ${focusedMeta.colorLabel}.`
-                  : 'Выберите направление в списке или наведите курсор на его линию на карте.'}
+                {focusedMeta && selectedIndex === focusedIndex
+                  ? `Маршрут закреплён. Нажмите «Загрузить видео», чтобы перейти к загрузке. ${focusedMeta.colorLabel}.`
+                  : focusedMeta
+                    ? `Наведите курсор на карту или нажмите «Выбрать маршрут», чтобы закрепить его. ${focusedMeta.colorLabel}.`
+                    : 'Выберите направление в списке или наведите курсор на его линию на карте.'}
               </p>
 
               <div className="stats">
@@ -202,9 +181,18 @@ export function RoutesPage({ cityId }: { cityId: string }) {
                 className="primary action-button"
                 type="button"
                 disabled={focusedIndex === null}
-                onClick={() => focusedIndex !== null && setSelectedIndex(focusedIndex)}
+                onClick={() => {
+                  if (focusedIndex === null) return
+                  if (selectedIndex === focusedIndex) {
+                    navigate(`/routes/${cityId}/${routesMeta[focusedIndex].id}/upload`)
+                  } else {
+                    setSelectedIndex(focusedIndex)
+                  }
+                }}
               >
-                {selectedIndex !== null && focusedIndex === selectedIndex ? 'Маршрут выбран' : 'Выбрать маршрут'}
+                {selectedIndex !== null && focusedIndex === selectedIndex
+                  ? 'Загрузить видео →'
+                  : 'Выбрать маршрут'}
               </button>
             </section>
           </aside>

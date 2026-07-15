@@ -898,6 +898,49 @@ main {
   margin-top: 4px;
 }
 
+.upload-batch-list {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.upload-batch-item {
+  width: min(640px, 100%);
+  margin: 0;
+  align-items: center;
+  margin-inline: auto;
+}
+
+.upload-batch-item > div:nth-child(2) {
+  min-width: 0;
+  flex: 1;
+}
+
+.upload-batch-item .progress-block {
+  margin-top: 10px;
+}
+
+.upload-batch-item .status {
+  flex: 0 0 auto;
+}
+
+.upload-batch-error {
+  display: block;
+  margin-top: 4px;
+  color: var(--danger);
+  font-size: 12px;
+}
+
+.upload-batch-summary {
+  width: 100%;
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+}
+
 .file-button {
   padding: 10px 16px;
   border: 1px solid var(--line-strong);

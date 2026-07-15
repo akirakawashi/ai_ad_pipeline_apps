@@ -3,6 +3,7 @@ import logoUrl from './assets/aisigroup-logo.png'
 import markUrl from './assets/aisigroup-mark.png'
 import { CitiesPage } from './pages/CitiesPage'
 import { LandingPage } from './pages/LandingPage'
+import { RouteUploadPage } from './pages/RouteUploadPage'
 import { RoutesPage } from './pages/RoutesPage'
 import { RunPage } from './pages/RunPage'
 import { RunsPage } from './pages/RunsPage'
@@ -20,6 +21,9 @@ function backlink(route: Route): { label: string; to: string } | null {
   }
   if (route.page === 'routes') {
     return { label: '← Назад к городам', to: '/routes' }
+  }
+  if (route.page === 'route-upload') {
+    return { label: '← Назад к маршруту', to: `/routes/${route.cityId}` }
   }
   return null
 }
@@ -57,7 +61,11 @@ function App() {
             Архив
           </button>
           <button
-            className={route.page === 'cities' || route.page === 'routes' ? 'active' : ''}
+            className={
+              route.page === 'cities' || route.page === 'routes' || route.page === 'route-upload'
+                ? 'active'
+                : ''
+            }
             onClick={() => navigate('/routes')}
           >
             <span>⚑</span>
@@ -105,6 +113,13 @@ function App() {
           {route.page === 'runs' && <RunsPage />}
           {route.page === 'cities' && <CitiesPage />}
           {route.page === 'routes' && <RoutesPage key={route.cityId} cityId={route.cityId} />}
+          {route.page === 'route-upload' && (
+            <RouteUploadPage
+              key={`${route.cityId}/${route.routeId}`}
+              cityId={route.cityId}
+              routeId={route.routeId}
+            />
+          )}
           {route.page === 'new' && <UploadPage />}
           {route.page === 'run' && <RunPage runId={route.runId} />}
         </main>
