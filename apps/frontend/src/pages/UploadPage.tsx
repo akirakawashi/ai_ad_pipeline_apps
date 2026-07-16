@@ -4,6 +4,7 @@ import { FileCard } from '../components/common/FileCard'
 import { ErrorBanner, InfoBanner } from '../components/common/Feedback'
 import { PageHeader } from '../components/common/PageHeader'
 import { ProgressBar } from '../components/common/ProgressBar'
+import { Select } from '../components/common/Select'
 import { useVideoUpload } from '../hooks/useVideoUpload'
 import { navigate } from '../routing'
 import type { City, CityDetail } from '../types'
@@ -125,40 +126,38 @@ export function UploadPage({ citySlug, routeSlug, measurementId }: UploadPagePro
         <section className="panel destination-panel">
           <h2>Куда загрузить?</h2>
           <div className="destination-fields">
-            <label>
+            <div className="field">
               Город
-              <select
+              <Select
+                ariaLabel="Город"
                 value={selectedCity}
                 disabled={noRoute || upload.busy}
-                onChange={(event) => setSelectedCity(event.target.value)}
-              >
-                <option value="">Выберите город</option>
-                {cities.map((city) => (
-                  <option key={city.id} value={city.slug}>
-                    {city.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
+                placeholder="Выберите город"
+                options={cities.map((city) => ({ value: city.slug, label: city.name }))}
+                onChange={setSelectedCity}
+              />
+            </div>
+            <div className="field">
               Маршрут
-              <select
+              <Select
+                ariaLabel="Маршрут"
                 value={selectedRoute}
                 disabled={noRoute || !activeDetail || upload.busy}
-                onChange={(event) => setSelectedRoute(event.target.value)}
-              >
-                {!activeDetail && <option value="">Сначала выберите город</option>}
-                {activeDetail?.routes.map((route) => (
-                  <option key={route.id} value={route.slug}>
-                    {route.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+                placeholder={activeDetail ? 'Выберите маршрут' : 'Сначала выберите город'}
+                options={
+                  activeDetail?.routes.map((route) => ({
+                    value: route.slug,
+                    label: route.name,
+                  })) ?? []
+                }
+                onChange={setSelectedRoute}
+              />
+            </div>
           </div>
           <label className="destination-toggle">
             <input
               type="checkbox"
+              className="checkbox"
               checked={noRoute}
               disabled={upload.busy}
               onChange={(event) => setNoRoute(event.target.checked)}

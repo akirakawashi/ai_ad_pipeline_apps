@@ -3,7 +3,9 @@ import { getCities, getCity, listRuns } from '../api'
 import { EmptyState, ErrorBanner } from '../components/common/Feedback'
 import { PageHeader } from '../components/common/PageHeader'
 import { RunCard } from '../components/common/RunCard'
+import { Select } from '../components/common/Select'
 import { RunsSkeleton } from '../components/common/Skeletons'
+import { Tabs } from '../components/common/Tabs'
 import { navigate, uploadPath, videosPath, type VideoFilters } from '../routing'
 import type { City, PipelineRun, Route } from '../types'
 
@@ -81,13 +83,22 @@ export function VideosPage({ filters }: { filters: VideoFilters }) {
     navigate(videosPath({ ...filters, ...changes }))
   }
 
-  const unassignedOnly = filters.assigned === false
+  const viewMode =
+    filters.assigned === false ? 'unassigned' : filters.assigned === true ? 'assigned' : 'all'
+  const unassignedOnly = viewMode === 'unassigned'
+
+  const pageTitle =
+    viewMode === 'unassigned'
+      ? 'Видео без маршрута'
+      : viewMode === 'assigned'
+        ? 'Видео маршрутов'
+        : 'Все видео'
 
   return (
     <div className="page">
       <PageHeader
         eyebrow="Архив"
-        title={unassignedOnly ? 'Видео без маршрута' : 'Все видео'}
+        title={pageTitle}
         actions={
           <button className="primary" onClick={() => navigate(uploadPath())}>
             Загрузить видео
@@ -95,68 +106,71 @@ export function VideosPage({ filters }: { filters: VideoFilters }) {
         }
       />
 
+      <Tabs
+        ariaLabel="Какие видео показать"
+        value={viewMode}
+        options={[
+          { value: 'all', label: 'Все видео' },
+          { value: 'assigned', label: 'С маршрутом' },
+          { value: 'unassigned', label: 'Без маршрута' },
+        ]}
+        onChange={(tab) =>
+          update({
+            assigned: tab === 'unassigned' ? false : tab === 'assigned' ? true : undefined,
+            ...(tab === 'unassigned'
+              ? { cityId: undefined, routeId: undefined, measurementId: undefined }
+              : {}),
+          })
+        }
+      />
+
       <section className="filter-bar">
-        <label>
-          Город
-          <select
-            value={filters.cityId ?? ''}
-            disabled={unassignedOnly}
-            onChange={(event) =>
-              update({ cityId: event.target.value || undefined, routeId: undefined })
-            }
-          >
-            <option value="">Все города</option>
-            {cities.map((city) => (
-              <option key={city.id} value={city.id}>
-                {city.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Маршрут
-          <select
-            value={filters.routeId ?? ''}
-            disabled={unassignedOnly || !filters.cityId}
-            onChange={(event) => update({ routeId: event.target.value || undefined })}
-          >
-            <option value="">Все маршруты</option>
-            {activeRoutes.map((route) => (
-              <option key={route.id} value={route.id}>
-                {route.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
+        {!unassignedOnly && (
+          <>
+            <div className="field">
+              Город
+              <Select
+                ariaLabel="Город"
+                value={filters.cityId ?? ''}
+                placeholder="Все города"
+                options={[
+                  { value: '', label: 'Все города' },
+                  ...cities.map((city) => ({ value: city.id, label: city.name })),
+                ]}
+                onChange={(cityId) =>
+                  update({ cityId: cityId || undefined, routeId: undefined })
+                }
+              />
+            </div>
+            <div className="field">
+              Маршрут
+              <Select
+                ariaLabel="Маршрут"
+                value={filters.routeId ?? ''}
+                disabled={!filters.cityId}
+                placeholder="Все маршруты"
+                options={[
+                  { value: '', label: 'Все маршруты' },
+                  ...activeRoutes.map((route) => ({ value: route.id, label: route.name })),
+                ]}
+                onChange={(routeId) => update({ routeId: routeId || undefined })}
+              />
+            </div>
+          </>
+        )}
+        <div className="field">
           Статус
-          <select
+          <Select
+            ariaLabel="Статус"
             value={filters.status ?? ''}
-            onChange={(event) => update({ status: event.target.value || undefined })}
-          >
-            <option value="">Любой</option>
-            {STATUS_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="filter-toggle">
-          <input
-            type="checkbox"
-            checked={unassignedOnly}
-            onChange={(event) =>
-              update({
-                assigned: event.target.checked ? false : undefined,
-                cityId: undefined,
-                routeId: undefined,
-                measurementId: undefined,
-              })
-            }
+            placeholder="Любой"
+            options={[
+              { value: '', label: 'Любой' },
+              ...STATUS_OPTIONS,
+            ]}
+            onChange={(status) => update({ status: status || undefined })}
           />
-          Только без маршрута
-        </label>
+        </div>
       </section>
 
       {loading && <RunsSkeleton />}

@@ -2411,8 +2411,8 @@ button:disabled,
   gap: 12px;
 }
 
-.destination-fields label,
-.filter-bar label {
+.destination-fields .field,
+.filter-bar .field {
   display: grid;
   gap: 6px;
   font-size: 12px;
@@ -2422,32 +2422,22 @@ button:disabled,
   color: var(--muted);
 }
 
-.destination-fields select,
-.filter-bar select {
-  padding: 10px 12px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: rgba(21, 21, 21, 0.94);
-  color: var(--text, #f4f4f4);
-  font-size: 14px;
-  font-weight: 500;
-  text-transform: none;
-  letter-spacing: 0;
+.filter-bar .field {
+  min-width: 180px;
 }
 
-.destination-fields select:disabled,
-.filter-bar select:disabled {
-  opacity: 0.5;
-}
-
-.destination-toggle,
-.filter-toggle {
+.destination-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 9px;
   font-size: 13px;
   color: var(--muted);
   cursor: pointer;
+  transition: color 160ms ease;
+}
+
+.destination-toggle:hover {
+  color: var(--text);
 }
 
 .filter-bar {
@@ -2462,9 +2452,253 @@ button:disabled,
   background: rgba(21, 21, 21, 0.6);
 }
 
-.filter-toggle {
-  align-self: center;
-  padding-top: 14px;
+/* Сегментированный переключатель (components/common/Tabs.tsx) */
+
+.tabs {
+  position: relative;
+  display: inline-grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  flex-shrink: 0;
+  margin-bottom: 14px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: rgba(21, 21, 21, 0.94);
+}
+
+.tabs-indicator {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 4px;
+  width: calc((100% - 8px) / var(--tabs-count));
+  border-radius: 8px;
+  background: var(--accent);
+  transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.tabs-option {
+  position: relative;
+  z-index: 1;
+  padding: 8px 16px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  text-align: center;
+  cursor: pointer;
+  transition: color 160ms ease;
+}
+
+.tabs-option.is-active {
+  color: #001a15;
+}
+
+.tabs-option:hover:not(.is-active) {
+  color: var(--text);
+}
+
+.tabs-option:focus-visible {
+  outline: none;
+  border-radius: 8px;
+  box-shadow: 0 0 0 3px rgba(5, 195, 161, 0.35);
+}
+
+/* Кастомный дропдаун (components/common/Select.tsx) */
+
+.dropdown {
+  position: relative;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.dropdown-trigger {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(21, 21, 21, 0.94);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.dropdown-trigger:hover:not(:disabled) {
+  border-color: rgba(5, 195, 161, 0.5);
+}
+
+.dropdown.is-open .dropdown-trigger {
+  border-color: var(--accent);
+  background: #181818;
+}
+
+.dropdown-trigger:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(5, 195, 161, 0.22);
+}
+
+.dropdown-trigger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dropdown-value {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.dropdown-value.is-placeholder {
+  color: var(--muted);
+}
+
+.dropdown-chevron {
+  flex-shrink: 0;
+  color: var(--muted);
+  transition:
+    transform 200ms cubic-bezier(0.16, 1, 0.3, 1),
+    color 160ms ease;
+}
+
+.dropdown.is-open .dropdown-chevron {
+  color: var(--accent);
+  transform: rotate(180deg);
+}
+
+.dropdown-list {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  overflow-y: auto;
+  max-height: 264px;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: #161616;
+  box-shadow: 0 20px 44px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(14px);
+  opacity: 0;
+  transform: translateY(-6px) scale(0.98);
+  transform-origin: top center;
+  transition:
+    opacity 160ms ease,
+    transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.dropdown-list.is-open {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.dropdown-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
+}
+
+.dropdown-option.is-highlighted {
+  background: rgba(5, 195, 161, 0.12);
+}
+
+.dropdown-option.is-selected {
+  color: var(--accent);
+  font-weight: 650;
+}
+
+.dropdown-option-check {
+  flex-shrink: 0;
+  opacity: 0;
+  color: var(--accent);
+  transform: scale(0.5);
+  transition:
+    opacity 140ms ease,
+    transform 140ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.dropdown-option.is-selected .dropdown-option-check {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* Кастомный чекбокс */
+
+.checkbox {
+  appearance: none;
+  display: inline-grid;
+  flex-shrink: 0;
+  place-content: center;
+  width: 19px;
+  height: 19px;
+  margin: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--surface-2);
+  cursor: pointer;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.checkbox::after {
+  content: '';
+  width: 5px;
+  height: 9px;
+  border: solid #001a15;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg) translate(-1.5px, -1.24px) scale(0);
+  transition: transform 180ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.checkbox:hover:not(:disabled) {
+  border-color: rgba(5, 195, 161, 0.58);
+}
+
+.checkbox:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(5, 195, 161, 0.22);
+}
+
+.checkbox:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.checkbox:checked::after {
+  transform: rotate(45deg) translate(-1.5px, -1.24px) scale(1);
+}
+
+.checkbox:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .run-badges {
