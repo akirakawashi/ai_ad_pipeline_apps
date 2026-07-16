@@ -7,9 +7,18 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from application.common.dto import (
     ArtifactUrlDTO,
+    BatchStatusCountsDTO,
+    BatchTotalsDTO,
     BrandSummaryDTO,
+    CityDetailDTO,
+    CityDTO,
+    CityRefDTO,
     OverlayPayloadDTO,
     PlaybackDTO,
+    RouteBatchDTO,
+    RouteDTO,
+    RouteRefDTO,
+    RunBatchRefDTO,
     RunObjectDTO,
     RunSummaryTotalsDTO,
     RunTimelinePointDTO,
@@ -41,6 +50,8 @@ class CreateRunRequest(ApiModel):
     file_name: str = Field(min_length=1, max_length=512)
     content_type: str | None = Field(default=None, max_length=255)
     size_bytes: int = Field(gt=0)
+    # None означает «Без маршрута» — видео вне города и маршрута.
+    batch_id: str | None = Field(default=None, max_length=36)
 
 
 class CreateRunResponse(ApiModel):
@@ -66,6 +77,55 @@ class RunEventResponse(ApiModel):
     created_at: datetime | None
 
 
+class CityRefResponse(CityRefDTO):
+    pass
+
+
+class RouteRefResponse(RouteRefDTO):
+    pass
+
+
+class RunBatchRefResponse(RunBatchRefDTO):
+    pass
+
+
+class RouteResponse(RouteDTO):
+    pass
+
+
+class CityResponse(CityDTO):
+    pass
+
+
+class CityDetailResponse(CityDetailDTO):
+    pass
+
+
+class BatchStatusCountsResponse(BatchStatusCountsDTO):
+    pass
+
+
+class BatchResponse(RouteBatchDTO):
+    pass
+
+
+class PaginatedBatchesResponse(ApiModel):
+    items: list[BatchResponse]
+    page: int
+    page_size: int
+    total: int
+
+
+class BatchTotalsResponse(BatchTotalsDTO):
+    pass
+
+
+class BatchSummaryResponse(ApiModel):
+    batch: BatchResponse
+    totals: BatchTotalsResponse
+    brands: list["BrandSummaryResponse"] = Field(default_factory=list)
+
+
 class PipelineRunResponse(ApiModel):
     run_id: str = Field(validation_alias=AliasChoices("run_id", "pipeline_runs_id"))
     source_name: str
@@ -88,6 +148,7 @@ class PipelineRunResponse(ApiModel):
     started_at: datetime | None
     completed_at: datetime | None
     updated_at: datetime | None
+    batch: RunBatchRefResponse | None = None
     artifacts: list[RunArtifactResponse] = Field(default_factory=list)
     events: list[RunEventResponse] = Field(default_factory=list)
 

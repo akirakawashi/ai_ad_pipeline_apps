@@ -3,6 +3,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     Column,
     DateTime,
     Float,
@@ -21,6 +22,222 @@ from domain.entities import PipelineRunStage, PipelineRunStatus
 
 def uuid_string() -> str:
     return str(uuid.uuid4())
+
+
+class City(SQLModel, table=True):
+    __tablename__ = "cities"
+
+    cities_id: str = Field(
+        default_factory=uuid_string,
+        sa_column=Column(
+            String(36),
+            primary_key=True,
+            default=uuid_string,
+            nullable=False,
+        ),
+    )
+    slug: str = Field(
+        sa_column=Column(
+            String(64),
+            unique=True,
+            index=True,
+            nullable=False,
+        ),
+    )
+    name: str = Field(
+        sa_column=Column(String(255), nullable=False),
+    )
+    region: str | None = Field(
+        default=None,
+        sa_column=Column(String(255), nullable=True),
+    )
+    # Путь относительно apps/frontend/public/, без ведущего слэша и домена.
+    # Пример: "routes/simferopol/export.geojson". Слэш добавляет фронтенд.
+    roads_geojson_path: str | None = Field(
+        default=None,
+        sa_column=Column(String(512), nullable=True),
+    )
+    display_order: int = Field(
+        default=0,
+        sa_column=Column(Integer, default=0, nullable=False),
+    )
+    is_active: bool = Field(
+        default=True,
+        sa_column=Column(Boolean, default=True, nullable=False),
+    )
+    created_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(
+            DateTime(timezone=True),
+            server_default=func.now(),
+            nullable=False,
+        ),
+    )
+    updated_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(
+            DateTime(timezone=True),
+            server_default=func.now(),
+            onupdate=func.now(),
+            nullable=False,
+        ),
+    )
+
+    routes: list["Route"] = Relationship(
+        back_populates="city",
+        cascade_delete=True,
+        sa_relationship_kwargs={
+            "order_by": "Route.display_order",
+        },
+    )
+
+
+class Route(SQLModel, table=True):
+    __tablename__ = "routes"
+
+    routes_id: str = Field(
+        default_factory=uuid_string,
+        sa_column=Column(
+            String(36),
+            primary_key=True,
+            default=uuid_string,
+            nullable=False,
+        ),
+    )
+    cities_id: str = Field(
+        sa_column=Column(
+            String(36),
+            ForeignKey(
+                "cities.cities_id",
+                ondelete="CASCADE",
+            ),
+            index=True,
+            nullable=False,
+        ),
+    )
+    slug: str = Field(
+        sa_column=Column(String(64), nullable=False),
+    )
+    name: str = Field(
+        sa_column=Column(String(255), nullable=False),
+    )
+    color_label: str | None = Field(
+        default=None,
+        sa_column=Column(String(64), nullable=True),
+    )
+    color_hex: str | None = Field(
+        default=None,
+        sa_column=Column(String(16), nullable=True),
+    )
+    # Полный путь относительно apps/frontend/public/, без ведущего слэша.
+    # Пример: "routes/simferopol/route_1.geojson".
+    geojson_path: str = Field(
+        sa_column=Column(String(512), nullable=False),
+    )
+    display_order: int = Field(
+        default=0,
+        sa_column=Column(Integer, default=0, nullable=False),
+    )
+    is_active: bool = Field(
+        default=True,
+        sa_column=Column(Boolean, default=True, nullable=False),
+    )
+    created_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(
+            DateTime(timezone=True),
+            server_default=func.now(),
+            nullable=False,
+        ),
+    )
+    updated_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(
+            DateTime(timezone=True),
+            server_default=func.now(),
+            onupdate=func.now(),
+            nullable=False,
+        ),
+    )
+
+    city: City | None = Relationship(back_populates="routes")
+    batches: list["RouteBatch"] = Relationship(
+        back_populates="route",
+        cascade_delete=True,
+        sa_relationship_kwargs={
+            "order_by": "RouteBatch.sequence_number",
+        },
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "cities_id",
+            "slug",
+            name="uq_routes_city_slug",
+        ),
+    )
+
+
+class RouteBatch(SQLModel, table=True):
+    __tablename__ = "route_batches"
+
+    route_batches_id: str = Field(
+        default_factory=uuid_string,
+        sa_column=Column(
+            String(36),
+            primary_key=True,
+            default=uuid_string,
+            nullable=False,
+        ),
+    )
+    routes_id: str = Field(
+        sa_column=Column(
+            String(36),
+            ForeignKey(
+                "routes.routes_id",
+                ondelete="CASCADE",
+            ),
+            index=True,
+            nullable=False,
+        ),
+    )
+    sequence_number: int = Field(
+        sa_column=Column(Integer, nullable=False),
+    )
+    # NULL означает "вычислять": «Пачка №{sequence_number} · {created_at}».
+    title: str | None = Field(
+        default=None,
+        sa_column=Column(String(255), nullable=True),
+    )
+    created_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(
+            DateTime(timezone=True),
+            server_default=func.now(),
+            nullable=False,
+            index=True,
+        ),
+    )
+    updated_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(
+            DateTime(timezone=True),
+            server_default=func.now(),
+            onupdate=func.now(),
+            nullable=False,
+        ),
+    )
+
+    route: Route | None = Relationship(back_populates="batches")
+    runs: list["PipelineRun"] = Relationship(back_populates="batch")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "routes_id",
+            "sequence_number",
+            name="uq_route_batches_route_sequence",
+        ),
+    )
 
 
 class PipelineRun(SQLModel, table=True):
@@ -55,6 +272,20 @@ class PipelineRun(SQLModel, table=True):
             BigInteger,
             default=0,
             nullable=False,
+        ),
+    )
+
+    # NULL означает «Без маршрута» — разовая загрузка вне города и маршрута.
+    route_batches_id: str | None = Field(
+        default=None,
+        sa_column=Column(
+            String(36),
+            ForeignKey(
+                "route_batches.route_batches_id",
+                ondelete="SET NULL",
+            ),
+            index=True,
+            nullable=True,
         ),
     )
 
@@ -171,6 +402,7 @@ class PipelineRun(SQLModel, table=True):
         ),
     )
 
+    batch: RouteBatch | None = Relationship(back_populates="runs")
     artifacts: list["PipelineArtifact"] = Relationship(
         back_populates="run",
         cascade_delete=True,

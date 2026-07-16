@@ -5,7 +5,7 @@ import type { PipelineRun } from '../types'
 import { ProcessingPage } from './ProcessingPage'
 import { ResultPage } from './ResultPage'
 
-export function RunPage({ runId }: { runId: string }) {
+export function RunPage({ runId, seek }: { runId: string; seek?: number }) {
   const [run, setRun] = useState<PipelineRun | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -34,5 +34,5 @@ export function RunPage({ runId }: { runId: string }) {
   if (error) return <ErrorBanner text={error} />
   if (!run) return <EmptyState text="Открываем анализ…" />
   if (run.status !== 'completed') return <ProcessingPage run={run} />
-  return <ResultPage run={run} />
+  return <ResultPage run={run} initialSeek={seek} />
 }

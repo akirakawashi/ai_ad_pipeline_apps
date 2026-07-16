@@ -29,6 +29,29 @@ class UploadTargetDTO(ApplicationDTO):
     headers: dict[str, str]
 
 
+# Ref-DTO живут здесь, а не в catalog.py: PipelineRunDTO ссылается на пачку,
+# а catalog.py импортирует ApplicationDTO отсюда — иначе получился бы цикл.
+class CityRefDTO(ApplicationDTO):
+    id: str
+    slug: str
+    name: str
+
+
+class RouteRefDTO(ApplicationDTO):
+    id: str
+    slug: str
+    name: str
+    color_hex: str | None = None
+
+
+class RunBatchRefDTO(ApplicationDTO):
+    batch_id: str
+    sequence_number: int
+    title: str
+    route: RouteRefDTO
+    city: CityRefDTO
+
+
 class PipelineArtifactDTO(ApplicationDTO):
     id: str
     run_id: str
@@ -71,6 +94,9 @@ class PipelineRunDTO(ApplicationDTO):
     started_at: datetime | None
     completed_at: datetime | None
     updated_at: datetime | None
+    # Заполняется только там, где связь загружена явно (_run_to_dto(with_batch=...)).
+    # None означает «Без маршрута» либо «связь не запрашивали».
+    batch: RunBatchRefDTO | None = None
     artifacts: list[PipelineArtifactDTO] = Field(default_factory=list)
     events: list[PipelineRunEventDTO] = Field(default_factory=list)
 

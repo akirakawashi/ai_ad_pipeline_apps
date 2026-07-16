@@ -1,8 +1,13 @@
 import type {
+  BatchesPage,
+  BatchSummary,
+  City,
+  CityDetail,
   CreateRunResult,
   OverlayPayload,
   PipelineRun,
   Playback,
+  RouteBatch,
   RunObjects,
   RunsPage,
   RunSummary,
@@ -35,13 +40,18 @@ async function apiFetch<T>(
   return envelope.data
 }
 
-export function createRun(file: File): Promise<CreateRunResult> {
+/** batchId === null — «Без маршрута»: видео вне города и маршрута. */
+export function createRun(
+  file: File,
+  batchId: string | null = null,
+): Promise<CreateRunResult> {
   return apiFetch('/runs', {
     method: 'POST',
     body: JSON.stringify({
       file_name: file.name,
       content_type: file.type || 'application/octet-stream',
       size_bytes: file.size,
+      batch_id: batchId,
     }),
   })
 }
@@ -82,8 +92,64 @@ export function completeUpload(runId: string): Promise<PipelineRun> {
   })
 }
 
-export function listRuns(page = 1): Promise<RunsPage> {
-  return apiFetch(`/runs?page=${page}&page_size=20`)
+export interface ListRunsParams {
+  page?: number
+  pageSize?: number
+  status?: string
+  cityId?: string
+  routeId?: string
+  batchId?: string
+  /** false — только видео без маршрута. */
+  assigned?: boolean
+}
+
+export function listRuns(params: ListRunsParams = {}): Promise<RunsPage> {
+  const query = new URLSearchParams()
+  query.set('page', String(params.page ?? 1))
+  query.set('page_size', String(params.pageSize ?? 20))
+  if (params.status) query.set('status', params.status)
+  if (params.cityId) query.set('city_id', params.cityId)
+  if (params.routeId) query.set('route_id', params.routeId)
+  if (params.batchId) query.set('batch_id', params.batchId)
+  if (params.assigned !== undefined) query.set('assigned', String(params.assigned))
+  return apiFetch(`/runs?${query.toString()}`)
+}
+
+export function getCities(): Promise<City[]> {
+  return apiFetch('/cities')
+}
+
+export function getCity(citySlug: string): Promise<CityDetail> {
+  return apiFetch(`/cities/${citySlug}`)
+}
+
+export function getRouteBatches(
+  citySlug: string,
+  routeSlug: string,
+): Promise<BatchesPage> {
+  return apiFetch(`/cities/${citySlug}/routes/${routeSlug}/batches?page=1&page_size=50`)
+}
+
+export function createBatch(
+  citySlug: string,
+  routeSlug: string,
+): Promise<RouteBatch> {
+  return apiFetch(`/cities/${citySlug}/routes/${routeSlug}/batches`, {
+    method: 'POST',
+    body: '{}',
+  })
+}
+
+export function getBatch(batchId: string): Promise<RouteBatch> {
+  return apiFetch(`/batches/${batchId}`)
+}
+
+export function getBatchRuns(batchId: string): Promise<PipelineRun[]> {
+  return apiFetch(`/batches/${batchId}/runs`)
+}
+
+export function getBatchSummary(batchId: string): Promise<BatchSummary> {
+  return apiFetch(`/batches/${batchId}/summary`)
 }
 
 export function getRun(runId: string): Promise<PipelineRun> {

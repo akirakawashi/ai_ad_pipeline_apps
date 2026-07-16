@@ -28,13 +28,20 @@ import type {
 } from '../types'
 import { formatDuration, formatNumber } from '../utils/formatters'
 
-export function ResultPage({ run }: { run: PipelineRun }) {
+export function ResultPage({
+  run,
+  initialSeek,
+}: {
+  run: PipelineRun
+  /** Приходит из ?t= — переход с топа объектов пачки на нужный кадр. */
+  initialSeek?: number
+}) {
   const [summary, setSummary] = useState<RunSummary | null>(null)
   const [objects, setObjects] = useState<RunObjects | null>(null)
   const [timeline, setTimeline] = useState<RunTimeline | null>(null)
   const [playback, setPlayback] = useState<Playback | null>(null)
   const [overlay, setOverlay] = useState<OverlayPayload | null>(null)
-  const [seek, setSeek] = useState<number | null>(null)
+  const [seek, setSeek] = useState<number | null>(initialSeek ?? null)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
 
@@ -81,18 +88,30 @@ export function ResultPage({ run }: { run: PipelineRun }) {
   return (
     <div className="page">
       <PageHeader
-        eyebrow="Результат анализа"
+        eyebrow={
+          run.batch
+            ? `${run.batch.city.name} · ${run.batch.route.name} · ${run.batch.title}`
+            : 'Результат анализа'
+        }
         title={run.source_name}
         description={`${formatDuration(run.duration_sec)} · ${run.width ?? 0}×${run.height ?? 0}`}
         actions={
           <div className="page-actions">
-            <button className="secondary" onClick={() => navigate('/runs')}>
-              В архив
+            {run.batch && (
+              <button
+                className="secondary"
+                onClick={() => navigate(`/batches/${run.batch!.batch_id}`)}
+              >
+                К пачке
+              </button>
+            )}
+            <button className="secondary" onClick={() => navigate('/videos')}>
+              Все видео
             </button>
             <button className="secondary" onClick={() => void copyResultLink()}>
               {copied ? 'Скопировано' : 'Копировать ссылку'}
             </button>
-            <button className="primary" onClick={() => navigate('/runs/new')}>
+            <button className="primary" onClick={() => navigate('/upload')}>
               Добавить видео
             </button>
           </div>

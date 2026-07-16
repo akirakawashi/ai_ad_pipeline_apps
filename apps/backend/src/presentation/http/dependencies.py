@@ -6,8 +6,10 @@ from functools import lru_cache
 from fastapi import Depends
 from sqlmodel import Session
 
+from application.services.catalog_service import CatalogService
 from application.services.pipeline_run_service import PipelineRunService
 from infrastructure.database.session import get_db_session
+from infrastructure.repositories.sql_catalog_repository import SqlCatalogRepository
 from infrastructure.repositories.sql_pipeline_run_repository import (
     SqlPipelineRunRepository,
 )
@@ -31,4 +33,14 @@ def get_run_service(
     return PipelineRunService(
         SqlPipelineRunRepository(session),
         storage,
+    )
+
+
+def get_catalog_service(
+    session: Session = Depends(get_session),
+    storage: MinioStorage = Depends(get_object_storage),
+) -> CatalogService:
+    return CatalogService(
+        SqlCatalogRepository(session),
+        PipelineRunService(SqlPipelineRunRepository(session), storage),
     )

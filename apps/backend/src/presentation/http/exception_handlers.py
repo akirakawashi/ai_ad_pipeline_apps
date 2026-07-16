@@ -4,7 +4,12 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from minio.error import S3Error
 
-from application.exceptions import InvalidVideoError, PipelineRunNotFoundError
+from application.exceptions import (
+    BatchFullError,
+    CatalogNotFoundError,
+    InvalidVideoError,
+    PipelineRunNotFoundError,
+)
 
 
 def setup_exception_handlers(app: FastAPI) -> None:
@@ -15,6 +20,26 @@ def setup_exception_handlers(app: FastAPI) -> None:
     ) -> JSONResponse:
         return JSONResponse(
             status_code=404,
+            content={"detail": str(exc)},
+        )
+
+    @app.exception_handler(CatalogNotFoundError)
+    async def catalog_not_found_handler(
+        _: Request,
+        exc: CatalogNotFoundError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=404,
+            content={"detail": str(exc)},
+        )
+
+    @app.exception_handler(BatchFullError)
+    async def batch_full_handler(
+        _: Request,
+        exc: BatchFullError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=409,
             content={"detail": str(exc)},
         )
 

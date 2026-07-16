@@ -15,6 +15,99 @@ export interface RunEvent {
   created_at: string
 }
 
+export interface CityRef {
+  id: string
+  slug: string
+  name: string
+}
+
+export interface RouteRef {
+  id: string
+  slug: string
+  name: string
+  color_hex: string | null
+}
+
+/** Ссылка на пачку с карточки видео. null — «Без маршрута». */
+export interface RunBatchRef {
+  batch_id: string
+  sequence_number: number
+  title: string
+  route: RouteRef
+  city: CityRef
+}
+
+export interface Route {
+  id: string
+  slug: string
+  name: string
+  color_label: string | null
+  color_hex: string | null
+  /** Путь относительно public/, без ведущего слэша: 'routes/simferopol/route_1.geojson'. */
+  geojson_path: string
+  display_order: number
+  batch_count: number
+  video_count: number
+}
+
+export interface City {
+  id: string
+  slug: string
+  name: string
+  region: string | null
+  /** Путь относительно public/, без ведущего слэша. */
+  roads_geojson_path: string | null
+  display_order: number
+  route_count: number
+  batch_count: number
+  video_count: number
+}
+
+export interface CityDetail extends City {
+  routes: Route[]
+}
+
+export interface BatchStatusCounts {
+  uploading: number
+  upload_failed: number
+  queued: number
+  processing: number
+  completed: number
+  processing_failed: number
+}
+
+export interface RouteBatch {
+  id: string
+  sequence_number: number
+  title: string
+  route: RouteRef
+  city: CityRef
+  video_count: number
+  status_counts: BatchStatusCounts
+  created_at: string
+}
+
+export interface BatchesPage {
+  items: RouteBatch[]
+  page: number
+  page_size: number
+  total: number
+}
+
+export interface BatchTotals {
+  total_objects: number
+  visibility_index: number
+  video_count: number
+  completed_count: number
+  duration_sec: number
+}
+
+export interface BatchSummary {
+  batch: RouteBatch
+  totals: BatchTotals
+  brands: BrandSummary[]
+}
+
 export interface PipelineRun {
   run_id: string
   source_name: string
@@ -37,6 +130,8 @@ export interface PipelineRun {
   started_at: string | null
   completed_at: string | null
   updated_at: string
+  /** null — «Без маршрута» либо связь не запрашивали. */
+  batch: RunBatchRef | null
   artifacts: Artifact[]
   events: RunEvent[]
 }

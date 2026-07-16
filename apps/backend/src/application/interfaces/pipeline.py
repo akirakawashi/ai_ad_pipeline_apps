@@ -56,6 +56,7 @@ class PipelineRunRepository(Protocol):
         source_object_key: str,
         content_type: str | None,
         size_bytes: int,
+        batch_id: str | None = None,
     ) -> PipelineRunDTO: ...
 
     def list_runs(
@@ -64,7 +65,15 @@ class PipelineRunRepository(Protocol):
         page: int,
         page_size: int,
         status: PipelineRunStatus | None = None,
+        city_id: str | None = None,
+        route_id: str | None = None,
+        batch_id: str | None = None,
+        assigned: bool | None = None,
     ) -> tuple[list[PipelineRunDTO], int]: ...
+
+    def lock_batch(self, batch_id: str) -> bool: ...
+
+    def count_batch_runs(self, batch_id: str) -> int: ...
 
     def get(
         self,

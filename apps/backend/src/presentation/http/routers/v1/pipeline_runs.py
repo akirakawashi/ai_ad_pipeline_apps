@@ -33,6 +33,7 @@ def create_run(
         file_name=request.file_name,
         content_type=request.content_type,
         size_bytes=request.size_bytes,
+        batch_id=request.batch_id,
     )
     return OkResponse(data=CreateRunResponse.model_validate(result))
 
@@ -54,12 +55,23 @@ def list_runs(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     status: PipelineRunStatus | None = Query(default=None),
+    city_id: str | None = Query(default=None),
+    route_id: str | None = Query(default=None),
+    batch_id: str | None = Query(default=None),
+    assigned: bool | None = Query(
+        default=None,
+        description="false — только видео без маршрута",
+    ),
     service: PipelineRunService = Depends(get_run_service),
 ) -> OkResponse[PaginatedRunsResponse]:
     result = service.list_runs(
         page=page,
         page_size=page_size,
         status=status,
+        city_id=city_id,
+        route_id=route_id,
+        batch_id=batch_id,
+        assigned=assigned,
     )
     return OkResponse(data=PaginatedRunsResponse.model_validate(result))
 

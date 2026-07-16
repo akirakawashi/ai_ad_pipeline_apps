@@ -16,7 +16,10 @@ from infrastructure.database.models import (
     PipelineArtifact,
     PipelineRun,
     PipelineRunEvent,
+    Route,
+    RouteBatch,
 )
+from infrastructure.repositories.batch_mapping import batch_ref
 
 
 def _status_value(status: PipelineRunStatus) -> str:
@@ -65,8 +68,11 @@ def _event_to_dto(event: PipelineRunEvent) -> PipelineRunEventDTO:
     )
 
 
-def _run_to_dto(run: PipelineRun) -> PipelineRunDTO:
+def _run_to_dto(run: PipelineRun, *, with_batch: bool = False) -> PipelineRunDTO:
+    # with_batch=True только там, где связь загружена через selectinload.
+    # Воркер зовёт эту функцию на detached-инстансах — там batch трогать нельзя.
     return PipelineRunDTO(
+        batch=batch_ref(run) if with_batch else None,
         run_id=run.pipeline_runs_id,
         source_name=run.source_name,
         source_object_key=run.source_object_key,
@@ -106,6 +112,7 @@ class SqlPipelineRunRepository:
         source_object_key: str,
         content_type: str | None,
         size_bytes: int,
+        batch_id: str | None = None,
     ) -> PipelineRunDTO:
         run = PipelineRun(
             pipeline_runs_id=run_id,
@@ -113,6 +120,7 @@ class SqlPipelineRunRepository:
             source_object_key=source_object_key,
             source_content_type=content_type,
             source_size_bytes=size_bytes,
+            route_batches_id=batch_id,
             status=PipelineRunStatus.UPLOADING.value,
             stage=PipelineRunStage.UPLOAD.value,
             progress=0,
@@ -135,10 +143,32 @@ class SqlPipelineRunRepository:
         page: int,
         page_size: int,
         status: PipelineRunStatus | None = None,
+        city_id: str | None = None,
+        route_id: str | None = None,
+        batch_id: str | None = None,
+        assigned: bool | None = None,
     ) -> tuple[list[PipelineRunDTO], int]:
         filters = []
         if status:
             filters.append(PipelineRun.status == _status_value(status))
+        if batch_id:
+            filters.append(PipelineRun.route_batches_id == batch_id)
+        if assigned is not None:
+            if assigned:
+                filters.append(PipelineRun.route_batches_id.is_not(None))
+            else:
+                filters.append(PipelineRun.route_batches_id.is_(None))
+        if route_id or city_id:
+            # Маршрут и город достаём подзапросом по цепочке batch → route → city,
+            # чтобы не денормализовать их в pipeline_runs.
+            batch_ids = select(RouteBatch.route_batches_id).join(
+                Route, Route.routes_id == RouteBatch.routes_id
+            )
+            if route_id:
+                batch_ids = batch_ids.where(Route.routes_id == route_id)
+            if city_id:
+                batch_ids = batch_ids.where(Route.cities_id == city_id)
+            filters.append(PipelineRun.route_batches_id.in_(batch_ids))
 
         total = self._session.exec(
             select(func.count(PipelineRun.pipeline_runs_id)).where(*filters)
@@ -149,13 +179,16 @@ class SqlPipelineRunRepository:
             .options(
                 selectinload(PipelineRun.artifacts),
                 noload(PipelineRun.events),
+                selectinload(PipelineRun.batch)
+                .selectinload(RouteBatch.route)
+                .selectinload(Route.city),
             )
             .order_by(PipelineRun.created_at.desc())
             .offset((page - 1) * page_size)
             .limit(page_size)
         )
         runs = self._session.exec(statement).all()
-        return [_run_to_dto(run) for run in runs], int(total)
+        return [_run_to_dto(run, with_batch=True) for run in runs], int(total)
 
     def get(
         self,
@@ -168,8 +201,9 @@ class SqlPipelineRunRepository:
             run_id,
             with_artifacts=with_artifacts,
             with_events=with_events,
+            with_batch=True,
         )
-        return _run_to_dto(run) if run else None
+        return _run_to_dto(run, with_batch=True) if run else None
 
     def mark_upload_complete(
         self,
@@ -214,6 +248,27 @@ class SqlPipelineRunRepository:
         self._session.add(artifact)
         self._session.flush()
         return _artifact_to_dto(artifact)
+
+    def lock_batch(self, batch_id: str) -> bool:
+        """Блокирует строку пачки до конца транзакции. False — пачки нет.
+
+        Без этого два параллельных create_run, каждый насчитав MAX-1,
+        оба вставят строку и лимит будет превышен.
+        """
+        batch = self._session.exec(
+            select(RouteBatch)
+            .where(RouteBatch.route_batches_id == batch_id)
+            .with_for_update()
+        ).first()
+        return batch is not None
+
+    def count_batch_runs(self, batch_id: str) -> int:
+        total = self._session.exec(
+            select(func.count(PipelineRun.pipeline_runs_id)).where(
+                PipelineRun.route_batches_id == batch_id
+            )
+        ).one()
+        return int(total)
 
     def add_event(
         self,
@@ -352,6 +407,7 @@ class SqlPipelineRunRepository:
         *,
         with_artifacts: bool = True,
         with_events: bool = False,
+        with_batch: bool = False,
     ) -> PipelineRun | None:
         statement = select(PipelineRun).where(PipelineRun.pipeline_runs_id == run_id)
         if with_artifacts:
@@ -362,4 +418,12 @@ class SqlPipelineRunRepository:
             statement = statement.options(selectinload(PipelineRun.events))
         else:
             statement = statement.options(noload(PipelineRun.events))
+        if with_batch:
+            statement = statement.options(
+                selectinload(PipelineRun.batch)
+                .selectinload(RouteBatch.route)
+                .selectinload(Route.city)
+            )
+        else:
+            statement = statement.options(noload(PipelineRun.batch))
         return self._session.exec(statement).one_or_none()

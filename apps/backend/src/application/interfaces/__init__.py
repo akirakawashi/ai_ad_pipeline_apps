@@ -1,3 +1,4 @@
+from application.interfaces.catalog import CatalogRepository
 from application.interfaces.pipeline import (
     ObjectStat,
     PipelineRunRepository,
@@ -6,6 +7,7 @@ from application.interfaces.pipeline import (
 )
 
 __all__ = [
+    "CatalogRepository",
     "ObjectStat",
     "PipelineRunRepository",
     "RunObjectStorage",

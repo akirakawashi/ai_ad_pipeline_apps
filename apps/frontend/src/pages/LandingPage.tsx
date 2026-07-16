@@ -17,14 +17,14 @@ export function LandingPage() {
             проверяемые метрики на интерактивной странице результата.
           </p>
           <div className="landing-actions">
-            <button className="primary" onClick={() => navigate('/runs/new')}>
-              Добавить видео
+            <button className="primary" onClick={() => navigate('/upload')}>
+              Загрузить видео
             </button>
-            <button className="secondary" onClick={() => navigate('/routes')}>
-              Открыть маршруты
+            <button className="secondary" onClick={() => navigate('/archive')}>
+              Города и маршруты
             </button>
-            <button className="secondary" onClick={() => navigate('/runs')}>
-              Открыть архив
+            <button className="secondary" onClick={() => navigate('/videos')}>
+              Все видео
             </button>
           </div>
         </div>

@@ -7,3 +7,11 @@ class PipelineRunNotFoundError(LookupError):
 
 class InvalidVideoError(ValueError):
     pass
+
+
+class CatalogNotFoundError(LookupError):
+    """Не найден город, маршрут или пачка."""
+
+
+class BatchFullError(ValueError):
+    """В пачке уже MAX_BATCH_VIDEOS видео."""

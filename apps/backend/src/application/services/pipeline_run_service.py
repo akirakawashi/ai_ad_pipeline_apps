@@ -28,7 +28,12 @@ from application.common.dto import (
     RunTimelinePointDTO,
     UploadTargetDTO,
 )
-from application.exceptions import InvalidVideoError, PipelineRunNotFoundError
+from application.exceptions import (
+    BatchFullError,
+    CatalogNotFoundError,
+    InvalidVideoError,
+    PipelineRunNotFoundError,
+)
 from application.interfaces import PipelineRunRepository, RunObjectStorage
 from domain.entities import PipelineArtifactType, PipelineRunStatus
 
@@ -41,6 +46,9 @@ ALLOWED_VIDEO_EXTENSIONS = {
     ".mp4",
     ".webm",
 }
+
+# Ограничение продукта, а не схемы: поднять — правка одной строки, без миграции.
+MAX_BATCH_VIDEOS = 20
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
@@ -83,6 +91,7 @@ class PipelineRunService:
         file_name: str,
         content_type: str | None,
         size_bytes: int,
+        batch_id: str | None = None,
     ) -> CreateRunDTO:
         safe_name = safe_file_name(file_name)
         if Path(safe_name).suffix.casefold() not in ALLOWED_VIDEO_EXTENSIONS:
@@ -92,6 +101,18 @@ class PipelineRunService:
         if size_bytes <= 0:
             raise InvalidVideoError("Файл пустой. Выберите другое видео.")
 
+        if batch_id is not None:
+            # Блокировка строки пачки сериализует параллельные create_run:
+            # иначе два запроса, каждый насчитав MAX-1, оба вставят.
+            if not self._repository.lock_batch(batch_id):
+                self._repository.rollback()
+                raise CatalogNotFoundError("Пачка не найдена.")
+            if self._repository.count_batch_runs(batch_id) >= MAX_BATCH_VIDEOS:
+                self._repository.rollback()
+                raise BatchFullError(
+                    f"В пачку можно загрузить не более {MAX_BATCH_VIDEOS} видео."
+                )
+
         run_id = str(uuid.uuid4())
         source_object_key = f"runs/{run_id}/source/{safe_name}"
         run = self._repository.create(
@@ -100,6 +121,7 @@ class PipelineRunService:
             source_object_key=source_object_key,
             content_type=content_type or "application/octet-stream",
             size_bytes=size_bytes,
+            batch_id=batch_id,
         )
         self._repository.commit()
 
@@ -148,11 +170,19 @@ class PipelineRunService:
         page: int,
         page_size: int,
         status: PipelineRunStatus | None,
+        city_id: str | None = None,
+        route_id: str | None = None,
+        batch_id: str | None = None,
+        assigned: bool | None = None,
     ) -> PaginatedRunsDTO:
         runs, total = self._repository.list_runs(
             page=page,
             page_size=page_size,
             status=status,
+            city_id=city_id,
+            route_id=route_id,
+            batch_id=batch_id,
+            assigned=assigned,
         )
         return PaginatedRunsDTO(
             items=runs,

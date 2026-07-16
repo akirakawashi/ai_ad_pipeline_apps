@@ -1,6 +1,8 @@
 *
 !pyproject.toml
 !uv.lock
+!pipeline_contracts/
+!pipeline_contracts/**
 !apps/
 apps/*
 !apps/backend/

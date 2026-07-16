@@ -1,43 +1,54 @@
 import { useEffect, useState, type CSSProperties } from 'react'
+import { getCity } from '../api'
 import { RouteMap, type GeoFeatureCollection } from '../components/RouteMap'
 import { EmptyState, ErrorBanner } from '../components/common/Feedback'
 import { PageHeader } from '../components/common/PageHeader'
 import { RouteMapSkeleton } from '../components/common/Skeletons'
-import { findCity } from '../data/cities'
-import { CITY_ROUTES } from '../data/routes'
 import { navigate } from '../routing'
+import type { CityDetail } from '../types'
 
-export function RoutesPage({ cityId }: { cityId: string }) {
-  const city = findCity(cityId)
-  const cityData = CITY_ROUTES[cityId]
+const FALLBACK_COLOR = '#8a8f98'
 
+export function CityPage({ citySlug }: { citySlug: string }) {
+  const [city, setCity] = useState<CityDetail | null>(null)
   const [roads, setRoads] = useState<GeoFeatureCollection | null>(null)
   const [routes, setRoutes] = useState<GeoFeatureCollection[] | null>(null)
-  const [loading, setLoading] = useState(() => Boolean(cityData))
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [notFound, setNotFound] = useState(false)
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
 
   useEffect(() => {
-    if (!cityData) return
-
     let disposed = false
 
-    Promise.all([
-      fetch(`/routes/${cityId}/export.geojson`),
-      ...cityData.routes.map((route) => fetch(`/routes/${cityId}/${route.file}`)),
-    ])
-      .then(async (responses) => {
+    getCity(citySlug)
+      .then(async (detail) => {
+        if (disposed) return
+        setCity(detail)
+
+        // Пути к geojson приходят из БД целиком; фронт добавляет только слэш.
+        const responses = await Promise.all([
+          fetch(`/${detail.roads_geojson_path ?? ''}`),
+          ...detail.routes.map((route) => fetch(`/${route.geojson_path}`)),
+        ])
         if (responses.some((response) => !response.ok)) {
           throw new Error('Не удалось загрузить данные маршрутов.')
         }
-        const [roadsData, ...routesData] = await Promise.all(responses.map((response) => response.json()))
+        const [roadsData, ...routesData] = await Promise.all(
+          responses.map((response) => response.json()),
+        )
         if (disposed) return
         setRoads(roadsData)
         setRoutes(routesData)
       })
       .catch((reason) => {
-        if (!disposed) setError(String(reason))
+        if (disposed) return
+        if (String(reason).includes('не найден')) {
+          setNotFound(true)
+        } else {
+          setError(String(reason))
+        }
       })
       .finally(() => {
         if (!disposed) setLoading(false)
@@ -46,16 +57,16 @@ export function RoutesPage({ cityId }: { cityId: string }) {
     return () => {
       disposed = true
     }
-  }, [cityId, cityData])
+  }, [citySlug])
 
-  if (!cityData) {
+  if (notFound) {
     return (
       <div className="page">
-        <PageHeader eyebrow="Маршруты" title="Город не найден" />
+        <PageHeader eyebrow="Архив" title="Город не найден" />
         <EmptyState
           text="Такого города пока нет в списке."
           action={
-            <button className="primary" onClick={() => navigate('/routes')}>
+            <button className="primary" onClick={() => navigate('/archive')}>
               Выбрать город
             </button>
           }
@@ -64,12 +75,12 @@ export function RoutesPage({ cityId }: { cityId: string }) {
     )
   }
 
-  const routesMeta = cityData.routes
-  const routeColors = cityData.colors
-
+  const routesMeta = city?.routes ?? []
+  const routeColors = routesMeta.map((route) => route.color_hex ?? FALLBACK_COLOR)
   const focusedIndex = hoveredIndex ?? selectedIndex
   const focusedMeta = focusedIndex !== null ? routesMeta[focusedIndex] : null
-  const focusedSegmentCount = focusedIndex !== null ? routes?.[focusedIndex]?.features.length : undefined
+  const focusedSegmentCount =
+    focusedIndex !== null ? routes?.[focusedIndex]?.features.length : undefined
 
   const handleReset = () => {
     setHoveredIndex(null)
@@ -79,25 +90,28 @@ export function RoutesPage({ cityId }: { cityId: string }) {
   return (
     <div className="page">
       <PageHeader
-        eyebrow={city?.name ?? 'Маршруты'}
+        eyebrow={city?.name ?? 'Архив'}
         title="Выберите маршрут"
         description="Наведите курсор на линию на карте или выберите направление в списке."
         actions={
-          <button className="ghost-button" onClick={handleReset} disabled={focusedIndex === null}>
+          <button
+            className="ghost-button"
+            onClick={handleReset}
+            disabled={focusedIndex === null}
+          >
             Сбросить выбор
           </button>
         }
       />
 
       {error && <ErrorBanner text={error} />}
-
       {loading && <RouteMapSkeleton />}
 
-      {!loading && roads && routes && (
+      {!loading && city && roads && routes && (
         <div className="content-grid">
           <section className="panel map-card">
             <div className="map-toolbar">
-              <span className="city-label">{city?.name ?? cityId}</span>
+              <span className="city-label">{city.name}</span>
               <span className="map-hint">Интерактивная схема</span>
             </div>
             <RouteMap
@@ -118,7 +132,9 @@ export function RoutesPage({ cityId }: { cityId: string }) {
                 <p className="panel-kicker">Направления</p>
                 <h2>Куда поедем?</h2>
               </div>
-              <span className="route-count">{String(routesMeta.length).padStart(2, '0')}</span>
+              <span className="route-count">
+                {String(routesMeta.length).padStart(2, '0')}
+              </span>
             </div>
 
             <div className="route-options" role="group" aria-label="Доступные маршруты">
@@ -137,10 +153,14 @@ export function RoutesPage({ cityId }: { cityId: string }) {
                   onBlur={() => setHoveredIndex(null)}
                   onClick={() => setSelectedIndex(index)}
                 >
-                  <span className="route-number">{String(index + 1).padStart(2, '0')}</span>
+                  <span className="route-number">
+                    {String(index + 1).padStart(2, '0')}
+                  </span>
                   <span className="route-option-copy">
                     <strong>{route.name}</strong>
-                    <small>{route.colorLabel}</small>
+                    <small>
+                      {route.color_label} · {route.batch_count} пачек
+                    </small>
                   </span>
                   <span className="route-option-arrow" aria-hidden="true">
                     ↗
@@ -154,9 +174,9 @@ export function RoutesPage({ cityId }: { cityId: string }) {
               <h3>{focusedMeta ? focusedMeta.name : 'Маршрут не выбран'}</h3>
               <p className="route-description">
                 {focusedMeta && selectedIndex === focusedIndex
-                  ? `Маршрут закреплён. Нажмите «Загрузить видео», чтобы перейти к загрузке. ${focusedMeta.colorLabel}.`
+                  ? `Маршрут закреплён. Нажмите «Открыть маршрут», чтобы увидеть пачки. ${focusedMeta.color_label}.`
                   : focusedMeta
-                    ? `Наведите курсор на карту или нажмите «Выбрать маршрут», чтобы закрепить его. ${focusedMeta.colorLabel}.`
+                    ? `Наведите курсор на карту или нажмите «Выбрать маршрут», чтобы закрепить его. ${focusedMeta.color_label}.`
                     : 'Выберите направление в списке или наведите курсор на его линию на карте.'}
               </p>
 
@@ -166,14 +186,8 @@ export function RoutesPage({ cityId }: { cityId: string }) {
                   <strong>{focusedSegmentCount ?? '—'}</strong>
                 </div>
                 <div className="stat-card">
-                  <span>Статус</span>
-                  <strong>
-                    {selectedIndex !== null && focusedIndex === selectedIndex
-                      ? 'Выбран'
-                      : focusedIndex !== null
-                        ? 'Обзор'
-                        : 'Ожидание'}
-                  </strong>
+                  <span>Пачек</span>
+                  <strong>{focusedMeta ? focusedMeta.batch_count : '—'}</strong>
                 </div>
               </div>
 
@@ -184,14 +198,14 @@ export function RoutesPage({ cityId }: { cityId: string }) {
                 onClick={() => {
                   if (focusedIndex === null) return
                   if (selectedIndex === focusedIndex) {
-                    navigate(`/routes/${cityId}/${routesMeta[focusedIndex].id}/upload`)
+                    navigate(`/archive/${citySlug}/${routesMeta[focusedIndex].slug}`)
                   } else {
                     setSelectedIndex(focusedIndex)
                   }
                 }}
               >
                 {selectedIndex !== null && focusedIndex === selectedIndex
-                  ? 'Загрузить видео →'
+                  ? 'Открыть маршрут →'
                   : 'Выбрать маршрут'}
               </button>
             </section>

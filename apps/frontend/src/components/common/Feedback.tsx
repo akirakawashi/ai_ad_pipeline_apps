@@ -18,3 +18,8 @@ export function EmptyState({
 export function ErrorBanner({ text }: { text: string }) {
   return <div className="error-banner">{text}</div>
 }
+
+/** Для валидации и подсказок: это не ошибка, стилям ошибки тут не место. */
+export function InfoBanner({ text }: { text: string }) {
+  return <div className="info-banner">{text}</div>
+}
