@@ -2710,9 +2710,11 @@ button:disabled,
 }
 
 .run-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 3px 8px;
   border: 1px solid var(--line);
-  border-left-width: 3px;
   border-radius: 6px;
   background: rgba(255, 255, 255, 0.03);
   font-size: 11px;
@@ -2720,8 +2722,15 @@ button:disabled,
 }
 
 .run-badge.muted {
-  border-left-width: 1px;
   opacity: 0.75;
+}
+
+.run-badge-dot {
+  width: 7px;
+  height: 7px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: var(--muted);
 }
 
 .unassigned-card {

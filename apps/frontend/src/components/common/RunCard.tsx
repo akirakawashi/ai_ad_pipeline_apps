@@ -30,7 +30,11 @@ export function RunCard({ run, showBadges = false }: RunCardProps) {
                   className="run-badge"
                   style={
                     run.measurement.route.color_hex
-                      ? { borderColor: run.measurement.route.color_hex }
+                      ? {
+                          background: `color-mix(in srgb, ${run.measurement.route.color_hex} 16%, transparent)`,
+                          borderColor: `color-mix(in srgb, ${run.measurement.route.color_hex} 45%, transparent)`,
+                          color: run.measurement.route.color_hex,
+                        }
                       : undefined
                   }
                 >
