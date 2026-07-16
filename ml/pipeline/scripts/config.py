@@ -81,7 +81,6 @@ class PipelineConfig:
     output_dir: Path
     detector_model_path: Path
     classifier_model_path: Path
-    brand_overrides_path: Path | None
     run_id: str
     frame_stride: int = DEFAULT_FRAME_STRIDE
     device: str | None = None

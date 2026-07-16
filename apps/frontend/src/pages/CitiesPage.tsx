@@ -33,7 +33,7 @@ export function CitiesPage() {
   return (
     <div className="page">
       <PageHeader
-        eyebrow="Архив"
+        eyebrow="Города"
         title="Города и маршруты"
         description="Выберите город, затем маршрут — внутри лежат замеры видео."
       />

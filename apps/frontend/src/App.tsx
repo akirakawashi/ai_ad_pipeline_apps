@@ -72,7 +72,7 @@ function App() {
             onClick={() => navigate('/archive')}
           >
             <span>⚑</span>
-            Архив
+            Города
           </button>
           <button
             className={route.page === 'videos' || route.page === 'run' ? 'active' : ''}

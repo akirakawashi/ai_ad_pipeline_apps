@@ -94,19 +94,50 @@ export interface MeasurementsPage {
   total: number
 }
 
-export interface MeasurementTotals {
-  total_objects: number
+export interface MeasurementStat {
+  mean: number
+  std: number
+}
+
+export interface PassBrand {
+  brand: string
+  objects_count: number
   visibility_index: number
-  video_count: number
-  completed_count: number
+}
+
+/** Сырые метрики одного проезда — вход для сравнения проездов. */
+export interface MeasurementPass {
+  run_id: string
+  source_name: string
   duration_sec: number
+  objects_count: number
+  visibility_index: number
+  brands: PassBrand[]
+}
+
+export interface MeasurementBrand {
+  brand: string
+  objects_per_pass: MeasurementStat
+  visibility_per_pass: MeasurementStat
+  visibility_share: number
+}
+
+export interface MeasurementTotals {
+  passes_total: number
+  passes_completed: number
+  /** Сумма — «сколько наснимали». Остальное усредняется по проездам. */
+  duration_sec: number
+  objects_per_pass: MeasurementStat
+  visibility_per_pass: MeasurementStat
 }
 
 export interface MeasurementSummary {
   measurement: RouteMeasurement
   totals: MeasurementTotals
-  brands: BrandSummary[]
+  brands: MeasurementBrand[]
+  passes: MeasurementPass[]
 }
+
 
 export interface PipelineRun {
   run_id: string

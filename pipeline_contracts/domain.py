@@ -21,7 +21,6 @@ class BrandStatus(StrEnum):
     MANUAL_REVIEW = "manual_review"
     DETECTED_BRAND = "detected_brand"
     OTHER = "other"
-    IGNORED = "ignored"
 
 
 class FinalStatus(StrEnum):
@@ -30,13 +29,10 @@ class FinalStatus(StrEnum):
     MANUAL_REVIEW = "manual_review"
     DETECTED_BRAND = "detected_brand"
     OTHER = "other"
-    IGNORED = "ignored"
 
 
 OTHER_BRAND = "other"
-IGNORE_BRAND = "ignore"
 TARGET_BRANDS = frozenset({"mts", "plus7", "miranda"})
-VALID_OVERRIDE_BRANDS = TARGET_BRANDS | {OTHER_BRAND, IGNORE_BRAND}
 
 
 def normalize_brand_name(value: str) -> str:

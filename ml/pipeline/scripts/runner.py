@@ -18,7 +18,6 @@ from .detection import load_detector, run_detection
 from .domain import ClassificationInputStatus, CropQualityStatus
 from .html_viewer import write_html_overlay_viewer
 from .io import iter_frames, load_frames, load_metadata
-from .overrides import apply_brand_overrides
 from .quality import evaluate_crop_quality
 from .reports import write_pipeline_outputs
 from .schemas import DetectionRecord, FrameRecord, InputMetadata, TrackRecord
@@ -245,14 +244,6 @@ def run_final_aggregation_stage(context: PipelineContext) -> None:
 
 
 def run_business_rules_stage(context: PipelineContext) -> None:
-    applied_overrides = apply_brand_overrides(
-        context.tracks,
-        context.detections,
-        context.config.brand_overrides_path,
-    )
-    if applied_overrides:
-        logger.info("brand overrides applied: %s", applied_overrides)
-
     stabilized_tracks = stabilize_object_brands(
         context.tracks,
         context.detections,

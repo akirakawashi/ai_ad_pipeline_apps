@@ -61,7 +61,7 @@ def stabilize_object_brands(
     for object_id, object_tracks in tracks_by_object.items():
         brand = choose_object_business_brand(object_tracks)
         object_detections = detections_by_object.get(object_id, [])
-        visible = is_business_visible(object_tracks, object_detections, config)
+        visible = is_business_visible(object_detections, config)
         for track in object_tracks:
             if track.business_brand != brand:
                 changed += 1
@@ -204,37 +204,26 @@ def ratio(first: float, second: float) -> float:
 
 
 def choose_object_business_brand(tracks: list[TrackRecord]) -> str:
-    manual_scores: dict[str, float] = defaultdict(float)
+    """Голосование фрагментов объекта, взвешенное по заметности и уверенности."""
     model_scores: dict[str, float] = defaultdict(float)
 
     for track in tracks:
+        if track.business_brand not in TARGET_BRANDS:
+            continue
         score = max(
             track.video_visibility_weighted_seconds, track.visible_duration_sec, 1.0
         )
-        score *= max(track.final_brand_conf, 0.01)
-        if track.final_status_reason.startswith("manual_override:"):
-            manual_scores[track.business_brand] += score
-        elif track.business_brand in TARGET_BRANDS:
-            model_scores[track.business_brand] += score
+        model_scores[track.business_brand] += score * max(track.final_brand_conf, 0.01)
 
-    if manual_scores:
-        return max(manual_scores.items(), key=lambda item: item[1])[0]
     if model_scores:
         return max(model_scores.items(), key=lambda item: item[1])[0]
     return "other"
 
 
 def is_business_visible(
-    tracks: list[TrackRecord],
     detections: list[DetectionRecord],
     config: PipelineConfig,
 ) -> bool:
-    if any(track.final_status_reason.startswith("manual_ignore:") for track in tracks):
-        return False
-    if any(
-        track.final_status_reason.startswith("manual_override:") for track in tracks
-    ):
-        return True
     if len(detections) < config.business.min_object_detections:
         return False
     if not detections:

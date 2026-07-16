@@ -620,6 +620,8 @@ main {
 }
 
 .run-card {
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   width: 100%;
   min-height: 292px;
@@ -646,7 +648,8 @@ main {
 
 .run-preview {
   display: grid;
-  min-height: 168px;
+  flex-shrink: 0;
+  height: 168px;
   place-items: center;
   background:
     radial-gradient(circle at 50% 42%, rgba(5, 195, 161, 0.3), transparent 24%),
@@ -661,11 +664,16 @@ main {
 }
 
 .run-copy {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
   padding: 18px 20px 20px;
 }
 
 .run-copy h3 {
   overflow: hidden;
+  width: 100%;
   margin: 11px 0 6px;
   color: #ffffff;
   font-size: 18px;
@@ -680,13 +688,19 @@ main {
 }
 
 .run-copy p {
-  margin: 0;
+  width: 100%;
+  /* нижний отступ = гарантированный зазор до линии .run-meta, которую
+     margin-top:auto прижимает к низу и иначе прилепляет вплотную к дате. */
+  margin: 0 0 10px;
 }
 
 .run-meta {
   display: flex;
+  width: 100%;
   justify-content: space-between;
-  margin-top: 16px;
+  /* auto прижимает нижнюю строку к низу карточки — так строки метрик
+     выравниваются между карточками независимо от числа бейджей. */
+  margin-top: auto;
   padding-top: 13px;
   border-top: 1px solid var(--line);
 }
@@ -2154,36 +2168,8 @@ button:disabled,
   line-height: 1.55;
 }
 
-.stats {
-  display: grid;
-  grid-template-columns: 1fr 1.25fr;
-  gap: 8px;
-  margin: 16px 0;
-}
-
-.stat-card {
-  padding: 11px 12px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: rgba(0, 0, 0, 0.24);
-}
-
-.stat-card span {
-  display: block;
-  margin-bottom: 5px;
-  color: var(--muted-2);
-  font-size: 10px;
-  font-weight: 650;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.stat-card strong {
-  display: block;
-  color: #ffffff;
-  font-size: 18px;
-  font-weight: 730;
-  letter-spacing: -0.03em;
+.selection-card .action-button {
+  width: 100%;
 }
 
 .route-map-skeleton-frame {
@@ -2410,6 +2396,7 @@ button:disabled,
 .destination-panel {
   display: grid;
   gap: 14px;
+  margin-bottom: 18px;
   padding: 20px;
 }
 
@@ -2483,6 +2470,7 @@ button:disabled,
 .run-badges {
   display: flex;
   flex-wrap: wrap;
+  width: 100%;
   gap: 6px;
   margin: 6px 0;
 }

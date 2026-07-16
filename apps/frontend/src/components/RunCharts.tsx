@@ -49,14 +49,9 @@ const tooltipCursor = {
 
 interface RunChartsProps {
   brands: BrandSummary[]
-  /** На странице замера объектов нет — топ живёт отдельным блоком. */
-  objects?: RunObject[]
-  /**
-   * На странице замера таймлайна нет: проезды независимы, поэтому ось
-   * «секунды от старта» между ними несопоставима.
-   */
-  timeline?: RunTimeline
-  onSeek?: (seconds: number) => void
+  objects: RunObject[]
+  timeline: RunTimeline
+  onSeek: (seconds: number) => void
 }
 
 interface BrandChartRow {
@@ -72,7 +67,7 @@ type ChartRow = Record<string, number>
 
 export function RunCharts({
   brands,
-  objects = [],
+  objects,
   timeline,
   onSeek,
 }: RunChartsProps) {
@@ -84,7 +79,7 @@ export function RunCharts({
     objects.forEach((object) =>
       values.add(normalizeBrand(object.business_brand)),
     )
-    timeline?.points.forEach((point) =>
+    timeline.points.forEach((point) =>
       values.add(normalizeBrand(point.business_brand)),
     )
     return [...values].sort(compareBrands)
@@ -120,13 +115,11 @@ export function RunCharts({
 
   const visibilityTimelineRows = useMemo(
     () =>
-      timeline
-        ? buildTimelineRows(
-            timeline,
-            hiddenBrands,
-            (point) => point.visibility_score,
-          )
-        : [],
+      buildTimelineRows(
+        timeline,
+        hiddenBrands,
+        (point) => point.visibility_score,
+      ),
     [hiddenBrands, timeline],
   )
 
@@ -382,7 +375,6 @@ export function RunCharts({
           </ResponsiveContainer>
         </section>
 
-        {topObjectRows.length > 0 && (
         <section className="panel chart-card wide-chart">
           <header>
             <h3>Самые заметные объекты</h3>
@@ -395,7 +387,7 @@ export function RunCharts({
               margin={{ left: 20, right: 32 }}
               onClick={(state) => {
                 const seconds = activePayloadNumber(state, 'best_timestamp_sec')
-                if (seconds !== null) onSeek?.(seconds)
+                if (seconds !== null) onSeek(seconds)
               }}
             >
               <CartesianGrid stroke="rgba(255,255,255,.08)" horizontal={false} />
@@ -427,9 +419,7 @@ export function RunCharts({
             </BarChart>
           </ResponsiveContainer>
         </section>
-        )}
 
-        {timeline && (
         <section className="panel chart-card wide-chart">
           <header>
             <h3>Заметность по времени</h3>
@@ -440,7 +430,7 @@ export function RunCharts({
               data={visibilityTimelineRows}
               onClick={(state) => {
                 const seconds = activeLabelNumber(state)
-                if (seconds !== null) onSeek?.(seconds)
+                if (seconds !== null) onSeek(seconds)
               }}
             >
               <CartesianGrid stroke="rgba(255,255,255,.08)" vertical={false} />
@@ -469,7 +459,6 @@ export function RunCharts({
             </BarChart>
           </ResponsiveContainer>
         </section>
-        )}
       </div>
     </>
   )

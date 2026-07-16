@@ -71,12 +71,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--device", default=None, help="Torch/Ultralytics device, e.g. cpu or 0."
     )
-    parser.add_argument(
-        "--brand-overrides",
-        type=Path,
-        default=None,
-        help="CSV with manual brand overrides by track_id or crop_name.",
-    )
     parser.add_argument("--detector-conf-min", type=float, default=0.50)
     parser.add_argument("--detector-imgsz", type=int, default=960)
     parser.add_argument("--detector-iou", type=float, default=0.50)
@@ -118,11 +112,6 @@ def build_config(args: argparse.Namespace) -> PipelineConfig:
         output_dir=output_dir,
         detector_model_path=resolve_project_path(project_root, args.detector_model),
         classifier_model_path=resolve_project_path(project_root, args.classifier_model),
-        brand_overrides_path=(
-            resolve_project_path(project_root, args.brand_overrides)
-            if args.brand_overrides
-            else None
-        ),
         run_id=run_id,
         frame_stride=args.frame_stride,
         device=args.device,

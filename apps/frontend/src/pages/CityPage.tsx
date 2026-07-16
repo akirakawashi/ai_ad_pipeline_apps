@@ -63,7 +63,7 @@ export function CityPage({ citySlug }: { citySlug: string }) {
   if (notFound) {
     return (
       <div className="page">
-        <PageHeader eyebrow="Архив" title="Город не найден" />
+        <PageHeader eyebrow="Города" title="Город не найден" />
         <EmptyState
           text="Такого города пока нет в списке."
           action={
@@ -80,8 +80,6 @@ export function CityPage({ citySlug }: { citySlug: string }) {
   const routeColors = routesMeta.map((route) => route.color_hex ?? FALLBACK_COLOR)
   const focusedIndex = hoveredIndex ?? selectedIndex
   const focusedMeta = focusedIndex !== null ? routesMeta[focusedIndex] : null
-  const focusedSegmentCount =
-    focusedIndex !== null ? routes?.[focusedIndex]?.features.length : undefined
 
   const handleReset = () => {
     setHoveredIndex(null)
@@ -91,7 +89,7 @@ export function CityPage({ citySlug }: { citySlug: string }) {
   return (
     <div className="page">
       <PageHeader
-        eyebrow={city?.name ?? 'Архив'}
+        eyebrow={city?.name ?? 'Города'}
         title="Выберите маршрут"
         description="Наведите курсор на линию на карте или выберите направление в списке."
         actions={
@@ -180,17 +178,6 @@ export function CityPage({ citySlug }: { citySlug: string }) {
                     ? `Наведите курсор на карту или нажмите «Выбрать маршрут», чтобы закрепить его. ${focusedMeta.color_label}.`
                     : 'Выберите направление в списке или наведите курсор на его линию на карте.'}
               </p>
-
-              <div className="stats">
-                <div className="stat-card">
-                  <span>Сегментов</span>
-                  <strong>{focusedSegmentCount ?? '—'}</strong>
-                </div>
-                <div className="stat-card">
-                  <span>Замеров</span>
-                  <strong>{focusedMeta ? focusedMeta.measurement_count : '—'}</strong>
-                </div>
-              </div>
 
               <button
                 className="primary action-button"

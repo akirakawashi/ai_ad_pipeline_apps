@@ -6,7 +6,6 @@ from pydantic import Field
 
 from application.common.dto.pipeline import (
     ApplicationDTO,
-    BrandSummaryDTO,
     CityRefDTO,
     RouteRefDTO,
 )
@@ -69,17 +68,59 @@ class PaginatedMeasurementsDTO(ApplicationDTO):
     total: int
 
 
-class MeasurementTotalsDTO(ApplicationDTO):
-    total_objects: int = 0
-    # Среднее по проездам, взвешенное по длительности: короткий проезд
-    # не должен весить столько же, сколько десятиминутный.
+class PassBrandDTO(ApplicationDTO):
+    """Итог одного бренда в одном проезде."""
+
+    brand: str
+    objects_count: int = 0
     visibility_index: float = 0.0
-    video_count: int = 0
-    completed_count: int = 0
+
+
+class MeasurementPassDTO(ApplicationDTO):
+    """Сырые метрики одного проезда — вход для любой свёртки.
+
+    Этот слой не зависит от того, как бизнес решит считать замер:
+    среднее, медиана, с отбраковкой коротких проездов или без.
+    """
+
+    run_id: str
+    source_name: str
     duration_sec: float = 0.0
+    objects_count: int = 0
+    visibility_index: float = 0.0
+    brands: list[PassBrandDTO] = Field(default_factory=list)
+
+
+class MeasurementStatDTO(ApplicationDTO):
+    """Величина «на проезд»: среднее и разброс между проездами."""
+
+    mean: float = 0.0
+    std: float = 0.0
+
+
+class MeasurementBrandDTO(ApplicationDTO):
+    brand: str
+    objects_per_pass: MeasurementStatDTO = Field(default_factory=MeasurementStatDTO)
+    visibility_per_pass: MeasurementStatDTO = Field(
+        default_factory=MeasurementStatDTO
+    )
+    # Доля от суммы средних по замеру.
+    visibility_share: float = 0.0
+
+
+class MeasurementTotalsDTO(ApplicationDTO):
+    passes_total: int = 0
+    passes_completed: int = 0
+    # Единственная величина, которую суммируем: это «сколько наснимали».
+    duration_sec: float = 0.0
+    objects_per_pass: MeasurementStatDTO = Field(default_factory=MeasurementStatDTO)
+    visibility_per_pass: MeasurementStatDTO = Field(
+        default_factory=MeasurementStatDTO
+    )
 
 
 class MeasurementSummaryDTO(ApplicationDTO):
     measurement: RouteMeasurementDTO
     totals: MeasurementTotalsDTO
-    brands: list[BrandSummaryDTO] = Field(default_factory=list)
+    brands: list[MeasurementBrandDTO] = Field(default_factory=list)
+    passes: list[MeasurementPassDTO] = Field(default_factory=list)

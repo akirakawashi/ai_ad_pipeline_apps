@@ -1,29 +1,48 @@
 import { useEffect, useState } from 'react'
 import { getMeasurementRuns, getMeasurementSummary } from '../api'
-import { RunCharts } from '../components/RunCharts'
+import { MeasurementCharts } from '../components/MeasurementCharts'
 import { EmptyState, ErrorBanner } from '../components/common/Feedback'
 import { Metric } from '../components/common/Metric'
 import { PageHeader } from '../components/common/PageHeader'
 import { RunCard } from '../components/common/RunCard'
 import { RunsSkeleton } from '../components/common/Skeletons'
 import { navigate, uploadPath } from '../routing'
-import type { MeasurementSummary, PipelineRun } from '../types'
+import type { MeasurementStat, MeasurementSummary, PipelineRun } from '../types'
 import { formatDuration, formatNumber, pluralPasses } from '../utils/formatters'
+
+/** Обработка идёт минутами — чаще смотреть незачем. */
+const POLL_INTERVAL_MS = 20000
+
+function stat(value: MeasurementStat, digits = 1): string {
+  if (!value.mean) return '—'
+  const mean = formatNumber(Number(value.mean.toFixed(digits)))
+  if (!value.std) return mean
+  return `${mean} ± ${value.std.toFixed(digits)}`
+}
 
 export function MeasurementPage({ measurementId }: { measurementId: string }) {
   const [summary, setSummary] = useState<MeasurementSummary | null>(null)
   const [runs, setRuns] = useState<PipelineRun[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // Пока есть необработанные проезды — опрашиваем. Все готовы — таймер снимаем,
+  // иначе открытая вкладка вечно тянет CSV каждого проезда из хранилища.
+  const [pending, setPending] = useState(true)
 
   useEffect(() => {
     let disposed = false
     const load = () => {
-      Promise.all([getMeasurementSummary(measurementId), getMeasurementRuns(measurementId)])
+      Promise.all([
+        getMeasurementSummary(measurementId),
+        getMeasurementRuns(measurementId),
+      ])
         .then(([summaryValue, runsValue]) => {
           if (disposed) return
           setSummary(summaryValue)
           setRuns(runsValue)
+          setPending(
+            summaryValue.totals.passes_completed < summaryValue.totals.passes_total,
+          )
         })
         .catch((reason) => {
           if (!disposed) setError(String(reason))
@@ -33,13 +52,17 @@ export function MeasurementPage({ measurementId }: { measurementId: string }) {
         })
     }
     load()
-    // Метрики считаются на лету и растут по мере обработки проездов.
-    const interval = window.setInterval(load, 5000)
+    if (!pending) {
+      return () => {
+        disposed = true
+      }
+    }
+    const interval = window.setInterval(load, POLL_INTERVAL_MS)
     return () => {
       disposed = true
       window.clearInterval(interval)
     }
-  }, [measurementId])
+  }, [measurementId, pending])
 
   if (loading && !summary) {
     return (
@@ -52,7 +75,7 @@ export function MeasurementPage({ measurementId }: { measurementId: string }) {
   if (error && !summary) {
     return (
       <div className="page">
-        <PageHeader eyebrow="Архив" title="Замер не найден" />
+        <PageHeader eyebrow="Города" title="Замер не найден" />
         <ErrorBanner text={error} />
       </div>
     )
@@ -60,8 +83,8 @@ export function MeasurementPage({ measurementId }: { measurementId: string }) {
 
   if (!summary) return null
 
-  const { measurement, totals, brands } = summary
-  const pending = totals.video_count - totals.completed_count
+  const { measurement, totals, brands, passes } = summary
+  const waiting = totals.passes_total - totals.passes_completed
   const color = measurement.route.color_hex ?? undefined
 
   return (
@@ -69,9 +92,9 @@ export function MeasurementPage({ measurementId }: { measurementId: string }) {
       <PageHeader
         eyebrow={`${measurement.city.name} · ${measurement.route.name}`}
         title={measurement.title}
-        description={`${pluralPasses(totals.video_count)} · ${formatDuration(
+        description={`${pluralPasses(totals.passes_total)} · отснято ${formatDuration(
           totals.duration_sec,
-        )} · обработано ${totals.completed_count} из ${totals.video_count}`}
+        )} · обработано ${totals.passes_completed} из ${totals.passes_total}`}
         actions={
           <div className="page-actions">
             <button
@@ -93,46 +116,51 @@ export function MeasurementPage({ measurementId }: { measurementId: string }) {
       />
 
       <div className="measurement-heading">
-        <span className="measurement-dot" style={color ? { background: color } : undefined} />
+        <span
+          className="measurement-dot"
+          style={color ? { background: color } : undefined}
+        />
         <span>{measurement.route.name}</span>
       </div>
 
       {error && <ErrorBanner text={error} />}
 
       <div className="summary-grid">
-        <Metric label="Объектов" value={totals.total_objects || '—'} />
+        <Metric label="Объектов за проезд" value={stat(totals.objects_per_pass)} />
         <Metric
-          label="Индекс заметности"
-          value={totals.visibility_index ? formatNumber(totals.visibility_index) : '—'}
+          label="Заметность за проезд"
+          value={stat(totals.visibility_per_pass)}
         />
-        <Metric label="Проездов" value={totals.video_count} />
-        <Metric label="Длительность" value={formatDuration(totals.duration_sec)} />
+        <Metric label="Проездов" value={totals.passes_total} />
+        <Metric label="Отснято" value={formatDuration(totals.duration_sec)} />
       </div>
 
-      {totals.completed_count === 0 ? (
+      {totals.passes_completed === 0 ? (
         <EmptyState
           text={
-            pending > 0
-              ? `Метрики замера появятся, когда обработается первое видео. Сейчас в работе ${pending}.`
+            waiting > 0
+              ? `Метрики появятся, когда обработается первый проезд. Сейчас в работе ${waiting}.`
               : 'В замере пока нет видео.'
           }
         />
       ) : (
         <>
-          {pending > 0 && (
+          {waiting > 0 && (
             <p className="measurement-pending-note">
-              Метрики считаются по {totals.completed_count} готовым проездам. Ещё{' '}
-              {pending} в работе — цифры дорастут.
+              Считаем по {totals.passes_completed} готовым проездам. Ещё {waiting} в
+              работе — цифры дорастут.
             </p>
           )}
-          <RunCharts brands={brands} />
+          <MeasurementCharts brands={brands} passes={passes} />
         </>
       )}
 
       <section className="panel objects-panel">
         <header>
           <h2>Проезды</h2>
-          <p>Каждое видео — отдельный проезд маршрута. Откройте, чтобы увидеть разбор.</p>
+          <p>
+            Каждое видео — отдельный проезд маршрута. Откройте, чтобы увидеть разбор.
+          </p>
         </header>
         {runs.length ? (
           <div className="runs-grid">

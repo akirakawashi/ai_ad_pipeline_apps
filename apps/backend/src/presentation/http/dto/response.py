@@ -11,6 +11,8 @@ from application.common.dto import (
     CityDetailDTO,
     CityDTO,
     CityRefDTO,
+    MeasurementBrandDTO,
+    MeasurementPassDTO,
     MeasurementStatusCountsDTO,
     MeasurementTotalsDTO,
     OverlayPayloadDTO,
@@ -119,10 +121,21 @@ class MeasurementTotalsResponse(MeasurementTotalsDTO):
     pass
 
 
+class MeasurementBrandResponse(MeasurementBrandDTO):
+    pass
+
+
+class MeasurementPassResponse(MeasurementPassDTO):
+    pass
+
+
 class MeasurementSummaryResponse(ApiModel):
     measurement: MeasurementResponse
     totals: MeasurementTotalsResponse
-    brands: list["BrandSummaryResponse"] = Field(default_factory=list)
+    brands: list[MeasurementBrandResponse] = Field(default_factory=list)
+    # Сырые метрики проездов: вход для сравнения проездов на странице
+    # и для любой другой свёртки, если политика поменяется.
+    passes: list[MeasurementPassResponse] = Field(default_factory=list)
 
 
 class PipelineRunResponse(ApiModel):

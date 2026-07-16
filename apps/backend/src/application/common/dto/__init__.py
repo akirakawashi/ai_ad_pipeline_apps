@@ -1,10 +1,14 @@
 from application.common.dto.catalog import (
     CityDetailDTO,
     CityDTO,
+    MeasurementBrandDTO,
+    MeasurementPassDTO,
+    MeasurementStatDTO,
     MeasurementStatusCountsDTO,
     MeasurementSummaryDTO,
     MeasurementTotalsDTO,
     PaginatedMeasurementsDTO,
+    PassBrandDTO,
     RouteDTO,
     RouteMeasurementDTO,
 )
@@ -38,6 +42,9 @@ from application.common.dto.pipeline import (
 __all__ = [
     "ApplicationDTO",
     "ArtifactUrlDTO",
+    "MeasurementBrandDTO",
+    "MeasurementPassDTO",
+    "MeasurementStatDTO",
     "MeasurementStatusCountsDTO",
     "MeasurementSummaryDTO",
     "MeasurementTotalsDTO",
@@ -47,6 +54,7 @@ __all__ = [
     "CityRefDTO",
     "CreateRunDTO",
     "PaginatedMeasurementsDTO",
+    "PassBrandDTO",
     "RouteMeasurementDTO",
     "RouteDTO",
     "RouteRefDTO",

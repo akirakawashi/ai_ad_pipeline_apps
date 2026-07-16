@@ -18,10 +18,8 @@ from pipeline_contracts.artifacts import (
     TrackCsvRow,
 )
 from pipeline_contracts.domain import (
-    IGNORE_BRAND,
     OTHER_BRAND,
     TARGET_BRANDS,
-    VALID_OVERRIDE_BRANDS,
     BrandStatus,
     ClassificationInputStatus,
     CropQualityStatus,
@@ -42,12 +40,10 @@ __all__ = [
     "BRAND_TRACK_SUMMARY_FIELDS",
     "DETECTION_CSV_FIELDS",
     "FRAME_SUMMARY_FIELDS",
-    "IGNORE_BRAND",
     "OTHER_BRAND",
     "PIPELINE_ARTIFACT_TYPES_BY_FILE_NAME",
     "TARGET_BRANDS",
     "TRACK_CSV_FIELDS",
-    "VALID_OVERRIDE_BRANDS",
     "ArtifactModel",
     "BrandDetectionSummaryRow",
     "BrandStatus",

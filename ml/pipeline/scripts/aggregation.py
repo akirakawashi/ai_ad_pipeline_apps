@@ -139,7 +139,7 @@ def _aggregate_one(
         final_brand=final_brand,
         final_brand_conf=final_conf,
         final_status=final_status,
-        business_brand=_business_brand(final_brand, final_status, final_reason),
+        business_brand=_business_brand(final_brand, final_status),
         business_visible=False,
         final_status_reason=final_reason,
         track_confirmed=track_confirmed,
@@ -210,17 +210,13 @@ def _aggregate_brand(
     return "", top_conf, FinalStatus.UNKNOWN, "brand_conf_low"
 
 
-def _business_brand(
-    final_brand: str,
-    final_status: FinalStatus,
-    final_reason: str,
-) -> str:
-    if final_reason.startswith("manual_override:"):
-        return (
-            final_brand
-            if final_brand in TARGET_BRANDS or final_brand == "other"
-            else "other"
-        )
+def _business_brand(final_brand: str, final_status: FinalStatus) -> str:
+    """Наружу отдаём только «наш бренд» либо «other».
+
+    Всё, в чём модель не уверена (UNKNOWN, MANUAL_REVIEW, NOT_CLASSIFIED),
+    схлопывается в other намеренно: пользователю нужен ответ «телеком или нет»,
+    а не градации уверенности.
+    """
     if final_status == FinalStatus.DETECTED_BRAND and final_brand in TARGET_BRANDS:
         return final_brand
     if final_status == FinalStatus.OTHER and final_brand == "other":
