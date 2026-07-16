@@ -5,16 +5,8 @@ import { PageHeader } from '../components/common/PageHeader'
 import { RunsSkeleton } from '../components/common/Skeletons'
 import { navigate, videosPath } from '../routing'
 import type { City } from '../types'
+import { pluralRoutes } from '../utils/formatters'
 
-function pluralRoutes(count: number): string {
-  const mod10 = count % 10
-  const mod100 = count % 100
-  if (mod10 === 1 && mod100 !== 11) return `${count} маршрут`
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
-    return `${count} маршрута`
-  }
-  return `${count} маршрутов`
-}
 
 export function CitiesPage() {
   const [cities, setCities] = useState<City[]>([])
@@ -43,7 +35,7 @@ export function CitiesPage() {
       <PageHeader
         eyebrow="Архив"
         title="Города и маршруты"
-        description="Выберите город, затем маршрут — внутри лежат пачки видео."
+        description="Выберите город, затем маршрут — внутри лежат замеры видео."
       />
 
       {loading && <RunsSkeleton />}

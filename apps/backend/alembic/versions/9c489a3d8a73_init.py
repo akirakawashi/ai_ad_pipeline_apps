@@ -7,9 +7,9 @@ Create Date: 2026-07-16 08:53:06.628231
 
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision: str = '9c489a3d8a73'
 down_revision: Union[str, Sequence[str], None] = None
@@ -49,26 +49,26 @@ def upgrade() -> None:
     sa.UniqueConstraint('cities_id', 'slug', name='uq_routes_city_slug')
     )
     op.create_index(op.f('ix_routes_cities_id'), 'routes', ['cities_id'], unique=False)
-    op.create_table('route_batches',
-    sa.Column('route_batches_id', sa.String(length=36), nullable=False),
+    op.create_table('route_measurements',
+    sa.Column('route_measurements_id', sa.String(length=36), nullable=False),
     sa.Column('routes_id', sa.String(length=36), nullable=False),
     sa.Column('sequence_number', sa.Integer(), nullable=False),
     sa.Column('title', sa.String(length=255), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.ForeignKeyConstraint(['routes_id'], ['routes.routes_id'], ondelete='CASCADE'),
-    sa.PrimaryKeyConstraint('route_batches_id'),
-    sa.UniqueConstraint('routes_id', 'sequence_number', name='uq_route_batches_route_sequence')
+    sa.PrimaryKeyConstraint('route_measurements_id'),
+    sa.UniqueConstraint('routes_id', 'sequence_number', name='uq_route_measurements_route_sequence')
     )
-    op.create_index(op.f('ix_route_batches_created_at'), 'route_batches', ['created_at'], unique=False)
-    op.create_index(op.f('ix_route_batches_routes_id'), 'route_batches', ['routes_id'], unique=False)
+    op.create_index(op.f('ix_route_measurements_created_at'), 'route_measurements', ['created_at'], unique=False)
+    op.create_index(op.f('ix_route_measurements_routes_id'), 'route_measurements', ['routes_id'], unique=False)
     op.create_table('pipeline_runs',
     sa.Column('pipeline_runs_id', sa.String(length=36), nullable=False),
     sa.Column('source_name', sa.String(length=512), nullable=False),
     sa.Column('source_object_key', sa.String(length=1024), nullable=False),
     sa.Column('source_content_type', sa.String(length=255), nullable=True),
     sa.Column('source_size_bytes', sa.BigInteger(), nullable=False),
-    sa.Column('route_batches_id', sa.String(length=36), nullable=True),
+    sa.Column('route_measurements_id', sa.String(length=36), nullable=True),
     sa.Column('status', sa.String(length=32), nullable=False),
     sa.Column('stage', sa.String(length=64), nullable=False),
     sa.Column('progress', sa.Integer(), nullable=False),
@@ -87,13 +87,13 @@ def upgrade() -> None:
     sa.Column('upload_completed_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('started_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('completed_at', sa.DateTime(timezone=True), nullable=True),
-    sa.ForeignKeyConstraint(['route_batches_id'], ['route_batches.route_batches_id'], ondelete='SET NULL'),
+    sa.ForeignKeyConstraint(['route_measurements_id'], ['route_measurements.route_measurements_id'], ondelete='SET NULL'),
     sa.PrimaryKeyConstraint('pipeline_runs_id'),
     sa.UniqueConstraint('source_object_key')
     )
     op.create_index(op.f('ix_pipeline_runs_created_at'), 'pipeline_runs', ['created_at'], unique=False)
     op.create_index('ix_pipeline_runs_queue', 'pipeline_runs', ['status', 'created_at'], unique=False)
-    op.create_index(op.f('ix_pipeline_runs_route_batches_id'), 'pipeline_runs', ['route_batches_id'], unique=False)
+    op.create_index(op.f('ix_pipeline_runs_route_measurements_id'), 'pipeline_runs', ['route_measurements_id'], unique=False)
     op.create_index(op.f('ix_pipeline_runs_status'), 'pipeline_runs', ['status'], unique=False)
     op.create_index(op.f('ix_pipeline_runs_worker_id'), 'pipeline_runs', ['worker_id'], unique=False)
     op.create_table('pipeline_artifacts',
@@ -136,13 +136,13 @@ def downgrade() -> None:
     op.drop_table('pipeline_artifacts')
     op.drop_index(op.f('ix_pipeline_runs_worker_id'), table_name='pipeline_runs')
     op.drop_index(op.f('ix_pipeline_runs_status'), table_name='pipeline_runs')
-    op.drop_index(op.f('ix_pipeline_runs_route_batches_id'), table_name='pipeline_runs')
+    op.drop_index(op.f('ix_pipeline_runs_route_measurements_id'), table_name='pipeline_runs')
     op.drop_index('ix_pipeline_runs_queue', table_name='pipeline_runs')
     op.drop_index(op.f('ix_pipeline_runs_created_at'), table_name='pipeline_runs')
     op.drop_table('pipeline_runs')
-    op.drop_index(op.f('ix_route_batches_routes_id'), table_name='route_batches')
-    op.drop_index(op.f('ix_route_batches_created_at'), table_name='route_batches')
-    op.drop_table('route_batches')
+    op.drop_index(op.f('ix_route_measurements_routes_id'), table_name='route_measurements')
+    op.drop_index(op.f('ix_route_measurements_created_at'), table_name='route_measurements')
+    op.drop_table('route_measurements')
     op.drop_index(op.f('ix_routes_cities_id'), table_name='routes')
     op.drop_table('routes')
     op.drop_index(op.f('ix_cities_slug'), table_name='cities')

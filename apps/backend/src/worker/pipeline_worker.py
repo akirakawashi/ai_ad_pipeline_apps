@@ -9,6 +9,13 @@ import time
 import traceback
 from pathlib import Path
 
+from ml.pipeline.scripts.config import PipelineConfig
+from ml.pipeline.scripts.runner import (
+    PipelineModels,
+    load_pipeline_models,
+    run_pipeline,
+)
+
 from application.interfaces import PipelineRunRepository, WorkerObjectStorage
 from domain.entities import (
     PipelineRunStage,
@@ -20,15 +27,8 @@ from infrastructure.repositories.sql_pipeline_run_repository import (
     SqlPipelineRunRepository,
 )
 from infrastructure.storage.minio_storage import MinioStorage
-from ml.pipeline.scripts.config import PipelineConfig
-from ml.pipeline.scripts.runner import (
-    PipelineModels,
-    load_pipeline_models,
-    run_pipeline,
-)
 from settings.factory import get_settings
 from worker.progress import DatabaseProgressReporter
-
 
 logger = logging.getLogger("pipeline-worker")
 

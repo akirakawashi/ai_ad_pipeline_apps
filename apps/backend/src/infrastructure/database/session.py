@@ -6,7 +6,6 @@ from sqlmodel import Session, create_engine
 
 from settings.factory import get_settings
 
-
 config = get_settings()
 
 engine = create_engine(

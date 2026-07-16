@@ -7,24 +7,23 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from application.common.dto import (
     ArtifactUrlDTO,
-    BatchStatusCountsDTO,
-    BatchTotalsDTO,
     BrandSummaryDTO,
     CityDetailDTO,
     CityDTO,
     CityRefDTO,
+    MeasurementStatusCountsDTO,
+    MeasurementTotalsDTO,
     OverlayPayloadDTO,
     PlaybackDTO,
-    RouteBatchDTO,
     RouteDTO,
+    RouteMeasurementDTO,
     RouteRefDTO,
-    RunBatchRefDTO,
+    RunMeasurementRefDTO,
     RunObjectDTO,
     RunSummaryTotalsDTO,
     RunTimelinePointDTO,
 )
 from domain.entities import PipelineArtifactType, PipelineRunStage, PipelineRunStatus
-
 
 T = TypeVar("T")
 
@@ -51,7 +50,7 @@ class CreateRunRequest(ApiModel):
     content_type: str | None = Field(default=None, max_length=255)
     size_bytes: int = Field(gt=0)
     # None означает «Без маршрута» — видео вне города и маршрута.
-    batch_id: str | None = Field(default=None, max_length=36)
+    measurement_id: str | None = Field(default=None, max_length=36)
 
 
 class CreateRunResponse(ApiModel):
@@ -85,7 +84,7 @@ class RouteRefResponse(RouteRefDTO):
     pass
 
 
-class RunBatchRefResponse(RunBatchRefDTO):
+class RunMeasurementRefResponse(RunMeasurementRefDTO):
     pass
 
 
@@ -101,28 +100,28 @@ class CityDetailResponse(CityDetailDTO):
     pass
 
 
-class BatchStatusCountsResponse(BatchStatusCountsDTO):
+class MeasurementStatusCountsResponse(MeasurementStatusCountsDTO):
     pass
 
 
-class BatchResponse(RouteBatchDTO):
+class MeasurementResponse(RouteMeasurementDTO):
     pass
 
 
-class PaginatedBatchesResponse(ApiModel):
-    items: list[BatchResponse]
+class PaginatedMeasurementsResponse(ApiModel):
+    items: list[MeasurementResponse]
     page: int
     page_size: int
     total: int
 
 
-class BatchTotalsResponse(BatchTotalsDTO):
+class MeasurementTotalsResponse(MeasurementTotalsDTO):
     pass
 
 
-class BatchSummaryResponse(ApiModel):
-    batch: BatchResponse
-    totals: BatchTotalsResponse
+class MeasurementSummaryResponse(ApiModel):
+    measurement: MeasurementResponse
+    totals: MeasurementTotalsResponse
     brands: list["BrandSummaryResponse"] = Field(default_factory=list)
 
 
@@ -148,7 +147,7 @@ class PipelineRunResponse(ApiModel):
     started_at: datetime | None
     completed_at: datetime | None
     updated_at: datetime | None
-    batch: RunBatchRefResponse | None = None
+    measurement: RunMeasurementRefResponse | None = None
     artifacts: list[RunArtifactResponse] = Field(default_factory=list)
     events: list[RunEventResponse] = Field(default_factory=list)
 

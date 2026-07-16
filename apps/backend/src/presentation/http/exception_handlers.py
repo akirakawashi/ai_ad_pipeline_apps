@@ -5,9 +5,9 @@ from fastapi.responses import JSONResponse
 from minio.error import S3Error
 
 from application.exceptions import (
-    BatchFullError,
     CatalogNotFoundError,
     InvalidVideoError,
+    MeasurementFullError,
     PipelineRunNotFoundError,
 )
 
@@ -33,10 +33,10 @@ def setup_exception_handlers(app: FastAPI) -> None:
             content={"detail": str(exc)},
         )
 
-    @app.exception_handler(BatchFullError)
-    async def batch_full_handler(
+    @app.exception_handler(MeasurementFullError)
+    async def measurement_full_handler(
         _: Request,
-        exc: BatchFullError,
+        exc: MeasurementFullError,
     ) -> JSONResponse:
         return JSONResponse(
             status_code=409,

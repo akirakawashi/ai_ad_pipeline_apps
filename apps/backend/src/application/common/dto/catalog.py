@@ -20,7 +20,7 @@ class RouteDTO(ApplicationDTO):
     color_hex: str | None
     geojson_path: str
     display_order: int
-    batch_count: int = 0
+    measurement_count: int = 0
     video_count: int = 0
 
 
@@ -32,7 +32,7 @@ class CityDTO(ApplicationDTO):
     roads_geojson_path: str | None
     display_order: int
     route_count: int = 0
-    batch_count: int = 0
+    measurement_count: int = 0
     video_count: int = 0
 
 
@@ -40,7 +40,7 @@ class CityDetailDTO(CityDTO):
     routes: list[RouteDTO] = Field(default_factory=list)
 
 
-class BatchStatusCountsDTO(ApplicationDTO):
+class MeasurementStatusCountsDTO(ApplicationDTO):
     uploading: int = 0
     upload_failed: int = 0
     queued: int = 0
@@ -49,27 +49,27 @@ class BatchStatusCountsDTO(ApplicationDTO):
     processing_failed: int = 0
 
 
-class RouteBatchDTO(ApplicationDTO):
+class RouteMeasurementDTO(ApplicationDTO):
     id: str
     sequence_number: int
     title: str
     route: RouteRefDTO
     city: CityRefDTO
     video_count: int = 0
-    status_counts: BatchStatusCountsDTO = Field(
-        default_factory=BatchStatusCountsDTO
+    status_counts: MeasurementStatusCountsDTO = Field(
+        default_factory=MeasurementStatusCountsDTO
     )
     created_at: datetime | None = None
 
 
-class PaginatedBatchesDTO(ApplicationDTO):
-    items: list[RouteBatchDTO]
+class PaginatedMeasurementsDTO(ApplicationDTO):
+    items: list[RouteMeasurementDTO]
     page: int
     page_size: int
     total: int
 
 
-class BatchTotalsDTO(ApplicationDTO):
+class MeasurementTotalsDTO(ApplicationDTO):
     total_objects: int = 0
     # Среднее по проездам, взвешенное по длительности: короткий проезд
     # не должен весить столько же, сколько десятиминутный.
@@ -79,7 +79,7 @@ class BatchTotalsDTO(ApplicationDTO):
     duration_sec: float = 0.0
 
 
-class BatchSummaryDTO(ApplicationDTO):
-    batch: RouteBatchDTO
-    totals: BatchTotalsDTO
+class MeasurementSummaryDTO(ApplicationDTO):
+    measurement: RouteMeasurementDTO
+    totals: MeasurementTotalsDTO
     brands: list[BrandSummaryDTO] = Field(default_factory=list)

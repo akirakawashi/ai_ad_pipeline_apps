@@ -10,7 +10,6 @@ from minio.helpers import ObjectWriteResult
 
 from settings.object_storage import ObjectStorageSettings
 
-
 MINIO_DEFAULT_REGION = "us-east-1"
 
 

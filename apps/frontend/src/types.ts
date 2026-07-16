@@ -28,9 +28,9 @@ export interface RouteRef {
   color_hex: string | null
 }
 
-/** Ссылка на пачку с карточки видео. null — «Без маршрута». */
-export interface RunBatchRef {
-  batch_id: string
+/** Ссылка на замер с карточки видео. null — «Без маршрута». */
+export interface RunMeasurementRef {
+  measurement_id: string
   sequence_number: number
   title: string
   route: RouteRef
@@ -46,7 +46,7 @@ export interface Route {
   /** Путь относительно public/, без ведущего слэша: 'routes/simferopol/route_1.geojson'. */
   geojson_path: string
   display_order: number
-  batch_count: number
+  measurement_count: number
   video_count: number
 }
 
@@ -59,7 +59,7 @@ export interface City {
   roads_geojson_path: string | null
   display_order: number
   route_count: number
-  batch_count: number
+  measurement_count: number
   video_count: number
 }
 
@@ -67,7 +67,7 @@ export interface CityDetail extends City {
   routes: Route[]
 }
 
-export interface BatchStatusCounts {
+export interface MeasurementStatusCounts {
   uploading: number
   upload_failed: number
   queued: number
@@ -76,25 +76,25 @@ export interface BatchStatusCounts {
   processing_failed: number
 }
 
-export interface RouteBatch {
+export interface RouteMeasurement {
   id: string
   sequence_number: number
   title: string
   route: RouteRef
   city: CityRef
   video_count: number
-  status_counts: BatchStatusCounts
+  status_counts: MeasurementStatusCounts
   created_at: string
 }
 
-export interface BatchesPage {
-  items: RouteBatch[]
+export interface MeasurementsPage {
+  items: RouteMeasurement[]
   page: number
   page_size: number
   total: number
 }
 
-export interface BatchTotals {
+export interface MeasurementTotals {
   total_objects: number
   visibility_index: number
   video_count: number
@@ -102,9 +102,9 @@ export interface BatchTotals {
   duration_sec: number
 }
 
-export interface BatchSummary {
-  batch: RouteBatch
-  totals: BatchTotals
+export interface MeasurementSummary {
+  measurement: RouteMeasurement
+  totals: MeasurementTotals
   brands: BrandSummary[]
 }
 
@@ -131,7 +131,7 @@ export interface PipelineRun {
   completed_at: string | null
   updated_at: string
   /** null — «Без маршрута» либо связь не запрашивали. */
-  batch: RunBatchRef | null
+  measurement: RunMeasurementRef | null
   artifacts: Artifact[]
   events: RunEvent[]
 }

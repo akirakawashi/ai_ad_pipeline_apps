@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from ml.pipeline.scripts.runner import PipelineProgressReporter
+
 from application.interfaces import PipelineRunRepository
 from domain.entities import PipelineRunStage
-from ml.pipeline.scripts.runner import PipelineProgressReporter
 
 
 class DatabaseProgressReporter(PipelineProgressReporter):

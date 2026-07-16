@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import logoUrl from './assets/aisigroup-logo.png'
 import markUrl from './assets/aisigroup-mark.png'
-import { BatchPage } from './pages/BatchPage'
+import { MeasurementPage } from './pages/MeasurementPage'
 import { CitiesPage } from './pages/CitiesPage'
 import { CityPage } from './pages/CityPage'
 import { LandingPage } from './pages/LandingPage'
@@ -49,7 +49,7 @@ function App() {
     route.page === 'archive' ||
     route.page === 'city' ||
     route.page === 'route' ||
-    route.page === 'batch'
+    route.page === 'measurement'
 
   return (
     <div className="app-shell">
@@ -132,18 +132,18 @@ function App() {
               routeSlug={route.routeSlug}
             />
           )}
-          {route.page === 'batch' && (
-            <BatchPage key={route.batchId} batchId={route.batchId} />
+          {route.page === 'measurement' && (
+            <MeasurementPage key={route.measurementId} measurementId={route.measurementId} />
           )}
           {route.page === 'videos' && (
             <VideosPage filters={route.filters} />
           )}
           {route.page === 'upload' && (
             <UploadPage
-              key={`${route.citySlug ?? ''}/${route.routeSlug ?? ''}/${route.batchId ?? ''}`}
+              key={`${route.citySlug ?? ''}/${route.routeSlug ?? ''}/${route.measurementId ?? ''}`}
               citySlug={route.citySlug}
               routeSlug={route.routeSlug}
-              batchId={route.batchId}
+              measurementId={route.measurementId}
             />
           )}
           {route.page === 'run' && (

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { createBatch, getCities, getCity } from '../api'
+import { createMeasurement, getCities, getCity } from '../api'
 import { FileCard } from '../components/common/FileCard'
 import { ErrorBanner, InfoBanner } from '../components/common/Feedback'
 import { PageHeader } from '../components/common/PageHeader'
@@ -26,19 +26,19 @@ const STATUS_TEXT: Record<string, string> = {
 interface UploadPageProps {
   citySlug?: string
   routeSlug?: string
-  /** Догрузка в существующую пачку: назначение зафиксировано. */
-  batchId?: string
+  /** Догрузка в существующую замер: назначение зафиксировано. */
+  measurementId?: string
 }
 
-export function UploadPage({ citySlug, routeSlug, batchId }: UploadPageProps) {
+export function UploadPage({ citySlug, routeSlug, measurementId }: UploadPageProps) {
   const [cities, setCities] = useState<City[]>([])
   const [detail, setDetail] = useState<CityDetail | null>(null)
   const [selectedCity, setSelectedCity] = useState(citySlug ?? '')
   const [selectedRoute, setSelectedRoute] = useState(routeSlug ?? '')
-  const [noRoute, setNoRoute] = useState(!citySlug && !batchId)
+  const [noRoute, setNoRoute] = useState(!citySlug && !measurementId)
   const [catalogError, setCatalogError] = useState<string | null>(null)
 
-  const pinned = Boolean(batchId)
+  const pinned = Boolean(measurementId)
 
   useEffect(() => {
     if (pinned) return
@@ -75,20 +75,20 @@ export function UploadPage({ citySlug, routeSlug, batchId }: UploadPageProps) {
 
   const upload = useVideoUpload({
     maxFiles: MAX_FILES,
-    createBatch: useMemo(
+    createMeasurement: useMemo(
       () => async () => {
-        if (batchId) return batchId
+        if (measurementId) return measurementId
         if (noRoute) return null
-        const batch = await createBatch(selectedCity, selectedRoute)
-        return batch.id
+        const measurement = await createMeasurement(selectedCity, selectedRoute)
+        return measurement.id
       },
-      [batchId, noRoute, selectedCity, selectedRoute],
+      [measurementId, noRoute, selectedCity, selectedRoute],
     ),
-    onFinish: ({ batchId: finishedBatchId, runIds, failed }) => {
-      // При частичном сбое остаёмся на странице: «Повторить» дольёт в ту же пачку.
+    onFinish: ({ measurementId: finishedMeasurementId, runIds, failed }) => {
+      // При частичном сбое остаёмся на странице: «Повторить» дольёт в тот же замер.
       if (failed > 0) return
-      if (finishedBatchId) {
-        navigate(`/batches/${finishedBatchId}`)
+      if (finishedMeasurementId) {
+        navigate(`/measurements/${finishedMeasurementId}`)
       } else if (runIds.length === 1) {
         navigate(`/videos/${runIds[0]}`)
       } else if (runIds.length > 0) {
@@ -98,7 +98,7 @@ export function UploadPage({ citySlug, routeSlug, batchId }: UploadPageProps) {
   })
 
   const eyebrow = pinned
-    ? 'Догрузка в пачку'
+    ? 'Догрузка в замер'
     : noRoute
       ? 'Без маршрута'
       : activeDetail && selectedRoute
@@ -115,7 +115,7 @@ export function UploadPage({ citySlug, routeSlug, batchId }: UploadPageProps) {
         description={
           noRoute
             ? 'Разовая загрузка — видео уйдёт в обработку вне города и маршрута.'
-            : `Видео попадут в одну пачку маршрута. До ${MAX_FILES} штук.`
+            : `Видео попадут в один замер маршрута. До ${MAX_FILES} штук.`
         }
       />
 
@@ -206,7 +206,7 @@ export function UploadPage({ citySlug, routeSlug, batchId }: UploadPageProps) {
         {upload.error && <ErrorBanner text={upload.error} />}
 
         {upload.items.length > 0 && (
-          <div className="upload-batch-list">
+          <div className="upload-measurement-list">
             {upload.items.map((item) => (
               <FileCard
                 key={item.key}
@@ -233,7 +233,7 @@ export function UploadPage({ citySlug, routeSlug, batchId }: UploadPageProps) {
                   <ProgressBar progress={item.progress} label="Загружается" animated />
                 )}
                 {item.status === 'error' && (
-                  <span className="upload-batch-error">{item.error}</span>
+                  <span className="upload-measurement-error">{item.error}</span>
                 )}
               </FileCard>
             ))}
@@ -241,7 +241,7 @@ export function UploadPage({ citySlug, routeSlug, batchId }: UploadPageProps) {
         )}
 
         {upload.items.length > 0 && (
-          <p className="upload-batch-summary">
+          <p className="upload-measurement-summary">
             Загружено {upload.doneCount} из {upload.items.length}
           </p>
         )}

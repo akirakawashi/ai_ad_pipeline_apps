@@ -898,7 +898,7 @@ main {
   margin-top: 4px;
 }
 
-.upload-batch-list {
+.upload-file-list {
   display: flex;
   width: 100%;
   flex-direction: column;
@@ -906,34 +906,34 @@ main {
   margin-top: 14px;
 }
 
-.upload-batch-item {
+.upload-file-item {
   width: min(640px, 100%);
   margin: 0;
   align-items: center;
   margin-inline: auto;
 }
 
-.upload-batch-item > div:nth-child(2) {
+.upload-file-item > div:nth-child(2) {
   min-width: 0;
   flex: 1;
 }
 
-.upload-batch-item .progress-block {
+.upload-file-item .progress-block {
   margin-top: 10px;
 }
 
-.upload-batch-item .status {
+.upload-file-item .status {
   flex: 0 0 auto;
 }
 
-.upload-batch-error {
+.upload-file-error {
   display: block;
   margin-top: 4px;
   color: var(--danger);
   font-size: 12px;
 }
 
-.upload-batch-summary {
+.upload-file-summary {
   width: 100%;
   margin: 14px 0 0;
   color: var(--muted);
@@ -2506,7 +2506,7 @@ button:disabled,
   border-style: dashed;
 }
 
-.batch-heading {
+.measurement-heading {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -2515,14 +2515,14 @@ button:disabled,
   font-size: 13px;
 }
 
-.batch-dot {
+.measurement-dot {
   width: 10px;
   height: 10px;
   border-radius: 999px;
   background: var(--muted);
 }
 
-.batch-pending-note {
+.measurement-pending-note {
   margin: 0 0 12px;
   color: var(--muted);
   font-size: 13px;

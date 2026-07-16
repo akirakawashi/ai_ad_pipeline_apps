@@ -5,13 +5,12 @@ from fastapi import APIRouter, Depends, Path, Query
 from application.services.catalog_service import CatalogService
 from presentation.http.dependencies import get_catalog_service
 from presentation.http.dto.response import (
-    BatchResponse,
     CityDetailResponse,
     CityResponse,
+    MeasurementResponse,
     OkResponse,
-    PaginatedBatchesResponse,
+    PaginatedMeasurementsResponse,
 )
-
 
 router = APIRouter(prefix="/cities", tags=["Catalog"])
 
@@ -34,34 +33,34 @@ def get_city(
 
 
 @router.get(
-    "/{city_slug}/routes/{route_slug}/batches",
-    response_model=OkResponse[PaginatedBatchesResponse],
+    "/{city_slug}/routes/{route_slug}/measurements",
+    response_model=OkResponse[PaginatedMeasurementsResponse],
 )
-def list_route_batches(
+def list_route_measurements(
     city_slug: str = Path(description="Слаг города"),
     route_slug: str = Path(description="Слаг маршрута в пределах города"),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=100),
     service: CatalogService = Depends(get_catalog_service),
-) -> OkResponse[PaginatedBatchesResponse]:
-    result = service.list_batches(
+) -> OkResponse[PaginatedMeasurementsResponse]:
+    result = service.list_measurements(
         city_slug=city_slug,
         route_slug=route_slug,
         page=page,
         page_size=page_size,
     )
-    return OkResponse(data=PaginatedBatchesResponse.model_validate(result))
+    return OkResponse(data=PaginatedMeasurementsResponse.model_validate(result))
 
 
 @router.post(
-    "/{city_slug}/routes/{route_slug}/batches",
-    response_model=OkResponse[BatchResponse],
+    "/{city_slug}/routes/{route_slug}/measurements",
+    response_model=OkResponse[MeasurementResponse],
     status_code=201,
 )
-def create_route_batch(
+def create_route_measurement(
     city_slug: str = Path(description="Слаг города"),
     route_slug: str = Path(description="Слаг маршрута в пределах города"),
     service: CatalogService = Depends(get_catalog_service),
-) -> OkResponse[BatchResponse]:
-    result = service.create_batch(city_slug=city_slug, route_slug=route_slug)
-    return OkResponse(data=BatchResponse.model_validate(result))
+) -> OkResponse[MeasurementResponse]:
+    result = service.create_measurement(city_slug=city_slug, route_slug=route_slug)
+    return OkResponse(data=MeasurementResponse.model_validate(result))

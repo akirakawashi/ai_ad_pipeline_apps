@@ -2,9 +2,6 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
-
-from domain.entities import PipelineArtifactType, PipelineRunStage, PipelineRunStatus
 from pipeline_contracts.artifacts import (
     BrandTrackSummaryRow,
     OverlayDisplayPayload,
@@ -14,6 +11,9 @@ from pipeline_contracts.artifacts import (
     OverlayVideoPayload,
     TrackCsvRow,
 )
+from pydantic import BaseModel, ConfigDict, Field
+
+from domain.entities import PipelineArtifactType, PipelineRunStage, PipelineRunStatus
 
 
 class ApplicationDTO(BaseModel):
@@ -29,7 +29,7 @@ class UploadTargetDTO(ApplicationDTO):
     headers: dict[str, str]
 
 
-# Ref-DTO живут здесь, а не в catalog.py: PipelineRunDTO ссылается на пачку,
+# Ref-DTO живут здесь, а не в catalog.py: PipelineRunDTO ссылается на замер,
 # а catalog.py импортирует ApplicationDTO отсюда — иначе получился бы цикл.
 class CityRefDTO(ApplicationDTO):
     id: str
@@ -44,8 +44,8 @@ class RouteRefDTO(ApplicationDTO):
     color_hex: str | None = None
 
 
-class RunBatchRefDTO(ApplicationDTO):
-    batch_id: str
+class RunMeasurementRefDTO(ApplicationDTO):
+    measurement_id: str
     sequence_number: int
     title: str
     route: RouteRefDTO
@@ -94,9 +94,9 @@ class PipelineRunDTO(ApplicationDTO):
     started_at: datetime | None
     completed_at: datetime | None
     updated_at: datetime | None
-    # Заполняется только там, где связь загружена явно (_run_to_dto(with_batch=...)).
+    # Заполняется только там, где связь загружена явно (_run_to_dto(with_measurement=...)).
     # None означает «Без маршрута» либо «связь не запрашивали».
-    batch: RunBatchRefDTO | None = None
+    measurement: RunMeasurementRefDTO | None = None
     artifacts: list[PipelineArtifactDTO] = Field(default_factory=list)
     events: list[PipelineRunEventDTO] = Field(default_factory=list)
 

@@ -10,8 +10,8 @@ class InvalidVideoError(ValueError):
 
 
 class CatalogNotFoundError(LookupError):
-    """Не найден город, маршрут или пачка."""
+    """Не найден город, маршрут или замер."""
 
 
-class BatchFullError(ValueError):
-    """В пачке уже MAX_BATCH_VIDEOS видео."""
+class MeasurementFullError(ValueError):
+    """В замере уже MAX_MEASUREMENT_VIDEOS видео."""

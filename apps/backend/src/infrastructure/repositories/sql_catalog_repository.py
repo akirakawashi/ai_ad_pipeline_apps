@@ -5,22 +5,26 @@ from sqlalchemy.orm import noload, selectinload
 from sqlmodel import Session, select
 
 from application.common.dto import (
-    BatchStatusCountsDTO,
     CityDetailDTO,
     CityDTO,
+    MeasurementStatusCountsDTO,
     PipelineRunDTO,
-    RouteBatchDTO,
     RouteDTO,
+    RouteMeasurementDTO,
 )
-from infrastructure.database.models import City, PipelineRun, Route, RouteBatch
-from infrastructure.repositories.batch_mapping import batch_title, city_ref, route_ref
+from infrastructure.database.models import City, PipelineRun, Route, RouteMeasurement
+from infrastructure.repositories.measurement_mapping import (
+    city_ref,
+    measurement_title,
+    route_ref,
+)
 from infrastructure.repositories.sql_pipeline_run_repository import _run_to_dto
 
 
 def _route_to_dto(
     route: Route,
     *,
-    batch_count: int = 0,
+    measurement_count: int = 0,
     video_count: int = 0,
 ) -> RouteDTO:
     return RouteDTO(
@@ -31,28 +35,28 @@ def _route_to_dto(
         color_hex=route.color_hex,
         geojson_path=route.geojson_path,
         display_order=route.display_order,
-        batch_count=batch_count,
+        measurement_count=measurement_count,
         video_count=video_count,
     )
 
 
-def _batch_to_dto(
-    batch: RouteBatch,
+def _measurement_to_dto(
+    measurement: RouteMeasurement,
     route: Route,
     city: City,
     *,
     video_count: int = 0,
-    status_counts: BatchStatusCountsDTO | None = None,
-) -> RouteBatchDTO:
-    return RouteBatchDTO(
-        id=batch.route_batches_id,
-        sequence_number=batch.sequence_number,
-        title=batch_title(batch),
+    status_counts: MeasurementStatusCountsDTO | None = None,
+) -> RouteMeasurementDTO:
+    return RouteMeasurementDTO(
+        id=measurement.route_measurements_id,
+        sequence_number=measurement.sequence_number,
+        title=measurement_title(measurement),
         route=route_ref(route),
         city=city_ref(city),
         video_count=video_count,
-        status_counts=status_counts or BatchStatusCountsDTO(),
-        created_at=batch.created_at,
+        status_counts=status_counts or MeasurementStatusCountsDTO(),
+        created_at=measurement.created_at,
     )
 
 
@@ -62,49 +66,49 @@ class SqlCatalogRepository:
 
     # --- счётчики -------------------------------------------------------
 
-    def _batch_counts_by_route(self) -> dict[str, int]:
+    def _measurement_counts_by_route(self) -> dict[str, int]:
         rows = self._session.exec(
-            select(RouteBatch.routes_id, func.count(RouteBatch.route_batches_id))
-            .group_by(RouteBatch.routes_id)
+            select(RouteMeasurement.routes_id, func.count(RouteMeasurement.route_measurements_id))
+            .group_by(RouteMeasurement.routes_id)
         ).all()
         return {routes_id: int(count) for routes_id, count in rows}
 
     def _video_counts_by_route(self) -> dict[str, int]:
         rows = self._session.exec(
-            select(RouteBatch.routes_id, func.count(PipelineRun.pipeline_runs_id))
-            .join(PipelineRun, PipelineRun.route_batches_id == RouteBatch.route_batches_id)
-            .group_by(RouteBatch.routes_id)
+            select(RouteMeasurement.routes_id, func.count(PipelineRun.pipeline_runs_id))
+            .join(PipelineRun, PipelineRun.route_measurements_id == RouteMeasurement.route_measurements_id)
+            .group_by(RouteMeasurement.routes_id)
         ).all()
         return {routes_id: int(count) for routes_id, count in rows}
 
-    def _video_counts_by_batch(self, batch_ids: list[str]) -> dict[str, int]:
-        if not batch_ids:
+    def _video_counts_by_measurement(self, measurement_ids: list[str]) -> dict[str, int]:
+        if not measurement_ids:
             return {}
         rows = self._session.exec(
-            select(PipelineRun.route_batches_id, func.count(PipelineRun.pipeline_runs_id))
-            .where(PipelineRun.route_batches_id.in_(batch_ids))
-            .group_by(PipelineRun.route_batches_id)
+            select(PipelineRun.route_measurements_id, func.count(PipelineRun.pipeline_runs_id))
+            .where(PipelineRun.route_measurements_id.in_(measurement_ids))
+            .group_by(PipelineRun.route_measurements_id)
         ).all()
-        return {batch_id: int(count) for batch_id, count in rows}
+        return {measurement_id: int(count) for measurement_id, count in rows}
 
-    def _status_counts_by_batch(
+    def _status_counts_by_measurement(
         self,
-        batch_ids: list[str],
-    ) -> dict[str, BatchStatusCountsDTO]:
-        if not batch_ids:
+        measurement_ids: list[str],
+    ) -> dict[str, MeasurementStatusCountsDTO]:
+        if not measurement_ids:
             return {}
         rows = self._session.exec(
             select(
-                PipelineRun.route_batches_id,
+                PipelineRun.route_measurements_id,
                 PipelineRun.status,
                 func.count(PipelineRun.pipeline_runs_id),
             )
-            .where(PipelineRun.route_batches_id.in_(batch_ids))
-            .group_by(PipelineRun.route_batches_id, PipelineRun.status)
+            .where(PipelineRun.route_measurements_id.in_(measurement_ids))
+            .group_by(PipelineRun.route_measurements_id, PipelineRun.status)
         ).all()
-        result: dict[str, BatchStatusCountsDTO] = {}
-        for batch_id, status, count in rows:
-            counts = result.setdefault(batch_id, BatchStatusCountsDTO())
+        result: dict[str, MeasurementStatusCountsDTO] = {}
+        for measurement_id, status, count in rows:
+            counts = result.setdefault(measurement_id, MeasurementStatusCountsDTO())
             if hasattr(counts, status):
                 setattr(counts, status, int(count))
         return result
@@ -126,19 +130,19 @@ class SqlCatalogRepository:
         ).all()
         route_counts = {cities_id: int(count) for cities_id, count in route_rows}
 
-        batch_rows = self._session.exec(
-            select(Route.cities_id, func.count(RouteBatch.route_batches_id))
-            .join(RouteBatch, RouteBatch.routes_id == Route.routes_id)
+        measurement_rows = self._session.exec(
+            select(Route.cities_id, func.count(RouteMeasurement.route_measurements_id))
+            .join(RouteMeasurement, RouteMeasurement.routes_id == Route.routes_id)
             .group_by(Route.cities_id)
         ).all()
-        batch_counts = {cities_id: int(count) for cities_id, count in batch_rows}
+        measurement_counts = {cities_id: int(count) for cities_id, count in measurement_rows}
 
         video_rows = self._session.exec(
             select(Route.cities_id, func.count(PipelineRun.pipeline_runs_id))
-            .join(RouteBatch, RouteBatch.routes_id == Route.routes_id)
+            .join(RouteMeasurement, RouteMeasurement.routes_id == Route.routes_id)
             .join(
                 PipelineRun,
-                PipelineRun.route_batches_id == RouteBatch.route_batches_id,
+                PipelineRun.route_measurements_id == RouteMeasurement.route_measurements_id,
             )
             .group_by(Route.cities_id)
         ).all()
@@ -153,7 +157,7 @@ class SqlCatalogRepository:
                 roads_geojson_path=city.roads_geojson_path,
                 display_order=city.display_order,
                 route_count=route_counts.get(city.cities_id, 0),
-                batch_count=batch_counts.get(city.cities_id, 0),
+                measurement_count=measurement_counts.get(city.cities_id, 0),
                 video_count=video_counts.get(city.cities_id, 0),
             )
             for city in cities
@@ -168,7 +172,7 @@ class SqlCatalogRepository:
         if city is None:
             return None
 
-        batch_counts = self._batch_counts_by_route()
+        measurement_counts = self._measurement_counts_by_route()
         video_counts = self._video_counts_by_route()
         routes = [route for route in city.routes if route.is_active]
 
@@ -180,12 +184,12 @@ class SqlCatalogRepository:
             roads_geojson_path=city.roads_geojson_path,
             display_order=city.display_order,
             route_count=len(routes),
-            batch_count=sum(batch_counts.get(r.routes_id, 0) for r in routes),
+            measurement_count=sum(measurement_counts.get(r.routes_id, 0) for r in routes),
             video_count=sum(video_counts.get(r.routes_id, 0) for r in routes),
             routes=[
                 _route_to_dto(
                     route,
-                    batch_count=batch_counts.get(route.routes_id, 0),
+                    measurement_count=measurement_counts.get(route.routes_id, 0),
                     video_count=video_counts.get(route.routes_id, 0),
                 )
                 for route in routes
@@ -205,20 +209,20 @@ class SqlCatalogRepository:
             return None
         return _route_to_dto(
             route,
-            batch_count=self._batch_counts_by_route().get(route.routes_id, 0),
+            measurement_count=self._measurement_counts_by_route().get(route.routes_id, 0),
             video_count=self._video_counts_by_route().get(route.routes_id, 0),
         )
 
-    # --- пачки ------------------------------------------------------------
+    # --- замера ------------------------------------------------------------
 
-    def list_batches(
+    def list_measurements(
         self,
         *,
         city_slug: str,
         route_slug: str,
         page: int,
         page_size: int,
-    ) -> tuple[list[RouteBatchDTO], int]:
+    ) -> tuple[list[RouteMeasurementDTO], int]:
         route = self._get_route_model(city_slug, route_slug)
         if route is None:
             return [], 0
@@ -227,46 +231,46 @@ class SqlCatalogRepository:
             return [], 0
 
         total = self._session.exec(
-            select(func.count(RouteBatch.route_batches_id)).where(
-                RouteBatch.routes_id == route.routes_id
+            select(func.count(RouteMeasurement.route_measurements_id)).where(
+                RouteMeasurement.routes_id == route.routes_id
             )
         ).one()
 
-        batches = self._session.exec(
-            select(RouteBatch)
-            .where(RouteBatch.routes_id == route.routes_id)
-            .order_by(RouteBatch.sequence_number.desc())
+        measurements = self._session.exec(
+            select(RouteMeasurement)
+            .where(RouteMeasurement.routes_id == route.routes_id)
+            .order_by(RouteMeasurement.sequence_number.desc())
             .offset((page - 1) * page_size)
             .limit(page_size)
         ).all()
 
-        batch_ids = [batch.route_batches_id for batch in batches]
-        video_counts = self._video_counts_by_batch(batch_ids)
-        status_counts = self._status_counts_by_batch(batch_ids)
+        measurement_ids = [measurement.route_measurements_id for measurement in measurements]
+        video_counts = self._video_counts_by_measurement(measurement_ids)
+        status_counts = self._status_counts_by_measurement(measurement_ids)
 
         return [
-            _batch_to_dto(
-                batch,
+            _measurement_to_dto(
+                measurement,
                 route,
                 city,
-                video_count=video_counts.get(batch.route_batches_id, 0),
-                status_counts=status_counts.get(batch.route_batches_id),
+                video_count=video_counts.get(measurement.route_measurements_id, 0),
+                status_counts=status_counts.get(measurement.route_measurements_id),
             )
-            for batch in batches
+            for measurement in measurements
         ], int(total)
 
-    def create_batch(
+    def create_measurement(
         self,
         *,
         city_slug: str,
         route_slug: str,
-    ) -> RouteBatchDTO | None:
+    ) -> RouteMeasurementDTO | None:
         route = self._get_route_model(city_slug, route_slug)
         if route is None:
             return None
 
         # Блокируем строку маршрута: два одновременных POST сериализуются здесь
-        # и получают разные номера. uq_route_batches_route_sequence — подстраховка.
+        # и получают разные номера. uq_route_measurements_route_sequence — подстраховка.
         self._session.exec(
             select(Route)
             .where(Route.routes_id == route.routes_id)
@@ -275,68 +279,68 @@ class SqlCatalogRepository:
 
         next_sequence = self._session.exec(
             select(
-                func.coalesce(func.max(RouteBatch.sequence_number), 0) + 1
-            ).where(RouteBatch.routes_id == route.routes_id)
+                func.coalesce(func.max(RouteMeasurement.sequence_number), 0) + 1
+            ).where(RouteMeasurement.routes_id == route.routes_id)
         ).one()
 
-        batch = RouteBatch(
+        measurement = RouteMeasurement(
             routes_id=route.routes_id,
             sequence_number=int(next_sequence),
         )
-        self._session.add(batch)
+        self._session.add(measurement)
         self._session.flush()
-        self._session.refresh(batch)
+        self._session.refresh(measurement)
 
         city = route.city
         if city is None:
             return None
-        return _batch_to_dto(batch, route, city)
+        return _measurement_to_dto(measurement, route, city)
 
-    def _get_batch_model(self, batch_id: str) -> RouteBatch | None:
+    def _get_measurement_model(self, measurement_id: str) -> RouteMeasurement | None:
         return self._session.exec(
-            select(RouteBatch)
-            .where(RouteBatch.route_batches_id == batch_id)
-            .options(selectinload(RouteBatch.route).selectinload(Route.city))
+            select(RouteMeasurement)
+            .where(RouteMeasurement.route_measurements_id == measurement_id)
+            .options(selectinload(RouteMeasurement.route).selectinload(Route.city))
         ).first()
 
-    def get_batch(self, batch_id: str) -> RouteBatchDTO | None:
-        batch = self._get_batch_model(batch_id)
-        if batch is None or batch.route is None or batch.route.city is None:
+    def get_measurement(self, measurement_id: str) -> RouteMeasurementDTO | None:
+        measurement = self._get_measurement_model(measurement_id)
+        if measurement is None or measurement.route is None or measurement.route.city is None:
             return None
-        return _batch_to_dto(
-            batch,
-            batch.route,
-            batch.route.city,
-            video_count=self._video_counts_by_batch([batch_id]).get(batch_id, 0),
-            status_counts=self._status_counts_by_batch([batch_id]).get(batch_id),
+        return _measurement_to_dto(
+            measurement,
+            measurement.route,
+            measurement.route.city,
+            video_count=self._video_counts_by_measurement([measurement_id]).get(measurement_id, 0),
+            status_counts=self._status_counts_by_measurement([measurement_id]).get(measurement_id),
         )
 
-    def list_batch_runs(self, batch_id: str) -> list[PipelineRunDTO]:
+    def list_measurement_runs(self, measurement_id: str) -> list[PipelineRunDTO]:
         runs = self._session.exec(
             select(PipelineRun)
-            .where(PipelineRun.route_batches_id == batch_id)
+            .where(PipelineRun.route_measurements_id == measurement_id)
             .options(
                 selectinload(PipelineRun.artifacts),
                 noload(PipelineRun.events),
-                noload(PipelineRun.batch),
+                noload(PipelineRun.measurement),
             )
             .order_by(PipelineRun.created_at)
         ).all()
         return [_run_to_dto(run) for run in runs]
 
-    def lock_batch(self, batch_id: str) -> bool:
-        """Блокирует строку пачки. False, если пачки нет."""
-        batch = self._session.exec(
-            select(RouteBatch)
-            .where(RouteBatch.route_batches_id == batch_id)
+    def lock_measurement(self, measurement_id: str) -> bool:
+        """Блокирует строку замера. False, если замера нет."""
+        measurement = self._session.exec(
+            select(RouteMeasurement)
+            .where(RouteMeasurement.route_measurements_id == measurement_id)
             .with_for_update()
         ).first()
-        return batch is not None
+        return measurement is not None
 
-    def count_batch_runs(self, batch_id: str) -> int:
+    def count_measurement_runs(self, measurement_id: str) -> int:
         total = self._session.exec(
             select(func.count(PipelineRun.pipeline_runs_id)).where(
-                PipelineRun.route_batches_id == batch_id
+                PipelineRun.route_measurements_id == measurement_id
             )
         ).one()
         return int(total)
@@ -350,5 +354,5 @@ class SqlCatalogRepository:
 
 __all__ = [
     "SqlCatalogRepository",
-    "batch_title",
+    "measurement_title",
 ]

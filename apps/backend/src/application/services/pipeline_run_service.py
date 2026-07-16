@@ -29,14 +29,13 @@ from application.common.dto import (
     UploadTargetDTO,
 )
 from application.exceptions import (
-    BatchFullError,
     CatalogNotFoundError,
     InvalidVideoError,
+    MeasurementFullError,
     PipelineRunNotFoundError,
 )
 from application.interfaces import PipelineRunRepository, RunObjectStorage
 from domain.entities import PipelineArtifactType, PipelineRunStatus
-
 
 ALLOWED_VIDEO_EXTENSIONS = {
     ".avi",
@@ -48,7 +47,7 @@ ALLOWED_VIDEO_EXTENSIONS = {
 }
 
 # Ограничение продукта, а не схемы: поднять — правка одной строки, без миграции.
-MAX_BATCH_VIDEOS = 20
+MAX_MEASUREMENT_VIDEOS = 20
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
@@ -91,7 +90,7 @@ class PipelineRunService:
         file_name: str,
         content_type: str | None,
         size_bytes: int,
-        batch_id: str | None = None,
+        measurement_id: str | None = None,
     ) -> CreateRunDTO:
         safe_name = safe_file_name(file_name)
         if Path(safe_name).suffix.casefold() not in ALLOWED_VIDEO_EXTENSIONS:
@@ -101,16 +100,16 @@ class PipelineRunService:
         if size_bytes <= 0:
             raise InvalidVideoError("Файл пустой. Выберите другое видео.")
 
-        if batch_id is not None:
-            # Блокировка строки пачки сериализует параллельные create_run:
+        if measurement_id is not None:
+            # Блокировка строки замера сериализует параллельные create_run:
             # иначе два запроса, каждый насчитав MAX-1, оба вставят.
-            if not self._repository.lock_batch(batch_id):
+            if not self._repository.lock_measurement(measurement_id):
                 self._repository.rollback()
-                raise CatalogNotFoundError("Пачка не найдена.")
-            if self._repository.count_batch_runs(batch_id) >= MAX_BATCH_VIDEOS:
+                raise CatalogNotFoundError("Замер не найден.")
+            if self._repository.count_measurement_runs(measurement_id) >= MAX_MEASUREMENT_VIDEOS:
                 self._repository.rollback()
-                raise BatchFullError(
-                    f"В пачку можно загрузить не более {MAX_BATCH_VIDEOS} видео."
+                raise MeasurementFullError(
+                    f"В замер можно загрузить не более {MAX_MEASUREMENT_VIDEOS} видео."
                 )
 
         run_id = str(uuid.uuid4())
@@ -121,7 +120,7 @@ class PipelineRunService:
             source_object_key=source_object_key,
             content_type=content_type or "application/octet-stream",
             size_bytes=size_bytes,
-            batch_id=batch_id,
+            measurement_id=measurement_id,
         )
         self._repository.commit()
 
@@ -172,7 +171,7 @@ class PipelineRunService:
         status: PipelineRunStatus | None,
         city_id: str | None = None,
         route_id: str | None = None,
-        batch_id: str | None = None,
+        measurement_id: str | None = None,
         assigned: bool | None = None,
     ) -> PaginatedRunsDTO:
         runs, total = self._repository.list_runs(
@@ -181,7 +180,7 @@ class PipelineRunService:
             status=status,
             city_id=city_id,
             route_id=route_id,
-            batch_id=batch_id,
+            measurement_id=measurement_id,
             assigned=assigned,
         )
         return PaginatedRunsDTO(

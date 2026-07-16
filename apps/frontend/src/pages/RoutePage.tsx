@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react'
-import { getCity, getRouteBatches } from '../api'
+import { getCity, getRouteMeasurements } from '../api'
 import { EmptyState, ErrorBanner } from '../components/common/Feedback'
 import { PageHeader } from '../components/common/PageHeader'
 import { RunsSkeleton } from '../components/common/Skeletons'
 import { navigate, uploadPath } from '../routing'
-import type { Route, RouteBatch } from '../types'
+import type { Route, RouteMeasurement } from '../types'
+import { pluralMeasurements } from '../utils/formatters'
 
-function batchProgressLabel(batch: RouteBatch): string {
+function measurementProgressLabel(measurement: RouteMeasurement): string {
   const { completed, processing, queued, uploading, processing_failed } =
-    batch.status_counts
+    measurement.status_counts
   const parts: string[] = []
   if (completed) parts.push(`Готово ${completed}`)
   if (processing + queued + uploading) {
@@ -27,14 +28,14 @@ export function RoutePage({
 }) {
   const [route, setRoute] = useState<Route | null>(null)
   const [cityName, setCityName] = useState('')
-  const [batches, setBatches] = useState<RouteBatch[]>([])
+  const [measurements, setBatches] = useState<RouteMeasurement[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     let disposed = false
     const load = () => {
-      Promise.all([getCity(citySlug), getRouteBatches(citySlug, routeSlug)])
+      Promise.all([getCity(citySlug), getRouteMeasurements(citySlug, routeSlug)])
         .then(([city, page]) => {
           if (disposed) return
           setCityName(city.name)
@@ -49,7 +50,7 @@ export function RoutePage({
         })
     }
     load()
-    // Пачки показывают статус обработки — он меняется без нашего участия.
+    // Замеры показывают статус обработки — он меняется без нашего участия.
     const interval = window.setInterval(load, 5000)
     return () => {
       disposed = true
@@ -57,16 +58,16 @@ export function RoutePage({
     }
   }, [citySlug, routeSlug])
 
-  const totalVideos = batches.reduce((sum, batch) => sum + batch.video_count, 0)
+  const totalVideos = measurements.reduce((sum, measurement) => sum + measurement.video_count, 0)
 
   return (
     <div className="page">
       <PageHeader
         eyebrow={cityName || 'Маршрут'}
-        title={route?.name ?? 'Пачки маршрута'}
+        title={route?.name ?? 'Замеры маршрута'}
         description={
           route
-            ? `${route.color_label ?? ''} · ${batches.length} пачек · ${totalVideos} видео`
+            ? `${route.color_label ?? ''} · ${pluralMeasurements(measurements.length)} · ${totalVideos} видео`
             : undefined
         }
         actions={
@@ -74,7 +75,7 @@ export function RoutePage({
             className="primary"
             onClick={() => navigate(uploadPath({ citySlug, routeSlug }))}
           >
-            Загрузить пачку
+            Новый замер
           </button>
         }
       />
@@ -82,32 +83,32 @@ export function RoutePage({
       {error && <ErrorBanner text={error} />}
       {loading && <RunsSkeleton />}
 
-      {!loading && !error && !batches.length && (
+      {!loading && !error && !measurements.length && (
         <EmptyState
-          text="На этом маршруте ещё нет пачек. Загрузите первую."
+          text="На этом маршруте ещё нет замеров. Загрузите первый."
           action={
             <button
               className="primary"
               onClick={() => navigate(uploadPath({ citySlug, routeSlug }))}
             >
-              Загрузить пачку
+              Новый замер
             </button>
           }
         />
       )}
 
       <div className="runs-grid">
-        {batches.map((batch) => (
+        {measurements.map((measurement) => (
           <button
             className="run-card"
-            key={batch.id}
-            onClick={() => navigate(`/batches/${batch.id}`)}
+            key={measurement.id}
+            onClick={() => navigate(`/measurements/${measurement.id}`)}
           >
             <div
               className="run-preview"
               style={
-                batch.route.color_hex
-                  ? { borderColor: batch.route.color_hex }
+                measurement.route.color_hex
+                  ? { borderColor: measurement.route.color_hex }
                   : undefined
               }
             >
@@ -115,10 +116,10 @@ export function RoutePage({
             </div>
             <div className="run-copy">
               <div className="status status-queued">
-                {batch.video_count} видео
+                {measurement.video_count} видео
               </div>
-              <h3>{batch.title}</h3>
-              <p>{batchProgressLabel(batch)}</p>
+              <h3>{measurement.title}</h3>
+              <p>{measurementProgressLabel(measurement)}</p>
             </div>
           </button>
         ))}

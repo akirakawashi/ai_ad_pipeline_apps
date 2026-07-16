@@ -161,11 +161,11 @@ class Route(SQLModel, table=True):
     )
 
     city: City | None = Relationship(back_populates="routes")
-    batches: list["RouteBatch"] = Relationship(
+    measurements: list["RouteMeasurement"] = Relationship(
         back_populates="route",
         cascade_delete=True,
         sa_relationship_kwargs={
-            "order_by": "RouteBatch.sequence_number",
+            "order_by": "RouteMeasurement.sequence_number",
         },
     )
 
@@ -178,10 +178,10 @@ class Route(SQLModel, table=True):
     )
 
 
-class RouteBatch(SQLModel, table=True):
-    __tablename__ = "route_batches"
+class RouteMeasurement(SQLModel, table=True):
+    __tablename__ = "route_measurements"
 
-    route_batches_id: str = Field(
+    route_measurements_id: str = Field(
         default_factory=uuid_string,
         sa_column=Column(
             String(36),
@@ -204,7 +204,7 @@ class RouteBatch(SQLModel, table=True):
     sequence_number: int = Field(
         sa_column=Column(Integer, nullable=False),
     )
-    # NULL означает "вычислять": «Пачка №{sequence_number} · {created_at}».
+    # NULL означает "вычислять": «Замер №{sequence_number} · {created_at}».
     title: str | None = Field(
         default=None,
         sa_column=Column(String(255), nullable=True),
@@ -228,14 +228,14 @@ class RouteBatch(SQLModel, table=True):
         ),
     )
 
-    route: Route | None = Relationship(back_populates="batches")
-    runs: list["PipelineRun"] = Relationship(back_populates="batch")
+    route: Route | None = Relationship(back_populates="measurements")
+    runs: list["PipelineRun"] = Relationship(back_populates="measurement")
 
     __table_args__ = (
         UniqueConstraint(
             "routes_id",
             "sequence_number",
-            name="uq_route_batches_route_sequence",
+            name="uq_route_measurements_route_sequence",
         ),
     )
 
@@ -276,12 +276,12 @@ class PipelineRun(SQLModel, table=True):
     )
 
     # NULL означает «Без маршрута» — разовая загрузка вне города и маршрута.
-    route_batches_id: str | None = Field(
+    route_measurements_id: str | None = Field(
         default=None,
         sa_column=Column(
             String(36),
             ForeignKey(
-                "route_batches.route_batches_id",
+                "route_measurements.route_measurements_id",
                 ondelete="SET NULL",
             ),
             index=True,
@@ -402,7 +402,7 @@ class PipelineRun(SQLModel, table=True):
         ),
     )
 
-    batch: RouteBatch | None = Relationship(back_populates="runs")
+    measurement: RouteMeasurement | None = Relationship(back_populates="runs")
     artifacts: list["PipelineArtifact"] = Relationship(
         back_populates="run",
         cascade_delete=True,

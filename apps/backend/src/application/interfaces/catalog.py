@@ -6,8 +6,8 @@ from application.common.dto import (
     CityDetailDTO,
     CityDTO,
     PipelineRunDTO,
-    RouteBatchDTO,
     RouteDTO,
+    RouteMeasurementDTO,
 )
 
 
@@ -22,30 +22,30 @@ class CatalogRepository(Protocol):
         route_slug: str,
     ) -> RouteDTO | None: ...
 
-    def list_batches(
+    def list_measurements(
         self,
         *,
         city_slug: str,
         route_slug: str,
         page: int,
         page_size: int,
-    ) -> tuple[list[RouteBatchDTO], int]: ...
+    ) -> tuple[list[RouteMeasurementDTO], int]: ...
 
-    def create_batch(
+    def create_measurement(
         self,
         *,
         city_slug: str,
         route_slug: str,
-    ) -> RouteBatchDTO | None:
+    ) -> RouteMeasurementDTO | None:
         """Аллоцирует sequence_number под блокировкой строки маршрута.
 
         Возвращает None, если города или маршрута нет.
         """
         ...
 
-    def get_batch(self, batch_id: str) -> RouteBatchDTO | None: ...
+    def get_measurement(self, measurement_id: str) -> RouteMeasurementDTO | None: ...
 
-    def list_batch_runs(self, batch_id: str) -> list[PipelineRunDTO]: ...
+    def list_measurement_runs(self, measurement_id: str) -> list[PipelineRunDTO]: ...
 
     def commit(self) -> None: ...
 

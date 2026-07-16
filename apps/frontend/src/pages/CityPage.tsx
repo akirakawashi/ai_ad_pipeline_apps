@@ -6,6 +6,7 @@ import { PageHeader } from '../components/common/PageHeader'
 import { RouteMapSkeleton } from '../components/common/Skeletons'
 import { navigate } from '../routing'
 import type { CityDetail } from '../types'
+import { pluralMeasurements } from '../utils/formatters'
 
 const FALLBACK_COLOR = '#8a8f98'
 
@@ -159,7 +160,7 @@ export function CityPage({ citySlug }: { citySlug: string }) {
                   <span className="route-option-copy">
                     <strong>{route.name}</strong>
                     <small>
-                      {route.color_label} · {route.batch_count} пачек
+                      {route.color_label} · {pluralMeasurements(route.measurement_count)}
                     </small>
                   </span>
                   <span className="route-option-arrow" aria-hidden="true">
@@ -174,7 +175,7 @@ export function CityPage({ citySlug }: { citySlug: string }) {
               <h3>{focusedMeta ? focusedMeta.name : 'Маршрут не выбран'}</h3>
               <p className="route-description">
                 {focusedMeta && selectedIndex === focusedIndex
-                  ? `Маршрут закреплён. Нажмите «Открыть маршрут», чтобы увидеть пачки. ${focusedMeta.color_label}.`
+                  ? `Маршрут закреплён. Нажмите «Открыть маршрут», чтобы увидеть замеры. ${focusedMeta.color_label}.`
                   : focusedMeta
                     ? `Наведите курсор на карту или нажмите «Выбрать маршрут», чтобы закрепить его. ${focusedMeta.color_label}.`
                     : 'Выберите направление в списке или наведите курсор на его линию на карте.'}
@@ -186,8 +187,8 @@ export function CityPage({ citySlug }: { citySlug: string }) {
                   <strong>{focusedSegmentCount ?? '—'}</strong>
                 </div>
                 <div className="stat-card">
-                  <span>Пачек</span>
-                  <strong>{focusedMeta ? focusedMeta.batch_count : '—'}</strong>
+                  <span>Замеров</span>
+                  <strong>{focusedMeta ? focusedMeta.measurement_count : '—'}</strong>
                 </div>
               </div>
 

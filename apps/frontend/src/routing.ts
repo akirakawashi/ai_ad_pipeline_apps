@@ -1,7 +1,7 @@
 export interface VideoFilters {
   cityId?: string
   routeId?: string
-  batchId?: string
+  measurementId?: string
   status?: string
   /** false — только видео без маршрута. */
   assigned?: boolean
@@ -12,9 +12,9 @@ export type Route =
   | { page: 'archive' }
   | { page: 'city'; citySlug: string }
   | { page: 'route'; citySlug: string; routeSlug: string }
-  | { page: 'batch'; batchId: string }
+  | { page: 'measurement'; measurementId: string }
   | { page: 'videos'; filters: VideoFilters }
-  | { page: 'upload'; citySlug?: string; routeSlug?: string; batchId?: string }
+  | { page: 'upload'; citySlug?: string; routeSlug?: string; measurementId?: string }
   | { page: 'run'; runId: string; seek?: number }
 
 function parseVideoFilters(search: URLSearchParams): VideoFilters {
@@ -22,7 +22,7 @@ function parseVideoFilters(search: URLSearchParams): VideoFilters {
   return {
     cityId: search.get('city') ?? undefined,
     routeId: search.get('route') ?? undefined,
-    batchId: search.get('batch') ?? undefined,
+    measurementId: search.get('measurement') ?? undefined,
     status: search.get('status') ?? undefined,
     assigned: assigned === null ? undefined : assigned === 'true',
   }
@@ -40,7 +40,7 @@ export function currentRoute(): Route {
       page: 'upload',
       citySlug: search.get('city') ?? undefined,
       routeSlug: search.get('route') ?? undefined,
-      batchId: search.get('batch') ?? undefined,
+      measurementId: search.get('measurement') ?? undefined,
     }
   }
 
@@ -52,8 +52,8 @@ export function currentRoute(): Route {
   const cityMatch = pathname.match(/^\/archive\/([^/]+)$/)
   if (cityMatch) return { page: 'city', citySlug: cityMatch[1] }
 
-  const batchMatch = pathname.match(/^\/batches\/([^/]+)$/)
-  if (batchMatch) return { page: 'batch', batchId: batchMatch[1] }
+  const measurementMatch = pathname.match(/^\/measurements\/([^/]+)$/)
+  if (measurementMatch) return { page: 'measurement', measurementId: measurementMatch[1] }
 
   const runMatch = pathname.match(/^\/videos\/([^/]+)$/)
   if (runMatch) {
@@ -77,7 +77,7 @@ export function videosPath(filters: VideoFilters = {}): string {
   const query = new URLSearchParams()
   if (filters.cityId) query.set('city', filters.cityId)
   if (filters.routeId) query.set('route', filters.routeId)
-  if (filters.batchId) query.set('batch', filters.batchId)
+  if (filters.measurementId) query.set('measurement', filters.measurementId)
   if (filters.status) query.set('status', filters.status)
   if (filters.assigned !== undefined) query.set('assigned', String(filters.assigned))
   const suffix = query.toString()
@@ -87,12 +87,12 @@ export function videosPath(filters: VideoFilters = {}): string {
 export function uploadPath(options: {
   citySlug?: string
   routeSlug?: string
-  batchId?: string
+  measurementId?: string
 } = {}): string {
   const query = new URLSearchParams()
   if (options.citySlug) query.set('city', options.citySlug)
   if (options.routeSlug) query.set('route', options.routeSlug)
-  if (options.batchId) query.set('batch', options.batchId)
+  if (options.measurementId) query.set('measurement', options.measurementId)
   const suffix = query.toString()
   return suffix ? `/upload?${suffix}` : '/upload'
 }
@@ -103,7 +103,7 @@ export function workspaceTitle(route: Route) {
   if (route.page === 'run') return 'Результат'
   if (route.page === 'archive') return 'Города и маршруты'
   if (route.page === 'city') return 'Маршруты города'
-  if (route.page === 'route') return 'Пачки маршрута'
-  if (route.page === 'batch') return 'Пачка'
+  if (route.page === 'route') return 'Замеры маршрута'
+  if (route.page === 'measurement') return 'Замер'
   return 'Все видео'
 }

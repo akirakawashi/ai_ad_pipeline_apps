@@ -13,7 +13,7 @@ export interface UploadItem {
 }
 
 export interface UploadResult {
-  batchId: string | null
+  measurementId: string | null
   runIds: string[]
   failed: number
 }
@@ -22,9 +22,9 @@ export interface UseVideoUploadOptions {
   maxFiles: number
   /**
    * Зовётся один раз перед первым файлом. null — «Без маршрута».
-   * Лениво: пачка появляется, только если загрузку реально начали.
+   * Лениво: замер появляется, только если загрузку реально начали.
    */
-  createBatch?: () => Promise<string | null>
+  createMeasurement?: () => Promise<string | null>
   onFinish?: (result: UploadResult) => void
 }
 
@@ -34,7 +34,7 @@ function makeKey(file: File) {
 
 export function useVideoUpload({
   maxFiles,
-  createBatch,
+  createMeasurement,
   onFinish,
 }: UseVideoUploadOptions) {
   const [items, setItems] = useState<UploadItem[]>([])
@@ -42,10 +42,10 @@ export function useVideoUpload({
   const [dragActive, setDragActive] = useState(false)
   const [limitNotice, setLimitNotice] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [batchId, setBatchId] = useState<string | null>(null)
-  // Держим id пачки и в ref: ретрай упавших должен попасть в ту же пачку,
-  // а не родить фантомную следующую.
-  const batchIdRef = useRef<string | null>(null)
+  const [measurementId, setMeasurementId] = useState<string | null>(null)
+  // Держим id замера и в ref: ретрай упавших должен попасть в тот же замер,
+  // а не родить фантомный следующий.
+  const measurementIdRef = useRef<string | null>(null)
   const dragDepth = useRef(0)
 
   const patch = useCallback((key: string, changes: Partial<UploadItem>) => {
@@ -104,12 +104,12 @@ export function useVideoUpload({
       setBusy(true)
       setError(null)
 
-      let currentBatchId = batchIdRef.current
-      if (currentBatchId === null && createBatch) {
+      let currentMeasurementId = measurementIdRef.current
+      if (currentMeasurementId === null && createMeasurement) {
         try {
-          currentBatchId = await createBatch()
-          batchIdRef.current = currentBatchId
-          setBatchId(currentBatchId)
+          currentMeasurementId = await createMeasurement()
+          measurementIdRef.current = currentMeasurementId
+          setMeasurementId(currentMeasurementId)
         } catch (reason) {
           setError(reason instanceof Error ? reason.message : String(reason))
           setBusy(false)
@@ -123,7 +123,7 @@ export function useVideoUpload({
       for (const item of queue) {
         patch(item.key, { status: 'uploading', progress: 0, error: undefined })
         try {
-          const run = await createRun(item.file, currentBatchId)
+          const run = await createRun(item.file, currentMeasurementId)
           await uploadVideo(run.upload, item.file, (progress) =>
             patch(item.key, { progress }),
           )
@@ -140,9 +140,9 @@ export function useVideoUpload({
       }
 
       setBusy(false)
-      onFinish?.({ batchId: currentBatchId, runIds, failed })
+      onFinish?.({ measurementId: currentMeasurementId, runIds, failed })
     },
-    [createBatch, onFinish, patch],
+    [createMeasurement, onFinish, patch],
   )
 
   const start = useCallback(() => {
@@ -187,7 +187,7 @@ export function useVideoUpload({
     dragActive,
     limitNotice,
     error,
-    batchId,
+    measurementId,
     doneCount,
     failedCount,
     canStart: items.length > 0 && !busy && doneCount < items.length,

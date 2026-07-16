@@ -5,12 +5,12 @@ import { formatDuration } from '../../utils/formatters'
 
 interface RunCardProps {
   run: PipelineRun
-  /** Показывать город и маршрут. На странице пачки они очевидны из контекста. */
+  /** Показывать город и маршрут. На странице замера они очевидны из контекста. */
   showBadges?: boolean
 }
 
 /**
- * Карточка видео. Общая для «Все видео» и страницы пачки — если у одной из
+ * Карточка видео. Общая для «Все видео» и страницы замера — если у одной из
  * них заведётся своя вёрстка, дублирование вернётся туда, откуда его убрали.
  */
 export function RunCard({ run, showBadges = false }: RunCardProps) {
@@ -24,19 +24,19 @@ export function RunCard({ run, showBadges = false }: RunCardProps) {
         <h3>{run.source_name}</h3>
         {showBadges && (
           <div className="run-badges">
-            {run.batch ? (
+            {run.measurement ? (
               <>
                 <span
                   className="run-badge"
                   style={
-                    run.batch.route.color_hex
-                      ? { borderColor: run.batch.route.color_hex }
+                    run.measurement.route.color_hex
+                      ? { borderColor: run.measurement.route.color_hex }
                       : undefined
                   }
                 >
-                  {run.batch.city.name} · {run.batch.route.name}
+                  {run.measurement.city.name} · {run.measurement.route.name}
                 </span>
-                <span className="run-badge muted">{run.batch.title}</span>
+                <span className="run-badge muted">{run.measurement.title}</span>
               </>
             ) : (
               <span className="run-badge muted">Без маршрута</span>

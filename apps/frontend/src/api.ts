@@ -1,13 +1,13 @@
 import type {
-  BatchesPage,
-  BatchSummary,
+  MeasurementsPage,
+  MeasurementSummary,
   City,
   CityDetail,
   CreateRunResult,
   OverlayPayload,
   PipelineRun,
   Playback,
-  RouteBatch,
+  RouteMeasurement,
   RunObjects,
   RunsPage,
   RunSummary,
@@ -40,10 +40,10 @@ async function apiFetch<T>(
   return envelope.data
 }
 
-/** batchId === null — «Без маршрута»: видео вне города и маршрута. */
+/** measurementId === null — «Без маршрута»: видео вне города и маршрута. */
 export function createRun(
   file: File,
-  batchId: string | null = null,
+  measurementId: string | null = null,
 ): Promise<CreateRunResult> {
   return apiFetch('/runs', {
     method: 'POST',
@@ -51,7 +51,7 @@ export function createRun(
       file_name: file.name,
       content_type: file.type || 'application/octet-stream',
       size_bytes: file.size,
-      batch_id: batchId,
+      measurement_id: measurementId,
     }),
   })
 }
@@ -98,7 +98,7 @@ export interface ListRunsParams {
   status?: string
   cityId?: string
   routeId?: string
-  batchId?: string
+  measurementId?: string
   /** false — только видео без маршрута. */
   assigned?: boolean
 }
@@ -110,7 +110,7 @@ export function listRuns(params: ListRunsParams = {}): Promise<RunsPage> {
   if (params.status) query.set('status', params.status)
   if (params.cityId) query.set('city_id', params.cityId)
   if (params.routeId) query.set('route_id', params.routeId)
-  if (params.batchId) query.set('batch_id', params.batchId)
+  if (params.measurementId) query.set('measurement_id', params.measurementId)
   if (params.assigned !== undefined) query.set('assigned', String(params.assigned))
   return apiFetch(`/runs?${query.toString()}`)
 }
@@ -123,33 +123,33 @@ export function getCity(citySlug: string): Promise<CityDetail> {
   return apiFetch(`/cities/${citySlug}`)
 }
 
-export function getRouteBatches(
+export function getRouteMeasurements(
   citySlug: string,
   routeSlug: string,
-): Promise<BatchesPage> {
-  return apiFetch(`/cities/${citySlug}/routes/${routeSlug}/batches?page=1&page_size=50`)
+): Promise<MeasurementsPage> {
+  return apiFetch(`/cities/${citySlug}/routes/${routeSlug}/measurements?page=1&page_size=50`)
 }
 
-export function createBatch(
+export function createMeasurement(
   citySlug: string,
   routeSlug: string,
-): Promise<RouteBatch> {
-  return apiFetch(`/cities/${citySlug}/routes/${routeSlug}/batches`, {
+): Promise<RouteMeasurement> {
+  return apiFetch(`/cities/${citySlug}/routes/${routeSlug}/measurements`, {
     method: 'POST',
     body: '{}',
   })
 }
 
-export function getBatch(batchId: string): Promise<RouteBatch> {
-  return apiFetch(`/batches/${batchId}`)
+export function getMeasurement(measurementId: string): Promise<RouteMeasurement> {
+  return apiFetch(`/measurements/${measurementId}`)
 }
 
-export function getBatchRuns(batchId: string): Promise<PipelineRun[]> {
-  return apiFetch(`/batches/${batchId}/runs`)
+export function getMeasurementRuns(measurementId: string): Promise<PipelineRun[]> {
+  return apiFetch(`/measurements/${measurementId}/runs`)
 }
 
-export function getBatchSummary(batchId: string): Promise<BatchSummary> {
-  return apiFetch(`/batches/${batchId}/summary`)
+export function getMeasurementSummary(measurementId: string): Promise<MeasurementSummary> {
+  return apiFetch(`/measurements/${measurementId}/summary`)
 }
 
 export function getRun(runId: string): Promise<PipelineRun> {

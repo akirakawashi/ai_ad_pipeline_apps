@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Path, Query
 
-from domain.entities import PipelineRunStatus
 from application.services.pipeline_run_service import PipelineRunService
+from domain.entities import PipelineRunStatus
 from presentation.http.dependencies import get_run_service
 from presentation.http.dto.response import (
     ArtifactUrlResponse,
@@ -20,7 +20,6 @@ from presentation.http.dto.response import (
     RunTimelineResponse,
 )
 
-
 router = APIRouter(prefix="/runs", tags=["Pipeline Runs"])
 
 
@@ -33,7 +32,7 @@ def create_run(
         file_name=request.file_name,
         content_type=request.content_type,
         size_bytes=request.size_bytes,
-        batch_id=request.batch_id,
+        measurement_id=request.measurement_id,
     )
     return OkResponse(data=CreateRunResponse.model_validate(result))
 
@@ -57,7 +56,7 @@ def list_runs(
     status: PipelineRunStatus | None = Query(default=None),
     city_id: str | None = Query(default=None),
     route_id: str | None = Query(default=None),
-    batch_id: str | None = Query(default=None),
+    measurement_id: str | None = Query(default=None),
     assigned: bool | None = Query(
         default=None,
         description="false — только видео без маршрута",
@@ -70,7 +69,7 @@ def list_runs(
         status=status,
         city_id=city_id,
         route_id=route_id,
-        batch_id=batch_id,
+        measurement_id=measurement_id,
         assigned=assigned,
     )
     return OkResponse(data=PaginatedRunsResponse.model_validate(result))

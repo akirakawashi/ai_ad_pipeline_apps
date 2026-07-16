@@ -15,3 +15,30 @@ export function formatNumber(value: number | undefined) {
     ? '—'
     : new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(value)
 }
+
+/** Русское склонение: (1) замер, (2) замера, (5) замеров. */
+function plural(count: number, one: string, few: string, many: string): string {
+  const mod10 = count % 10
+  const mod100 = count % 100
+  if (mod10 === 1 && mod100 !== 11) return `${count} ${one}`
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
+    return `${count} ${few}`
+  }
+  return `${count} ${many}`
+}
+
+export function pluralMeasurements(count: number) {
+  return plural(count, 'замер', 'замера', 'замеров')
+}
+
+export function pluralRoutes(count: number) {
+  return plural(count, 'маршрут', 'маршрута', 'маршрутов')
+}
+
+export function pluralPasses(count: number) {
+  return plural(count, 'проезд', 'проезда', 'проездов')
+}
+
+export function pluralVideos(count: number) {
+  return plural(count, 'видео', 'видео', 'видео')
+}

@@ -55,7 +55,7 @@ export function VideosPage({ filters }: { filters: VideoFilters }) {
       listRuns({
         cityId: filters.cityId,
         routeId: filters.routeId,
-        batchId: filters.batchId,
+        measurementId: filters.measurementId,
         status: filters.status,
         assigned: filters.assigned,
       })
@@ -75,7 +75,7 @@ export function VideosPage({ filters }: { filters: VideoFilters }) {
       disposed = true
       window.clearInterval(interval)
     }
-  }, [filters.assigned, filters.batchId, filters.cityId, filters.routeId, filters.status])
+  }, [filters.assigned, filters.measurementId, filters.cityId, filters.routeId, filters.status])
 
   const update = (changes: Partial<VideoFilters>) => {
     navigate(videosPath({ ...filters, ...changes }))
@@ -151,7 +151,7 @@ export function VideosPage({ filters }: { filters: VideoFilters }) {
                 assigned: event.target.checked ? false : undefined,
                 cityId: undefined,
                 routeId: undefined,
-                batchId: undefined,
+                measurementId: undefined,
               })
             }
           />

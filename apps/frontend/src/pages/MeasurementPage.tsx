@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getBatchRuns, getBatchSummary } from '../api'
+import { getMeasurementRuns, getMeasurementSummary } from '../api'
 import { RunCharts } from '../components/RunCharts'
 import { EmptyState, ErrorBanner } from '../components/common/Feedback'
 import { Metric } from '../components/common/Metric'
@@ -7,11 +7,11 @@ import { PageHeader } from '../components/common/PageHeader'
 import { RunCard } from '../components/common/RunCard'
 import { RunsSkeleton } from '../components/common/Skeletons'
 import { navigate, uploadPath } from '../routing'
-import type { BatchSummary, PipelineRun } from '../types'
-import { formatDuration, formatNumber } from '../utils/formatters'
+import type { MeasurementSummary, PipelineRun } from '../types'
+import { formatDuration, formatNumber, pluralPasses } from '../utils/formatters'
 
-export function BatchPage({ batchId }: { batchId: string }) {
-  const [summary, setSummary] = useState<BatchSummary | null>(null)
+export function MeasurementPage({ measurementId }: { measurementId: string }) {
+  const [summary, setSummary] = useState<MeasurementSummary | null>(null)
   const [runs, setRuns] = useState<PipelineRun[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -19,7 +19,7 @@ export function BatchPage({ batchId }: { batchId: string }) {
   useEffect(() => {
     let disposed = false
     const load = () => {
-      Promise.all([getBatchSummary(batchId), getBatchRuns(batchId)])
+      Promise.all([getMeasurementSummary(measurementId), getMeasurementRuns(measurementId)])
         .then(([summaryValue, runsValue]) => {
           if (disposed) return
           setSummary(summaryValue)
@@ -39,7 +39,7 @@ export function BatchPage({ batchId }: { batchId: string }) {
       disposed = true
       window.clearInterval(interval)
     }
-  }, [batchId])
+  }, [measurementId])
 
   if (loading && !summary) {
     return (
@@ -52,7 +52,7 @@ export function BatchPage({ batchId }: { batchId: string }) {
   if (error && !summary) {
     return (
       <div className="page">
-        <PageHeader eyebrow="Архив" title="Пачка не найдена" />
+        <PageHeader eyebrow="Архив" title="Замер не найден" />
         <ErrorBanner text={error} />
       </div>
     )
@@ -60,16 +60,16 @@ export function BatchPage({ batchId }: { batchId: string }) {
 
   if (!summary) return null
 
-  const { batch, totals, brands } = summary
+  const { measurement, totals, brands } = summary
   const pending = totals.video_count - totals.completed_count
-  const color = batch.route.color_hex ?? undefined
+  const color = measurement.route.color_hex ?? undefined
 
   return (
     <div className="page">
       <PageHeader
-        eyebrow={`${batch.city.name} · ${batch.route.name}`}
-        title={batch.title}
-        description={`${totals.video_count} проездов · ${formatDuration(
+        eyebrow={`${measurement.city.name} · ${measurement.route.name}`}
+        title={measurement.title}
+        description={`${pluralPasses(totals.video_count)} · ${formatDuration(
           totals.duration_sec,
         )} · обработано ${totals.completed_count} из ${totals.video_count}`}
         actions={
@@ -77,14 +77,14 @@ export function BatchPage({ batchId }: { batchId: string }) {
             <button
               className="secondary"
               onClick={() =>
-                navigate(`/archive/${batch.city.slug}/${batch.route.slug}`)
+                navigate(`/archive/${measurement.city.slug}/${measurement.route.slug}`)
               }
             >
               К маршруту
             </button>
             <button
               className="primary"
-              onClick={() => navigate(uploadPath({ batchId: batch.id }))}
+              onClick={() => navigate(uploadPath({ measurementId: measurement.id }))}
             >
               Добавить видео
             </button>
@@ -92,9 +92,9 @@ export function BatchPage({ batchId }: { batchId: string }) {
         }
       />
 
-      <div className="batch-heading">
-        <span className="batch-dot" style={color ? { background: color } : undefined} />
-        <span>{batch.route.name}</span>
+      <div className="measurement-heading">
+        <span className="measurement-dot" style={color ? { background: color } : undefined} />
+        <span>{measurement.route.name}</span>
       </div>
 
       {error && <ErrorBanner text={error} />}
@@ -113,14 +113,14 @@ export function BatchPage({ batchId }: { batchId: string }) {
         <EmptyState
           text={
             pending > 0
-              ? `Метрики по пачке появятся, когда обработается первое видео. Сейчас в работе ${pending}.`
-              : 'В пачке пока нет видео.'
+              ? `Метрики замера появятся, когда обработается первое видео. Сейчас в работе ${pending}.`
+              : 'В замере пока нет видео.'
           }
         />
       ) : (
         <>
           {pending > 0 && (
-            <p className="batch-pending-note">
+            <p className="measurement-pending-note">
               Метрики считаются по {totals.completed_count} готовым проездам. Ещё{' '}
               {pending} в работе — цифры дорастут.
             </p>
@@ -141,7 +141,7 @@ export function BatchPage({ batchId }: { batchId: string }) {
             ))}
           </div>
         ) : (
-          <EmptyState text="В пачке нет видео." />
+          <EmptyState text="В замере нет видео." />
         )}
       </section>
     </div>

@@ -33,7 +33,7 @@ export function ResultPage({
   initialSeek,
 }: {
   run: PipelineRun
-  /** Приходит из ?t= — переход с топа объектов пачки на нужный кадр. */
+  /** Приходит из ?t= — переход с топа объектов замера на нужный кадр. */
   initialSeek?: number
 }) {
   const [summary, setSummary] = useState<RunSummary | null>(null)
@@ -89,20 +89,20 @@ export function ResultPage({
     <div className="page">
       <PageHeader
         eyebrow={
-          run.batch
-            ? `${run.batch.city.name} · ${run.batch.route.name} · ${run.batch.title}`
+          run.measurement
+            ? `${run.measurement.city.name} · ${run.measurement.route.name} · ${run.measurement.title}`
             : 'Результат анализа'
         }
         title={run.source_name}
         description={`${formatDuration(run.duration_sec)} · ${run.width ?? 0}×${run.height ?? 0}`}
         actions={
           <div className="page-actions">
-            {run.batch && (
+            {run.measurement && (
               <button
                 className="secondary"
-                onClick={() => navigate(`/batches/${run.batch!.batch_id}`)}
+                onClick={() => navigate(`/measurements/${run.measurement!.measurement_id}`)}
               >
-                К пачке
+                К замеру
               </button>
             )}
             <button className="secondary" onClick={() => navigate('/videos')}>
