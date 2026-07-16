@@ -8,6 +8,7 @@ import { RunsSkeleton } from '../components/common/Skeletons'
 import { Tabs } from '../components/common/Tabs'
 import { navigate, uploadPath, videosPath, type VideoFilters } from '../routing'
 import type { City, PipelineRun, Route } from '../types'
+import type { GeoFeatureCollection } from '../components/RouteMap'
 
 const STATUS_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'uploading', label: 'Загружается' },
@@ -21,6 +22,7 @@ export function VideosPage({ filters }: { filters: VideoFilters }) {
   const [runs, setRuns] = useState<PipelineRun[]>([])
   const [cities, setCities] = useState<City[]>([])
   const [routes, setRoutes] = useState<{ cityId: string; items: Route[] } | null>(null)
+  const [routePreviews, setRoutePreviews] = useState<Record<string, GeoFeatureCollection>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -78,6 +80,52 @@ export function VideosPage({ filters }: { filters: VideoFilters }) {
       window.clearInterval(interval)
     }
   }, [filters.assigned, filters.measurementId, filters.cityId, filters.routeId, filters.status])
+
+  useEffect(() => {
+    const targets = new Map<string, { routeId: string; citySlug: string }>()
+    runs.forEach((run) => {
+      if (!run.measurement || routePreviews[run.measurement.route.id]) return
+      targets.set(run.measurement.route.id, {
+        routeId: run.measurement.route.id,
+        citySlug: run.measurement.city.slug,
+      })
+    })
+    const missing = [...targets.values()]
+    if (!missing.length) return
+
+    let disposed = false
+    const loadPreviews = async () => {
+      const citySlugs = [...new Set(missing.map((target) => target.citySlug))]
+      const cityDetails = new Map(
+        await Promise.all(
+          citySlugs.map(async (slug) => [slug, await getCity(slug)] as const),
+        ),
+      )
+      const sources = missing.flatMap(({ routeId, citySlug }) => {
+        const route = cityDetails.get(citySlug)?.routes.find((item) => item.id === routeId)
+        return route ? ([[routeId, route.geojson_path]] as const) : []
+      })
+      const previews = await Promise.all(
+        sources.map(async ([routeId, path]) => {
+          const response = await fetch(`/${path}`)
+          if (!response.ok) return null
+          return [routeId, (await response.json()) as GeoFeatureCollection] as const
+        }),
+      )
+      if (disposed) return
+      const loaded = previews.filter(
+        (preview): preview is readonly [string, GeoFeatureCollection] => preview !== null,
+      )
+      if (loaded.length) {
+        setRoutePreviews((current) => ({ ...current, ...Object.fromEntries(loaded) }))
+      }
+    }
+    void loadPreviews().catch(() => undefined)
+
+    return () => {
+      disposed = true
+    }
+  }, [runs, routePreviews])
 
   const update = (changes: Partial<VideoFilters>) => {
     navigate(videosPath({ ...filters, ...changes }))
@@ -188,7 +236,14 @@ export function VideosPage({ filters }: { filters: VideoFilters }) {
 
       <div className="runs-grid">
         {runs.map((run) => (
-          <RunCard key={run.run_id} run={run} showBadges />
+          <RunCard
+            key={run.run_id}
+            run={run}
+            showBadges
+            routePreview={
+              run.measurement ? routePreviews[run.measurement.route.id] : undefined
+            }
+          />
         ))}
       </div>
     </div>

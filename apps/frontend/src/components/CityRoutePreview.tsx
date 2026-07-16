@@ -77,14 +77,22 @@ function routePath(routes: GeoFeatureCollection[]): string {
 }
 
 /** A compact, monochrome preview of the real route geometry stored for a city. */
-export function CityRoutePreview({ routes }: { routes: GeoFeatureCollection[] | null }) {
+export function CityRoutePreview({
+  routes,
+  className = '',
+}: {
+  routes: GeoFeatureCollection[] | null
+  className?: string
+}) {
   const filterId = useId().replace(/:/g, '')
   const path = useMemo(() => (routes ? routePath(routes) : ''), [routes])
   const loading = routes === null
 
   return (
     <svg
-      className={`city-route-preview${loading ? ' is-loading' : ''}`}
+      className={`city-route-preview${loading ? ' is-loading' : ''}${
+        className ? ` ${className}` : ''
+      }`}
       viewBox={`0 0 ${VIEWBOX.width} ${VIEWBOX.height}`}
       aria-hidden="true"
     >
