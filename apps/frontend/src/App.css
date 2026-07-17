@@ -1463,19 +1463,19 @@ main {
   color: var(--accent);
 }
 
-.file-card strong,
-.file-card span {
+.file-card-content > strong,
+.file-card-content > span {
   display: block;
 }
 
-.file-card strong {
+.file-card-content > strong {
   overflow: hidden;
   color: #ffffff;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.file-card span {
+.file-card-content > span {
   margin-top: 4px;
   color: var(--muted);
   font-size: 13px;

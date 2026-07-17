@@ -15,7 +15,7 @@ export function FileCard({ file, status, actions, children }: FileCardProps) {
   return (
     <div className="file-card">
       <div className="file-card-icon">▶</div>
-      <div>
+      <div className="file-card-content">
         <strong>{file.name}</strong>
         <span>
           {formatBytes(file.size)} · {file.type || 'video'}
