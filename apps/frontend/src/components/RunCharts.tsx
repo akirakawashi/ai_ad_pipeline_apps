@@ -222,7 +222,7 @@ export function RunCharts({
 
         <section className="panel chart-card">
           <header>
-            <h3>Доля заметности</h3>
+            <h3>Заметность по брендам</h3>
             <p>Доля бренда в суммарной заметности видео</p>
           </header>
           <ResponsiveContainer width="100%" height={300}>
@@ -259,7 +259,7 @@ export function RunCharts({
 
         <section className="panel chart-card">
           <header>
-            <h3>Доля заметности</h3>
+            <h3>Распределение заметности</h3>
             <p>Как распределилась заметность между брендами</p>
           </header>
           <ResponsiveContainer width="100%" height={300}>

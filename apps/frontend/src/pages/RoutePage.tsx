@@ -67,7 +67,7 @@ export function RoutePage({
         title={route?.name ?? 'Замеры маршрута'}
         description={
           route
-            ? `${route.color_label ?? ''} · ${pluralMeasurements(measurements.length)} · ${totalVideos} видео`
+            ? `${pluralMeasurements(measurements.length)} · ${totalVideos} видео`
             : undefined
         }
         actions={

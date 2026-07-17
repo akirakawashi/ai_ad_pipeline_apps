@@ -96,10 +96,6 @@ function App() {
               </button>
             </div>
             <div className="topbar-right">
-              <div className="topbar-status">
-                <span />
-                Сервис активен
-              </div>
               <button
                 className="primary topbar-upload"
                 onClick={() => navigate(uploadPath())}

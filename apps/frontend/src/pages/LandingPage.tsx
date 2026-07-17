@@ -12,9 +12,8 @@ export function LandingPage() {
           <p className="landing-eyebrow">Видеоаналитика для бизнеса</p>
           <h1 id="landing-title">Анализ заметности рекламы</h1>
           <p className="landing-lead">
-            Веб-система для анализа рекламы в видео маршрута: загружает ролик,
-            находит рекламные объекты, определяет бренды и показывает
-            проверяемые метрики на интерактивной странице результата.
+            Загружайте видео, просматривайте найденные рекламные объекты и
+            показатели по брендам.
           </p>
           <div className="landing-actions">
             <button className="primary" onClick={() => navigate('/upload')}>

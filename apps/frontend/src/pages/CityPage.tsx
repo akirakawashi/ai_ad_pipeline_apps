@@ -111,7 +111,6 @@ export function CityPage({ citySlug }: { citySlug: string }) {
           <section className="panel map-card">
             <div className="map-toolbar">
               <span className="city-label">{city.name}</span>
-              <span className="map-hint">Интерактивная схема</span>
             </div>
             <RouteMap
               roads={roads}
@@ -129,7 +128,7 @@ export function CityPage({ citySlug }: { citySlug: string }) {
             <div className="panel-heading">
               <div>
                 <p className="panel-kicker">Направления</p>
-                <h2>Куда поедем?</h2>
+                <h2>Выберите маршрут</h2>
               </div>
               <span className="route-count">
                 {String(routesMeta.length).padStart(2, '0')}
@@ -157,9 +156,7 @@ export function CityPage({ citySlug }: { citySlug: string }) {
                   </span>
                   <span className="route-option-copy">
                     <strong>{route.name}</strong>
-                    <small>
-                      {route.color_label} · {pluralMeasurements(route.measurement_count)}
-                    </small>
+                    <small>{pluralMeasurements(route.measurement_count)}</small>
                   </span>
                   <span className="route-option-arrow" aria-hidden="true">
                     ↗
@@ -169,13 +166,13 @@ export function CityPage({ citySlug }: { citySlug: string }) {
             </div>
 
             <section className="selection-card" aria-live="polite">
-              <p className="panel-kicker">Текущий фокус</p>
+              <p className="panel-kicker">Маршрут</p>
               <h3>{focusedMeta ? focusedMeta.name : 'Маршрут не выбран'}</h3>
               <p className="route-description">
                 {focusedMeta && selectedIndex === focusedIndex
-                  ? `Маршрут закреплён. Нажмите «Открыть маршрут», чтобы увидеть замеры. ${focusedMeta.color_label}.`
+                  ? 'Маршрут выбран. Нажмите «Открыть маршрут», чтобы увидеть замеры.'
                   : focusedMeta
-                    ? `Наведите курсор на карту или нажмите «Выбрать маршрут», чтобы закрепить его. ${focusedMeta.color_label}.`
+                    ? 'Нажмите «Выбрать маршрут», чтобы продолжить.'
                     : 'Выберите направление в списке или наведите курсор на его линию на карте.'}
               </p>
 

@@ -148,7 +148,7 @@ export function MeasurementPage({ measurementId }: { measurementId: string }) {
           {waiting > 0 && (
             <p className="measurement-pending-note">
               Считаем по {totals.passes_completed} готовым проездам. Ещё {waiting} в
-              работе — цифры дорастут.
+              работе — данные обновятся после обработки.
             </p>
           )}
           <MeasurementCharts brands={brands} passes={passes} />

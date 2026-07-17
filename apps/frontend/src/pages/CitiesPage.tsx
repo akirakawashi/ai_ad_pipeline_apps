@@ -5,7 +5,7 @@ import { CityRoutePreview } from '../components/CityRoutePreview'
 import { EmptyState, ErrorBanner } from '../components/common/Feedback'
 import { PageHeader } from '../components/common/PageHeader'
 import { RunsSkeleton } from '../components/common/Skeletons'
-import { navigate, videosPath } from '../routing'
+import { navigate, uploadPath } from '../routing'
 import type { City } from '../types'
 import type { GeoFeatureCollection } from '../components/RouteMap'
 import { pluralRoutes } from '../utils/formatters'
@@ -97,7 +97,7 @@ export function CitiesPage() {
                 <div className="city-card-copy">
                   <div className="city-card-kicker">
                     <span className="city-card-live-dot" />
-                    Доступен для анализа
+                    Доступен
                   </div>
                   <h2>{city.name}</h2>
                   <p>{city.region ?? 'Регион не указан'}</p>
@@ -122,13 +122,13 @@ export function CitiesPage() {
 
           <section className="unassigned-videos" aria-labelledby="unassigned-title">
             <div>
-              <p className="unassigned-videos-kicker">Отдельный поток</p>
-              <h2 id="unassigned-title">Неразмеченные видео</h2>
-              <p>Разовые и тестовые загрузки, пока не привязанные к городу и маршруту.</p>
+              <p className="unassigned-videos-kicker">Без маршрута</p>
+              <h2 id="unassigned-title">Загрузить видео без маршрута</h2>
+              <p>Разовая загрузка без привязки к городу и маршруту.</p>
             </div>
             <button
               className="unassigned-videos-action"
-              onClick={() => navigate(videosPath({ assigned: false }))}
+              onClick={() => navigate(uploadPath())}
             >
               <span className="unassigned-videos-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="none">
@@ -137,7 +137,7 @@ export function CitiesPage() {
                 </svg>
               </span>
               <span>
-                <strong>Открыть видео</strong>
+                <strong>Загрузить видео</strong>
                 <small>Без привязки к маршруту</small>
               </span>
               <span className="unassigned-videos-arrow" aria-hidden="true">→</span>

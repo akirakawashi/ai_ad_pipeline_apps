@@ -2456,14 +2456,6 @@ button:disabled,
   font-weight: 750;
 }
 
-.map-hint {
-  color: var(--muted);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
 .map-viewport {
   position: relative;
   aspect-ratio: 1420 / 1085;
