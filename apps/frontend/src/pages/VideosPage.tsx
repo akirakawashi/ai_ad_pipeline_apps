@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getCities, getCity, listRuns } from '../api'
+import { getCities, getCity, getRouteMeasurements, listRuns } from '../api'
 import { EmptyState, ErrorBanner } from '../components/common/Feedback'
 import { PageHeader } from '../components/common/PageHeader'
 import { RunCard } from '../components/common/RunCard'
@@ -7,7 +7,7 @@ import { Select } from '../components/common/Select'
 import { RunsSkeleton } from '../components/common/Skeletons'
 import { Tabs } from '../components/common/Tabs'
 import { navigate, uploadPath, videosPath, type VideoFilters } from '../routing'
-import type { City, PipelineRun, Route } from '../types'
+import type { City, PipelineRun, Route, RouteMeasurement } from '../types'
 import type { GeoFeatureCollection } from '../components/RouteMap'
 
 const STATUS_OPTIONS: Array<{ value: string; label: string }> = [
@@ -22,6 +22,10 @@ export function VideosPage({ filters }: { filters: VideoFilters }) {
   const [runs, setRuns] = useState<PipelineRun[]>([])
   const [cities, setCities] = useState<City[]>([])
   const [routes, setRoutes] = useState<{ cityId: string; items: Route[] } | null>(null)
+  const [measurements, setMeasurements] = useState<{
+    routeId: string
+    items: RouteMeasurement[]
+  } | null>(null)
   const [routePreviews, setRoutePreviews] = useState<Record<string, GeoFeatureCollection>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -52,6 +56,30 @@ export function VideosPage({ filters }: { filters: VideoFilters }) {
   // Выводим, а не сбрасываем в эффекте: маршруты чужого города показывать нельзя.
   const activeRoutes =
     routes && routes.cityId === filters.cityId ? routes.items : []
+  const selectedCity = cities.find((city) => city.id === filters.cityId)
+  const selectedRoute = activeRoutes.find((route) => route.id === filters.routeId)
+
+  useEffect(() => {
+    if (!selectedCity || !selectedRoute) return
+
+    let disposed = false
+    getRouteMeasurements(selectedCity.slug, selectedRoute.slug)
+      .then((page) => {
+        if (!disposed) {
+          setMeasurements({ routeId: selectedRoute.id, items: page.items })
+        }
+      })
+      .catch(() => {
+        if (!disposed) setMeasurements(null)
+      })
+
+    return () => {
+      disposed = true
+    }
+  }, [selectedCity, selectedRoute])
+
+  const activeMeasurements =
+    measurements && measurements.routeId === filters.routeId ? measurements.items : []
 
   useEffect(() => {
     let disposed = false
@@ -186,7 +214,11 @@ export function VideosPage({ filters }: { filters: VideoFilters }) {
                   ...cities.map((city) => ({ value: city.id, label: city.name })),
                 ]}
                 onChange={(cityId) =>
-                  update({ cityId: cityId || undefined, routeId: undefined })
+                  update({
+                    cityId: cityId || undefined,
+                    routeId: undefined,
+                    measurementId: undefined,
+                  })
                 }
               />
             </div>
@@ -201,7 +233,32 @@ export function VideosPage({ filters }: { filters: VideoFilters }) {
                   { value: '', label: 'Все маршруты' },
                   ...activeRoutes.map((route) => ({ value: route.id, label: route.name })),
                 ]}
-                onChange={(routeId) => update({ routeId: routeId || undefined })}
+                onChange={(routeId) =>
+                  update({ routeId: routeId || undefined, measurementId: undefined })
+                }
+              />
+            </div>
+            <div className="field">
+              Замер
+              <Select
+                ariaLabel="Замер"
+                value={filters.measurementId ?? ''}
+                disabled={!selectedRoute}
+                placeholder={
+                  !selectedRoute
+                    ? 'Сначала выберите маршрут'
+                    : 'Все замеры'
+                }
+                options={[
+                  { value: '', label: 'Все замеры' },
+                  ...activeMeasurements.map((measurement) => ({
+                    value: measurement.id,
+                    label: measurement.title,
+                  })),
+                ]}
+                onChange={(measurementId) =>
+                  update({ measurementId: measurementId || undefined })
+                }
               />
             </div>
           </>
