@@ -103,13 +103,9 @@ def build_object_frame(tracks_df: pd.DataFrame) -> pd.DataFrame:
         tracks_df.groupby(["object_id", "business_brand"], dropna=False)
         .agg(
             track_fragment_count=("track_id", "count"),
-            video_visibility_weighted_seconds=(
-                "video_visibility_weighted_seconds",
-                "sum",
-            ),
+            visibility_value=("visibility_value", "sum"),
             first_timestamp_sec=("first_timestamp_sec", "min"),
             last_timestamp_sec=("last_timestamp_sec", "max"),
-            mean_track_final_score=("track_final_score", "mean"),
         )
         .reset_index()
         .rename(columns={"business_brand": "brand"})
@@ -123,7 +119,7 @@ def build_brand_chart_frame(
     normalized["brand"] = normalize_brand_series(normalized["brand"])
     summary = normalized.groupby("brand", as_index=False).agg(
         object_count=("object_id", "count"),
-        visibility_index=("video_visibility_weighted_seconds", "sum"),
+        visibility_index=("visibility_value", "sum"),
     )
     if brands is not None:
         existing = set(summary["brand"].astype(str))
@@ -247,7 +243,7 @@ def top_visible_objects_chart(px: Any, object_brand: pd.DataFrame) -> Any | None
     dataframe = object_brand.copy()
     dataframe["brand"] = normalize_brand_series(dataframe["brand"])
     dataframe = (
-        dataframe.sort_values("video_visibility_weighted_seconds", ascending=False)
+        dataframe.sort_values("visibility_value", ascending=False)
         .head(10)
         .copy()
     )
@@ -257,14 +253,14 @@ def top_visible_objects_chart(px: Any, object_brand: pd.DataFrame) -> Any | None
     dataframe["brand_label"] = dataframe["brand"].map(brand_label)
     dataframe["object_label"] = dataframe.apply(object_chart_label, axis=1)
     dataframe["visibility_index_text"] = dataframe[
-        "video_visibility_weighted_seconds"
+        "visibility_value"
     ].map(format_chart_number)
     dataframe = dataframe.sort_values(
-        "video_visibility_weighted_seconds", ascending=True
+        "visibility_value", ascending=True
     )
     figure = px.bar(
         dataframe,
-        x="video_visibility_weighted_seconds",
+        x="visibility_value",
         y="object_label",
         orientation="h",
         color="brand_label",
@@ -272,7 +268,7 @@ def top_visible_objects_chart(px: Any, object_brand: pd.DataFrame) -> Any | None
         color_discrete_map=label_color_map(),
         category_orders={"brand_label": ordered_labels()},
         labels={
-            "video_visibility_weighted_seconds": "Индекс заметности",
+            "visibility_value": "Индекс заметности",
             "object_label": "Объект",
             "brand_label": "Бренд",
         },
@@ -293,7 +289,7 @@ def visibility_timeline_chart(px: Any, detections_df: pd.DataFrame) -> Any | Non
         "timestamp_sec",
         "object_id",
         "business_brand",
-        "video_visibility_score",
+        "intensity",
     }
     if not required_columns.issubset(detections_df.columns):
         return None
@@ -303,11 +299,11 @@ def visibility_timeline_chart(px: Any, detections_df: pd.DataFrame) -> Any | Non
     dataframe["timestamp_sec"] = pd.to_numeric(
         dataframe["timestamp_sec"], errors="coerce"
     )
-    dataframe["video_visibility_score"] = pd.to_numeric(
-        dataframe["video_visibility_score"], errors="coerce"
+    dataframe["intensity"] = pd.to_numeric(
+        dataframe["intensity"], errors="coerce"
     )
     dataframe = dataframe.dropna(
-        subset=["timestamp_sec", "video_visibility_score", "object_id"]
+        subset=["timestamp_sec", "intensity", "object_id"]
     )
     if dataframe.empty:
         return None
@@ -317,7 +313,7 @@ def visibility_timeline_chart(px: Any, detections_df: pd.DataFrame) -> Any | Non
     ).astype(int) * TIMELINE_BUCKET_SECONDS
     object_bucket = dataframe.groupby(
         ["time_bucket_sec", "object_id", "brand"], as_index=False
-    ).agg(visibility_index=("video_visibility_score", "max"))
+    ).agg(visibility_index=("intensity", "max"))
     timeline = object_bucket.groupby(["time_bucket_sec", "brand"], as_index=False)[
         "visibility_index"
     ].sum()

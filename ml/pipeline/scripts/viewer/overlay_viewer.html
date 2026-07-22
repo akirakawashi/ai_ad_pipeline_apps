@@ -432,8 +432,8 @@
         ["detection", "Detection confidence", formatPercent(object.det_conf)],
         ["brand", "Brand confidence", formatBrandConfidence(object)],
         ["area", "Area in frame", formatAreaPercent(object.area_ratio)],
-        ["visibility", "Visibility score", formatScore(object.visibility_score)],
-        ["score", "Overall score", formatScore(object.overall_score)],
+        ["visibility", "Intensity", formatScore(object.intensity)],
+        ["score", "Visibility value", formatScore(object.visibility_value)],
       ];
 
       for (const [icon, name, value] of rows) {

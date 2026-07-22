@@ -211,7 +211,7 @@ def choose_object_business_brand(tracks: list[TrackRecord]) -> str:
         if track.business_brand not in TARGET_BRANDS:
             continue
         score = max(
-            track.video_visibility_weighted_seconds, track.visible_duration_sec, 1.0
+            track.attention_seconds, track.visible_duration_sec, 1.0
         )
         model_scores[track.business_brand] += score * max(track.final_brand_conf, 0.01)
 

@@ -8,6 +8,12 @@ from statistics import mean
 from .config import PipelineConfig
 from .domain import FinalStatus, TARGET_BRANDS
 from .schemas import DetectionRecord, TrackRecord
+from .scoring import (
+    attention_seconds,
+    confidence_coefficient,
+    significance_coefficient,
+    visibility_value,
+)
 
 
 def aggregate_tracks(
@@ -54,7 +60,6 @@ def apply_track_results(
         detection.final_status = track.final_status
         detection.business_brand = track.business_brand
         detection.status_reason = track.final_status_reason
-        detection.overall_score = compute_detection_overall_score(detection)
 
 
 def _aggregate_one(
@@ -92,14 +97,11 @@ def _aggregate_one(
     best_crop_quality_score = max(
         detection.crop_quality_score for detection in detections
     )
-    mean_video_visibility_score = mean(
-        detection.video_visibility_score for detection in detections
-    )
-    track_final_score = (
-        0.30 * mean_det_conf
-        + 0.25 * best_crop_quality_score
-        + 0.25 * final_conf
-        + 0.20 * mean_video_visibility_score
+    object_attention_seconds = attention_seconds(detections)
+    object_confidence_coef = confidence_coefficient(detections, final_conf, config)
+    object_significance_coef = significance_coefficient(detections, config)
+    object_visibility_value = visibility_value(
+        object_attention_seconds, object_confidence_coef, object_significance_coef
     )
 
     return TrackRecord(
@@ -126,16 +128,10 @@ def _aggregate_one(
         max_area_ratio=max(detection.area_ratio for detection in detections),
         mean_area_ratio=mean(detection.area_ratio for detection in detections),
         sum_area_ratio=sum(detection.area_ratio for detection in detections),
-        mean_position_weight=mean(
-            detection.position_weight for detection in detections
-        ),
-        mean_video_visibility_score=mean_video_visibility_score,
-        sum_video_visibility_score=sum(
-            detection.video_visibility_score for detection in detections
-        ),
-        video_visibility_weighted_seconds=sum(
-            detection.video_visibility_weighted_seconds for detection in detections
-        ),
+        attention_seconds=object_attention_seconds,
+        confidence_coef=object_confidence_coef,
+        significance_coef=object_significance_coef,
+        visibility_value=object_visibility_value,
         final_brand=final_brand,
         final_brand_conf=final_conf,
         final_status=final_status,
@@ -143,7 +139,6 @@ def _aggregate_one(
         business_visible=False,
         final_status_reason=final_reason,
         track_confirmed=track_confirmed,
-        track_final_score=track_final_score,
         manual_review_required=final_status == FinalStatus.MANUAL_REVIEW,
     )
 
@@ -256,21 +251,6 @@ def _is_track_confirmed(
     return (
         len(detections) >= config.tracking.min_detections
         and frame_span >= config.tracking.min_frame_span
-    )
-
-
-def compute_detection_overall_score(detection: DetectionRecord) -> float:
-    if detection.classification_attempted:
-        return (
-            0.30 * detection.det_conf
-            + 0.30 * detection.crop_quality_score
-            + 0.25 * detection.brand_conf
-            + 0.15 * detection.video_visibility_score
-        )
-    return (
-        0.40 * detection.det_conf
-        + 0.40 * detection.crop_quality_score
-        + 0.20 * detection.video_visibility_score
     )
 
 

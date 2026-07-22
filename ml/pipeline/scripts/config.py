@@ -64,9 +64,87 @@ class BusinessConfig:
 
 
 @dataclass(frozen=True)
-class VisibilityConfig:
-    area_norm: float = 0.05
-    min_position_weight: float = 0.20
+class AreaConfig:
+    """Тир-таблица площади: (доля кадра, коэффициент A).
+
+    Между точками — линейная интерполяция; ниже первой и выше последней — клэмп
+    к крайним значениям (мелкие не проваливаются в 0, крупные не растут выше 1).
+    Числа — дефолт, бизнес тюнит.
+    """
+
+    points: tuple[tuple[float, float], ...] = (
+        (0.005, 0.30),  # 0.5% кадра → 0.30
+        (0.02, 0.70),   # 2%  кадра → 0.70
+        (0.05, 1.00),   # 5%  кадра → 1.00 (и крупнее — тоже 1.00)
+    )
+
+
+@dataclass(frozen=True)
+class PositionConfig:
+    """Кривая положения по горизонтали (экран-X, доля ширины) → коэффициент P.
+
+    Точки заданы для ПРАВОСТОРОННЕГО движения: своя сторона = правая (большой x),
+    встречная = левая (малый x). Для левостороннего движения кривая зеркалится
+    (см. handedness). Пик — на своей стороне ближе к центру, не на краю.
+    Линейная интерполяция между точками, за краями — клэмп. Бизнес тюнит.
+    v1: только горизонталь (высоту center_y_norm пока не учитываем).
+    """
+
+    points: tuple[tuple[float, float], ...] = (
+        (0.00, 0.50),  # левый край — встречная периферия
+        (0.33, 0.60),  # встречная, ближе к центру
+        (0.50, 0.80),  # центр кадра (точка схода) — переход
+        (0.67, 1.00),  # своя сторона у центра — пик
+        (0.85, 0.85),  # своя, средняя зона
+        (1.00, 0.70),  # своя периферия (правый край)
+    )
+
+
+@dataclass(frozen=True)
+class ContrastConfig:
+    """Контраст щита к фону по яркости (кольцо вокруг bbox), v1.
+
+    ring_margin_ratio — насколько расширяем bbox под кольцо-фон (доля стороны).
+    points — (яркостной контраст Михельсона 0…1) → коэффициент C, интерполяция.
+    Числа условные, бизнес тюнит.
+    """
+
+    ring_margin_ratio: float = 0.5
+    points: tuple[tuple[float, float], ...] = (
+        (0.05, 0.60),  # сливается с фоном
+        (0.15, 0.80),  # средний контраст
+        (0.35, 1.00),  # ярко выделяется (и выше — 1.0)
+    )
+
+
+@dataclass(frozen=True)
+class ConfidenceConfig:
+    """Коэффициент уверенности α из уверенности бренда (final_brand_conf).
+
+    Таблица (уверенность → α) с интерполяцией, за краями клэмп. Пол 0.5 — объект
+    всё равно видели, в ноль не режем. v1: только величина, без стабильности бренда.
+    """
+
+    points: tuple[tuple[float, float], ...] = (
+        (0.40, 0.50),  # низкая уверенность → пол 0.5
+        (0.80, 0.90),  # принимаемый бренд
+        (0.90, 1.00),  # уверенно → 1.0 (и выше — 1.0)
+    )
+
+
+@dataclass(frozen=True)
+class ScoringConfig:
+    """Настройки нового расчёта заметности (метрика: I=A·P·C, S=ΣI·Δt, V=S·α·β).
+
+    Таблицы наполняются по шагам. Готово: площадь (Шаг 1), положение (Шаг 2),
+    контраст (Шаг 3), уверенность (Шаг 5). Заглушка (1.0): значимость (Фаза 2).
+    """
+
+    handedness: str = "right"  # правостороннее движение (влияет на сторону в P)
+    area: AreaConfig = field(default_factory=AreaConfig)
+    position: PositionConfig = field(default_factory=PositionConfig)
+    contrast: ContrastConfig = field(default_factory=ContrastConfig)
+    confidence: ConfidenceConfig = field(default_factory=ConfidenceConfig)
 
 
 @dataclass(frozen=True)
@@ -89,7 +167,7 @@ class PipelineConfig:
     classification: ClassificationConfig = field(default_factory=ClassificationConfig)
     tracking: TrackingConfig = field(default_factory=TrackingConfig)
     business: BusinessConfig = field(default_factory=BusinessConfig)
-    visibility: VisibilityConfig = field(default_factory=VisibilityConfig)
+    scoring: ScoringConfig = field(default_factory=ScoringConfig)
     rendering: RenderingConfig = field(default_factory=RenderingConfig)
 
 

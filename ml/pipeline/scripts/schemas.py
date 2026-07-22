@@ -63,8 +63,6 @@ class DetectionRecord:
     center_y: float
     center_x_norm: float
     center_y_norm: float
-    position_label: str
-    position_weight: float
     object_id: int | None = None
     crop_path: str = ""
     crop_width: int = 0
@@ -84,9 +82,10 @@ class DetectionRecord:
     top2_score: float = 0.0
     top3_brand: str = ""
     top3_score: float = 0.0
-    video_visibility_score: float = 0.0
-    video_visibility_weighted_seconds: float = 0.0
-    overall_score: float = 0.0
+    area_coef: float = 1.0
+    position_coef: float = 1.0
+    contrast_coef: float = 1.0
+    intensity: float = 0.0
     brand_status: BrandStatus = BrandStatus.NOT_CLASSIFIED
     final_status: FinalStatus = FinalStatus.NOT_CLASSIFIED
     business_brand: str = "other"
@@ -126,10 +125,10 @@ class TrackRecord:
     max_area_ratio: float
     mean_area_ratio: float
     sum_area_ratio: float
-    mean_position_weight: float
-    mean_video_visibility_score: float
-    sum_video_visibility_score: float
-    video_visibility_weighted_seconds: float
+    attention_seconds: float
+    confidence_coef: float
+    significance_coef: float
+    visibility_value: float
     final_brand: str
     final_brand_conf: float
     final_status: FinalStatus
@@ -137,7 +136,6 @@ class TrackRecord:
     business_visible: bool
     final_status_reason: str
     track_confirmed: bool
-    track_final_score: float
     manual_review_required: bool
 
     def to_row(self) -> dict[str, Any]:

@@ -57,8 +57,8 @@ def write_html_report(
             "visible_duration_sec",
             "detections_count",
             "final_brand_conf",
-            "track_final_score",
-            "video_visibility_weighted_seconds",
+            "visibility_value",
+            "attention_seconds",
             "best_crop_path",
         ]
         parts.append(

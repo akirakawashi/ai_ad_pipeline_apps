@@ -51,8 +51,6 @@ class DetectionCsvRow(ArtifactModel):
     center_y: float
     center_x_norm: float
     center_y_norm: float
-    position_label: str
-    position_weight: float
     object_id: int | None
     crop_path: str
     crop_width: int
@@ -70,9 +68,10 @@ class DetectionCsvRow(ArtifactModel):
     top2_score: float
     top3_brand: str
     top3_score: float
-    video_visibility_score: float
-    video_visibility_weighted_seconds: float
-    overall_score: float
+    area_coef: float
+    position_coef: float
+    contrast_coef: float
+    intensity: float
     brand_status: BrandStatus
     final_status: FinalStatus
     business_brand: str
@@ -110,10 +109,10 @@ class TrackCsvRow(ArtifactModel):
     max_area_ratio: float
     mean_area_ratio: float
     sum_area_ratio: float
-    mean_position_weight: float
-    mean_video_visibility_score: float
-    sum_video_visibility_score: float
-    video_visibility_weighted_seconds: float
+    attention_seconds: float
+    confidence_coef: float
+    significance_coef: float
+    visibility_value: float
     final_brand: str
     final_brand_conf: float
     final_status: FinalStatus
@@ -121,7 +120,6 @@ class TrackCsvRow(ArtifactModel):
     business_visible: bool
     final_status_reason: str
     track_confirmed: bool
-    track_final_score: float
     manual_review_required: bool
 
     def to_csv_row(self) -> dict[str, Any]:
@@ -139,7 +137,7 @@ class BrandDetectionSummaryRow(ArtifactModel):
     max_brand_conf: float
     first_timestamp_sec: float
     last_timestamp_sec: float
-    sum_video_visibility_score: float
+    sum_intensity: float
 
 
 class FrameSummaryRow(ArtifactModel):
@@ -150,17 +148,15 @@ class FrameSummaryRow(ArtifactModel):
     plus7_count: int
     miranda_count: int
     other_count: int
-    sum_video_visibility_score: float
+    sum_intensity: float
 
 
 class BrandTrackSummaryRow(ArtifactModel):
     brand: str | None = None
     object_count: int = 0
     track_fragment_count: int | None = None
-    mean_track_final_score: float | None = None
-    mean_video_visibility_score: float | None = None
-    sum_video_visibility_score: float | None = None
-    video_visibility_weighted_seconds: float | None = None
+    sum_visibility_value: float | None = None
+    sum_attention_seconds: float | None = None
     mean_final_brand_conf: float | None = None
     max_final_brand_conf: float | None = None
     first_timestamp_sec: float | None = None
@@ -198,8 +194,8 @@ class OverlayObjectPayload(ArtifactModel):
     det_conf: float
     brand_conf: float
     area_ratio: float
-    visibility_score: float
-    overall_score: float
+    intensity: float
+    visibility_value: float
     card_priority: float
 
 
