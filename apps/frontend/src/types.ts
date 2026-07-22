@@ -189,7 +189,7 @@ export interface CreateRunResult {
 export interface BrandSummary {
   brand: string
   object_count?: number
-  video_visibility_weighted_seconds?: number
+  sum_visibility_value?: number
   visibility_share?: number
   mean_final_brand_conf?: number
 }
@@ -212,7 +212,7 @@ export interface RunObject {
   visible_duration_sec: number
   detections_count: number
   final_brand_conf: number
-  video_visibility_weighted_seconds: number
+  visibility_value: number
   best_timestamp_sec: number
   crop_url?: string | null
 }
@@ -226,7 +226,7 @@ export interface TimelinePoint {
   bucket_start_sec: number
   business_brand: string
   detection_count: number
-  visibility_score: number
+  intensity_sum: number
 }
 
 export interface RunTimeline {
@@ -250,8 +250,8 @@ export interface OverlayObject {
   det_conf: number
   brand_conf: number
   area_ratio: number
-  visibility_score: number
-  overall_score: number
+  intensity: number
+  visibility_value: number
   card_priority?: number
 }
 

@@ -123,7 +123,7 @@ class CatalogService:
                 PassBrandDTO(
                     brand=brand.brand,
                     objects_count=brand.object_count or 0,
-                    visibility_index=brand.video_visibility_weighted_seconds or 0.0,
+                    visibility_index=brand.sum_visibility_value or 0.0,
                 )
                 for brand in summary.brands
             ],

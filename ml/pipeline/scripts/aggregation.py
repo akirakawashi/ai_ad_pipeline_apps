@@ -16,16 +16,6 @@ from .scoring import (
 )
 
 
-def aggregate_tracks(
-    detections: list[DetectionRecord],
-    config: PipelineConfig,
-) -> list[TrackRecord]:
-    """Compatibility wrapper that builds tracks and propagates their results."""
-    tracks = build_tracks(detections, config)
-    apply_track_results(tracks, detections)
-    return tracks
-
-
 def build_tracks(
     detections: list[DetectionRecord],
     config: PipelineConfig,
@@ -93,10 +83,6 @@ def _aggregate_one(
     if visible_duration_sec < 0:
         visible_duration_sec = 0.0
 
-    mean_det_conf = mean(detection.det_conf for detection in detections)
-    best_crop_quality_score = max(
-        detection.crop_quality_score for detection in detections
-    )
     object_attention_seconds = attention_seconds(detections)
     object_confidence_coef = confidence_coefficient(detections, final_conf, config)
     object_significance_coef = significance_coefficient(detections, config)
@@ -115,19 +101,8 @@ def _aggregate_one(
         last_timestamp_sec=detections[-1].timestamp_sec,
         visible_duration_sec=visible_duration_sec,
         detections_count=len(detections),
-        classified_crops_count=len(classified),
         best_crop_path=best_detection.crop_path,
-        best_frame_index=best_detection.frame_index,
         best_timestamp_sec=best_detection.timestamp_sec,
-        mean_det_conf=mean_det_conf,
-        max_det_conf=max(detection.det_conf for detection in detections),
-        mean_crop_quality_score=mean(
-            detection.crop_quality_score for detection in detections
-        ),
-        best_crop_quality_score=best_crop_quality_score,
-        max_area_ratio=max(detection.area_ratio for detection in detections),
-        mean_area_ratio=mean(detection.area_ratio for detection in detections),
-        sum_area_ratio=sum(detection.area_ratio for detection in detections),
         attention_seconds=object_attention_seconds,
         confidence_coef=object_confidence_coef,
         significance_coef=object_significance_coef,

@@ -253,7 +253,7 @@ class PipelineRunService:
 
         total_objects = sum(item.object_count for item in brands)
         total_visibility = sum(
-            item.video_visibility_weighted_seconds or 0.0 for item in brands
+            item.sum_visibility_value or 0.0 for item in brands
         )
         return RunSummaryDTO(
             run=run,
@@ -281,7 +281,7 @@ class PipelineRunService:
         if dataframe.empty:
             return RunObjectsDTO(run_id=run_id, objects=[])
         dataframe = dataframe.sort_values(
-            "video_visibility_weighted_seconds",
+            "visibility_value",
             ascending=False,
         )
         if limit is not None:
@@ -337,7 +337,7 @@ class PipelineRunService:
                     )
                     .agg(
                         detection_count=("det_index", "count"),
-                        visibility_score=("video_visibility_score", "sum"),
+                        intensity_sum=("intensity", "sum"),
                     )
                     .reset_index()
                 )

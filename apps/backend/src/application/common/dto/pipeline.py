@@ -152,7 +152,7 @@ class RunTimelinePointDTO(ApplicationDTO):
     bucket_start_sec: float
     business_brand: str | None
     detection_count: int
-    visibility_score: float
+    intensity_sum: float
 
 
 class RunTimelineDTO(ApplicationDTO):

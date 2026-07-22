@@ -114,17 +114,8 @@ class TrackRecord:
     last_timestamp_sec: float
     visible_duration_sec: float
     detections_count: int
-    classified_crops_count: int
     best_crop_path: str
-    best_frame_index: int
     best_timestamp_sec: float
-    mean_det_conf: float
-    max_det_conf: float
-    mean_crop_quality_score: float
-    best_crop_quality_score: float
-    max_area_ratio: float
-    mean_area_ratio: float
-    sum_area_ratio: float
     attention_seconds: float
     confidence_coef: float
     significance_coef: float

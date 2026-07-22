@@ -94,7 +94,7 @@ export function RunCharts({
     () =>
       brands.reduce(
         (total, brand) =>
-          total + Number(brand.video_visibility_weighted_seconds ?? 0),
+          total + Number(brand.sum_visibility_value ?? 0),
         0,
       ),
     [brands],
@@ -118,7 +118,7 @@ export function RunCharts({
       buildTimelineRows(
         timeline,
         hiddenBrands,
-        (point) => point.visibility_score,
+        (point) => point.intensity_sum,
       ),
     [hiddenBrands, timeline],
   )
@@ -140,7 +140,7 @@ export function RunCharts({
             object.best_timestamp_sec,
           )}`,
           visibility_index: Number(
-            object.video_visibility_weighted_seconds ?? 0,
+            object.visibility_value ?? 0,
           ),
         }))
         .filter((object) => !hiddenBrands.has(object.brand_key))
@@ -469,7 +469,7 @@ function toBrandChartRow(
   totalVisibility: number,
 ): BrandChartRow {
   const brandKey = normalizeBrand(brand.brand)
-  const visibilityIndex = Number(brand.video_visibility_weighted_seconds ?? 0)
+  const visibilityIndex = Number(brand.sum_visibility_value ?? 0)
   return {
     brand_key: brandKey,
     brand_label: formatBrandLabel(brandKey),
