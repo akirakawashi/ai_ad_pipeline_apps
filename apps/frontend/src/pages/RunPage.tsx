@@ -34,5 +34,5 @@ export function RunPage({ runId, seek }: { runId: string; seek?: number }) {
   if (error) return <ErrorBanner text={error} />
   if (!run) return <EmptyState text="Открываем анализ…" />
   if (run.status !== 'completed') return <ProcessingPage run={run} />
-  return <ResultPage run={run} initialSeek={seek} />
+  return <ResultPage run={run} initialSeek={seek} onRunUpdated={setRun} />
 }

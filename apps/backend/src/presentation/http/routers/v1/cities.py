@@ -5,11 +5,12 @@ from fastapi import APIRouter, Depends, Path, Query
 from application.services.catalog_service import CatalogService
 from presentation.http.dependencies import get_catalog_service
 from presentation.http.dto.response import (
+    AssignmentResponse,
     CityDetailResponse,
     CityResponse,
-    MeasurementResponse,
+    CreateAssignmentRequest,
     OkResponse,
-    PaginatedMeasurementsResponse,
+    PaginatedAssignmentsResponse,
 )
 
 router = APIRouter(prefix="/cities", tags=["Catalog"])
@@ -33,34 +34,43 @@ def get_city(
 
 
 @router.get(
-    "/{city_slug}/routes/{route_slug}/measurements",
-    response_model=OkResponse[PaginatedMeasurementsResponse],
+    "/{city_slug}/routes/{route_slug}/assignments",
+    response_model=OkResponse[PaginatedAssignmentsResponse],
 )
-def list_route_measurements(
+def list_route_assignments(
     city_slug: str = Path(description="Слаг города"),
     route_slug: str = Path(description="Слаг маршрута в пределах города"),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=100),
     service: CatalogService = Depends(get_catalog_service),
-) -> OkResponse[PaginatedMeasurementsResponse]:
-    result = service.list_measurements(
+) -> OkResponse[PaginatedAssignmentsResponse]:
+    result = service.list_assignments(
         city_slug=city_slug,
         route_slug=route_slug,
         page=page,
         page_size=page_size,
     )
-    return OkResponse(data=PaginatedMeasurementsResponse.model_validate(result))
+    return OkResponse(data=PaginatedAssignmentsResponse.model_validate(result))
 
 
 @router.post(
-    "/{city_slug}/routes/{route_slug}/measurements",
-    response_model=OkResponse[MeasurementResponse],
+    "/{city_slug}/routes/{route_slug}/assignments",
+    response_model=OkResponse[AssignmentResponse],
     status_code=201,
 )
-def create_route_measurement(
+def create_route_assignment(
+    payload: CreateAssignmentRequest,
     city_slug: str = Path(description="Слаг города"),
     route_slug: str = Path(description="Слаг маршрута в пределах города"),
     service: CatalogService = Depends(get_catalog_service),
-) -> OkResponse[MeasurementResponse]:
-    result = service.create_measurement(city_slug=city_slug, route_slug=route_slug)
-    return OkResponse(data=MeasurementResponse.model_validate(result))
+) -> OkResponse[AssignmentResponse]:
+    result = service.create_assignment(
+        city_slug=city_slug,
+        route_slug=route_slug,
+        title=payload.title,
+        description=payload.description,
+        planned_start_at=payload.planned_start_at,
+        planned_end_at=payload.planned_end_at,
+        author_user_id=payload.author_user_id,
+    )
+    return OkResponse(data=AssignmentResponse.model_validate(result))

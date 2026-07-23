@@ -1,17 +1,20 @@
 import type {
-  MeasurementsPage,
-  MeasurementSummary,
+  AssignmentPayload,
+  AssignmentsPage,
+  AssignmentSummary,
   City,
   CityDetail,
   CreateRunResult,
   OverlayPayload,
   PipelineRun,
   Playback,
-  RouteMeasurement,
+  Assignment,
   RunObjects,
   RunsPage,
   RunSummary,
   RunTimeline,
+  ShootingPayload,
+  User,
 } from './types'
 
 const API_BASE =
@@ -40,10 +43,15 @@ async function apiFetch<T>(
   return envelope.data
 }
 
-/** measurementId === null — «Без маршрута»: видео вне города и маршрута. */
+export interface CreateRunOptions {
+  /** null — «Без задания»: видео вне города и маршрута. */
+  assignmentId?: string | null
+  operatorUserId?: string | null
+}
+
 export function createRun(
   file: File,
-  measurementId: string | null = null,
+  { assignmentId = null, operatorUserId = null }: CreateRunOptions = {},
 ): Promise<CreateRunResult> {
   return apiFetch('/runs', {
     method: 'POST',
@@ -51,8 +59,22 @@ export function createRun(
       file_name: file.name,
       content_type: file.type || 'application/octet-stream',
       size_bytes: file.size,
-      measurement_id: measurementId,
+      assignment_id: assignmentId,
+      // Время съёмки берём из метаданных файла. Это подсказка, а не истина:
+      // копия с карты памяти принесёт время копирования — поэтому правится.
+      shot_started_at: new Date(file.lastModified).toISOString(),
+      operator_user_id: operatorUserId,
     }),
+  })
+}
+
+export function updateShooting(
+  runId: string,
+  payload: ShootingPayload,
+): Promise<PipelineRun> {
+  return apiFetch(`/runs/${runId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
   })
 }
 
@@ -98,7 +120,7 @@ export interface ListRunsParams {
   status?: string
   cityId?: string
   routeId?: string
-  measurementId?: string
+  assignmentId?: string
   /** false — только видео без маршрута. */
   assigned?: boolean
 }
@@ -110,9 +132,20 @@ export function listRuns(params: ListRunsParams = {}): Promise<RunsPage> {
   if (params.status) query.set('status', params.status)
   if (params.cityId) query.set('city_id', params.cityId)
   if (params.routeId) query.set('route_id', params.routeId)
-  if (params.measurementId) query.set('measurement_id', params.measurementId)
+  if (params.assignmentId) query.set('assignment_id', params.assignmentId)
   if (params.assigned !== undefined) query.set('assigned', String(params.assigned))
   return apiFetch(`/runs?${query.toString()}`)
+}
+
+export function getUsers(): Promise<User[]> {
+  return apiFetch('/users')
+}
+
+export function createUser(fullName: string): Promise<User> {
+  return apiFetch('/users', {
+    method: 'POST',
+    body: JSON.stringify({ full_name: fullName }),
+  })
 }
 
 export function getCities(): Promise<City[]> {
@@ -123,33 +156,44 @@ export function getCity(citySlug: string): Promise<CityDetail> {
   return apiFetch(`/cities/${citySlug}`)
 }
 
-export function getRouteMeasurements(
+export function getRouteAssignments(
   citySlug: string,
   routeSlug: string,
-): Promise<MeasurementsPage> {
-  return apiFetch(`/cities/${citySlug}/routes/${routeSlug}/measurements?page=1&page_size=50`)
+): Promise<AssignmentsPage> {
+  return apiFetch(`/cities/${citySlug}/routes/${routeSlug}/assignments?page=1&page_size=50`)
 }
 
-export function createMeasurement(
+export function createAssignment(
   citySlug: string,
   routeSlug: string,
-): Promise<RouteMeasurement> {
-  return apiFetch(`/cities/${citySlug}/routes/${routeSlug}/measurements`, {
+  payload: AssignmentPayload = {},
+): Promise<Assignment> {
+  return apiFetch(`/cities/${citySlug}/routes/${routeSlug}/assignments`, {
     method: 'POST',
-    body: '{}',
+    body: JSON.stringify(payload),
   })
 }
 
-export function getMeasurement(measurementId: string): Promise<RouteMeasurement> {
-  return apiFetch(`/measurements/${measurementId}`)
+export function updateAssignment(
+  assignmentId: string,
+  payload: AssignmentPayload,
+): Promise<Assignment> {
+  return apiFetch(`/assignments/${assignmentId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  })
 }
 
-export function getMeasurementRuns(measurementId: string): Promise<PipelineRun[]> {
-  return apiFetch(`/measurements/${measurementId}/runs`)
+export function getAssignment(assignmentId: string): Promise<Assignment> {
+  return apiFetch(`/assignments/${assignmentId}`)
 }
 
-export function getMeasurementSummary(measurementId: string): Promise<MeasurementSummary> {
-  return apiFetch(`/measurements/${measurementId}/summary`)
+export function getAssignmentRuns(assignmentId: string): Promise<PipelineRun[]> {
+  return apiFetch(`/assignments/${assignmentId}/runs`)
+}
+
+export function getAssignmentSummary(assignmentId: string): Promise<AssignmentSummary> {
+  return apiFetch(`/assignments/${assignmentId}/summary`)
 }
 
 export function getRun(runId: string): Promise<PipelineRun> {

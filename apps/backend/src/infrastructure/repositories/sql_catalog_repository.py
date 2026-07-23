@@ -1,30 +1,36 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta
+
 from sqlalchemy import func
 from sqlalchemy.orm import noload, selectinload
 from sqlmodel import Session, select
 
 from application.common.dto import (
+    AssignmentDTO,
+    AssignmentStatusCountsDTO,
     CityDetailDTO,
     CityDTO,
-    MeasurementStatusCountsDTO,
     PipelineRunDTO,
     RouteDTO,
-    RouteMeasurementDTO,
 )
-from infrastructure.database.models import City, PipelineRun, Route, RouteMeasurement
-from infrastructure.repositories.measurement_mapping import (
+from infrastructure.database.models import Assignment, City, PipelineRun, Route
+from infrastructure.repositories.assignment_mapping import (
+    assignment_title,
     city_ref,
-    measurement_title,
     route_ref,
+    user_ref,
 )
 from infrastructure.repositories.sql_pipeline_run_repository import _run_to_dto
+
+# Фактическое окно задания: (начало первой съёмки, конец последней).
+ShotWindow = tuple[datetime | None, datetime | None]
 
 
 def _route_to_dto(
     route: Route,
     *,
-    measurement_count: int = 0,
+    assignment_count: int = 0,
     video_count: int = 0,
 ) -> RouteDTO:
     return RouteDTO(
@@ -33,30 +39,39 @@ def _route_to_dto(
         name=route.name,
         color_label=route.color_label,
         color_hex=route.color_hex,
+        description=route.description,
         geojson_path=route.geojson_path,
         display_order=route.display_order,
-        measurement_count=measurement_count,
+        assignment_count=assignment_count,
         video_count=video_count,
     )
 
 
-def _measurement_to_dto(
-    measurement: RouteMeasurement,
+def _assignment_to_dto(
+    assignment: Assignment,
     route: Route,
     city: City,
     *,
     video_count: int = 0,
-    status_counts: MeasurementStatusCountsDTO | None = None,
-) -> RouteMeasurementDTO:
-    return RouteMeasurementDTO(
-        id=measurement.route_measurements_id,
-        sequence_number=measurement.sequence_number,
-        title=measurement_title(measurement),
+    status_counts: AssignmentStatusCountsDTO | None = None,
+    shot_window: ShotWindow = (None, None),
+) -> AssignmentDTO:
+    actual_start_at, actual_end_at = shot_window
+    return AssignmentDTO(
+        id=assignment.assignments_id,
+        sequence_number=assignment.sequence_number,
+        title=assignment_title(assignment),
+        description=assignment.description,
         route=route_ref(route),
         city=city_ref(city),
+        author=user_ref(assignment.author),
+        planned_start_at=assignment.planned_start_at,
+        planned_end_at=assignment.planned_end_at,
+        actual_start_at=actual_start_at,
+        actual_end_at=actual_end_at,
         video_count=video_count,
-        status_counts=status_counts or MeasurementStatusCountsDTO(),
-        created_at=measurement.created_at,
+        status_counts=status_counts or AssignmentStatusCountsDTO(),
+        created_at=assignment.created_at,
     )
 
 
@@ -66,49 +81,82 @@ class SqlCatalogRepository:
 
     # --- счётчики -------------------------------------------------------
 
-    def _measurement_counts_by_route(self) -> dict[str, int]:
+    def _assignment_counts_by_route(self) -> dict[str, int]:
         rows = self._session.exec(
-            select(RouteMeasurement.routes_id, func.count(RouteMeasurement.route_measurements_id))
-            .group_by(RouteMeasurement.routes_id)
+            select(Assignment.routes_id, func.count(Assignment.assignments_id))
+            .group_by(Assignment.routes_id)
         ).all()
         return {routes_id: int(count) for routes_id, count in rows}
 
     def _video_counts_by_route(self) -> dict[str, int]:
         rows = self._session.exec(
-            select(RouteMeasurement.routes_id, func.count(PipelineRun.pipeline_runs_id))
-            .join(PipelineRun, PipelineRun.route_measurements_id == RouteMeasurement.route_measurements_id)
-            .group_by(RouteMeasurement.routes_id)
+            select(Assignment.routes_id, func.count(PipelineRun.pipeline_runs_id))
+            .join(PipelineRun, PipelineRun.assignments_id == Assignment.assignments_id)
+            .group_by(Assignment.routes_id)
         ).all()
         return {routes_id: int(count) for routes_id, count in rows}
 
-    def _video_counts_by_measurement(self, measurement_ids: list[str]) -> dict[str, int]:
-        if not measurement_ids:
+    def _video_counts_by_assignment(self, assignment_ids: list[str]) -> dict[str, int]:
+        if not assignment_ids:
             return {}
         rows = self._session.exec(
-            select(PipelineRun.route_measurements_id, func.count(PipelineRun.pipeline_runs_id))
-            .where(PipelineRun.route_measurements_id.in_(measurement_ids))
-            .group_by(PipelineRun.route_measurements_id)
+            select(PipelineRun.assignments_id, func.count(PipelineRun.pipeline_runs_id))
+            .where(PipelineRun.assignments_id.in_(assignment_ids))
+            .group_by(PipelineRun.assignments_id)
         ).all()
-        return {measurement_id: int(count) for measurement_id, count in rows}
+        return {assignment_id: int(count) for assignment_id, count in rows}
 
-    def _status_counts_by_measurement(
+    def _shot_windows_by_assignment(
         self,
-        measurement_ids: list[str],
-    ) -> dict[str, MeasurementStatusCountsDTO]:
-        if not measurement_ids:
+        assignment_ids: list[str],
+    ) -> dict[str, ShotWindow]:
+        """Фактическое окно каждого задания из времён его съёмок.
+
+        Одним запросом на весь список, без N+1. Конец считаем в Python как
+        начало + длительность: интервальная арифметика в SQL привязала бы
+        репозиторий к диалекту ради экономии, которой на ≤20 съёмках нет.
+        """
+        if not assignment_ids:
             return {}
         rows = self._session.exec(
             select(
-                PipelineRun.route_measurements_id,
+                PipelineRun.assignments_id,
+                PipelineRun.shot_started_at,
+                PipelineRun.duration_sec,
+            ).where(
+                PipelineRun.assignments_id.in_(assignment_ids),
+                PipelineRun.shot_started_at.is_not(None),
+            )
+        ).all()
+
+        result: dict[str, ShotWindow] = {}
+        for assignment_id, shot_started_at, duration_sec in rows:
+            start, end = result.get(assignment_id, (None, None))
+            finish = shot_started_at + timedelta(seconds=duration_sec or 0.0)
+            result[assignment_id] = (
+                shot_started_at if start is None else min(start, shot_started_at),
+                finish if end is None else max(end, finish),
+            )
+        return result
+
+    def _status_counts_by_assignment(
+        self,
+        assignment_ids: list[str],
+    ) -> dict[str, AssignmentStatusCountsDTO]:
+        if not assignment_ids:
+            return {}
+        rows = self._session.exec(
+            select(
+                PipelineRun.assignments_id,
                 PipelineRun.status,
                 func.count(PipelineRun.pipeline_runs_id),
             )
-            .where(PipelineRun.route_measurements_id.in_(measurement_ids))
-            .group_by(PipelineRun.route_measurements_id, PipelineRun.status)
+            .where(PipelineRun.assignments_id.in_(assignment_ids))
+            .group_by(PipelineRun.assignments_id, PipelineRun.status)
         ).all()
-        result: dict[str, MeasurementStatusCountsDTO] = {}
-        for measurement_id, status, count in rows:
-            counts = result.setdefault(measurement_id, MeasurementStatusCountsDTO())
+        result: dict[str, AssignmentStatusCountsDTO] = {}
+        for assignment_id, status, count in rows:
+            counts = result.setdefault(assignment_id, AssignmentStatusCountsDTO())
             if hasattr(counts, status):
                 setattr(counts, status, int(count))
         return result
@@ -130,19 +178,19 @@ class SqlCatalogRepository:
         ).all()
         route_counts = {cities_id: int(count) for cities_id, count in route_rows}
 
-        measurement_rows = self._session.exec(
-            select(Route.cities_id, func.count(RouteMeasurement.route_measurements_id))
-            .join(RouteMeasurement, RouteMeasurement.routes_id == Route.routes_id)
+        assignment_rows = self._session.exec(
+            select(Route.cities_id, func.count(Assignment.assignments_id))
+            .join(Assignment, Assignment.routes_id == Route.routes_id)
             .group_by(Route.cities_id)
         ).all()
-        measurement_counts = {cities_id: int(count) for cities_id, count in measurement_rows}
+        assignment_counts = {cities_id: int(count) for cities_id, count in assignment_rows}
 
         video_rows = self._session.exec(
             select(Route.cities_id, func.count(PipelineRun.pipeline_runs_id))
-            .join(RouteMeasurement, RouteMeasurement.routes_id == Route.routes_id)
+            .join(Assignment, Assignment.routes_id == Route.routes_id)
             .join(
                 PipelineRun,
-                PipelineRun.route_measurements_id == RouteMeasurement.route_measurements_id,
+                PipelineRun.assignments_id == Assignment.assignments_id,
             )
             .group_by(Route.cities_id)
         ).all()
@@ -157,7 +205,7 @@ class SqlCatalogRepository:
                 roads_geojson_path=city.roads_geojson_path,
                 display_order=city.display_order,
                 route_count=route_counts.get(city.cities_id, 0),
-                measurement_count=measurement_counts.get(city.cities_id, 0),
+                assignment_count=assignment_counts.get(city.cities_id, 0),
                 video_count=video_counts.get(city.cities_id, 0),
             )
             for city in cities
@@ -172,7 +220,7 @@ class SqlCatalogRepository:
         if city is None:
             return None
 
-        measurement_counts = self._measurement_counts_by_route()
+        assignment_counts = self._assignment_counts_by_route()
         video_counts = self._video_counts_by_route()
         routes = [route for route in city.routes if route.is_active]
 
@@ -184,12 +232,12 @@ class SqlCatalogRepository:
             roads_geojson_path=city.roads_geojson_path,
             display_order=city.display_order,
             route_count=len(routes),
-            measurement_count=sum(measurement_counts.get(r.routes_id, 0) for r in routes),
+            assignment_count=sum(assignment_counts.get(r.routes_id, 0) for r in routes),
             video_count=sum(video_counts.get(r.routes_id, 0) for r in routes),
             routes=[
                 _route_to_dto(
                     route,
-                    measurement_count=measurement_counts.get(route.routes_id, 0),
+                    assignment_count=assignment_counts.get(route.routes_id, 0),
                     video_count=video_counts.get(route.routes_id, 0),
                 )
                 for route in routes
@@ -209,20 +257,20 @@ class SqlCatalogRepository:
             return None
         return _route_to_dto(
             route,
-            measurement_count=self._measurement_counts_by_route().get(route.routes_id, 0),
+            assignment_count=self._assignment_counts_by_route().get(route.routes_id, 0),
             video_count=self._video_counts_by_route().get(route.routes_id, 0),
         )
 
-    # --- замера ------------------------------------------------------------
+    # --- задания ------------------------------------------------------------
 
-    def list_measurements(
+    def list_assignments(
         self,
         *,
         city_slug: str,
         route_slug: str,
         page: int,
         page_size: int,
-    ) -> tuple[list[RouteMeasurementDTO], int]:
+    ) -> tuple[list[AssignmentDTO], int]:
         route = self._get_route_model(city_slug, route_slug)
         if route is None:
             return [], 0
@@ -231,46 +279,54 @@ class SqlCatalogRepository:
             return [], 0
 
         total = self._session.exec(
-            select(func.count(RouteMeasurement.route_measurements_id)).where(
-                RouteMeasurement.routes_id == route.routes_id
+            select(func.count(Assignment.assignments_id)).where(
+                Assignment.routes_id == route.routes_id
             )
         ).one()
 
-        measurements = self._session.exec(
-            select(RouteMeasurement)
-            .where(RouteMeasurement.routes_id == route.routes_id)
-            .order_by(RouteMeasurement.sequence_number.desc())
+        assignments = self._session.exec(
+            select(Assignment)
+            .where(Assignment.routes_id == route.routes_id)
+            .options(selectinload(Assignment.author))
+            .order_by(Assignment.sequence_number.desc())
             .offset((page - 1) * page_size)
             .limit(page_size)
         ).all()
 
-        measurement_ids = [measurement.route_measurements_id for measurement in measurements]
-        video_counts = self._video_counts_by_measurement(measurement_ids)
-        status_counts = self._status_counts_by_measurement(measurement_ids)
+        assignment_ids = [assignment.assignments_id for assignment in assignments]
+        video_counts = self._video_counts_by_assignment(assignment_ids)
+        status_counts = self._status_counts_by_assignment(assignment_ids)
+        shot_windows = self._shot_windows_by_assignment(assignment_ids)
 
         return [
-            _measurement_to_dto(
-                measurement,
+            _assignment_to_dto(
+                assignment,
                 route,
                 city,
-                video_count=video_counts.get(measurement.route_measurements_id, 0),
-                status_counts=status_counts.get(measurement.route_measurements_id),
+                video_count=video_counts.get(assignment.assignments_id, 0),
+                status_counts=status_counts.get(assignment.assignments_id),
+                shot_window=shot_windows.get(assignment.assignments_id, (None, None)),
             )
-            for measurement in measurements
+            for assignment in assignments
         ], int(total)
 
-    def create_measurement(
+    def create_assignment(
         self,
         *,
         city_slug: str,
         route_slug: str,
-    ) -> RouteMeasurementDTO | None:
+        title: str | None,
+        description: str | None,
+        planned_start_at: datetime | None,
+        planned_end_at: datetime | None,
+        author_user_id: str | None,
+    ) -> AssignmentDTO | None:
         route = self._get_route_model(city_slug, route_slug)
         if route is None:
             return None
 
         # Блокируем строку маршрута: два одновременных POST сериализуются здесь
-        # и получают разные номера. uq_route_measurements_route_sequence — подстраховка.
+        # и получают разные номера. uq_assignments_route_sequence — подстраховка.
         self._session.exec(
             select(Route)
             .where(Route.routes_id == route.routes_id)
@@ -279,68 +335,100 @@ class SqlCatalogRepository:
 
         next_sequence = self._session.exec(
             select(
-                func.coalesce(func.max(RouteMeasurement.sequence_number), 0) + 1
-            ).where(RouteMeasurement.routes_id == route.routes_id)
+                func.coalesce(func.max(Assignment.sequence_number), 0) + 1
+            ).where(Assignment.routes_id == route.routes_id)
         ).one()
 
-        measurement = RouteMeasurement(
+        assignment = Assignment(
             routes_id=route.routes_id,
             sequence_number=int(next_sequence),
+            title=title,
+            description=description,
+            planned_start_at=planned_start_at,
+            planned_end_at=planned_end_at,
+            author_users_id=author_user_id,
         )
-        self._session.add(measurement)
+        self._session.add(assignment)
         self._session.flush()
-        self._session.refresh(measurement)
+        self._session.refresh(assignment)
 
         city = route.city
         if city is None:
             return None
-        return _measurement_to_dto(measurement, route, city)
+        return _assignment_to_dto(assignment, route, city)
 
-    def _get_measurement_model(self, measurement_id: str) -> RouteMeasurement | None:
+    def update_assignment(
+        self,
+        assignment_id: str,
+        *,
+        fields: dict[str, object],
+    ) -> AssignmentDTO | None:
+        """Перезаписывает только переданные ключи: PATCH, а не PUT."""
+        assignment = self._get_assignment_model(assignment_id)
+        if assignment is None or assignment.route is None or assignment.route.city is None:
+            return None
+        for name, value in fields.items():
+            setattr(assignment, name, value)
+        self._session.add(assignment)
+        self._session.flush()
+        self._session.refresh(assignment)
+        return self._assignment_dto(assignment)
+
+    def _get_assignment_model(self, assignment_id: str) -> Assignment | None:
         return self._session.exec(
-            select(RouteMeasurement)
-            .where(RouteMeasurement.route_measurements_id == measurement_id)
-            .options(selectinload(RouteMeasurement.route).selectinload(Route.city))
+            select(Assignment)
+            .where(Assignment.assignments_id == assignment_id)
+            .options(
+                selectinload(Assignment.route).selectinload(Route.city),
+                selectinload(Assignment.author),
+            )
         ).first()
 
-    def get_measurement(self, measurement_id: str) -> RouteMeasurementDTO | None:
-        measurement = self._get_measurement_model(measurement_id)
-        if measurement is None or measurement.route is None or measurement.route.city is None:
-            return None
-        return _measurement_to_dto(
-            measurement,
-            measurement.route,
-            measurement.route.city,
-            video_count=self._video_counts_by_measurement([measurement_id]).get(measurement_id, 0),
-            status_counts=self._status_counts_by_measurement([measurement_id]).get(measurement_id),
+    def _assignment_dto(self, assignment: Assignment) -> AssignmentDTO:
+        assignment_id = assignment.assignments_id
+        return _assignment_to_dto(
+            assignment,
+            assignment.route,
+            assignment.route.city,
+            video_count=self._video_counts_by_assignment([assignment_id]).get(assignment_id, 0),
+            status_counts=self._status_counts_by_assignment([assignment_id]).get(assignment_id),
+            shot_window=self._shot_windows_by_assignment([assignment_id]).get(
+                assignment_id, (None, None)
+            ),
         )
 
-    def list_measurement_runs(self, measurement_id: str) -> list[PipelineRunDTO]:
+    def get_assignment(self, assignment_id: str) -> AssignmentDTO | None:
+        assignment = self._get_assignment_model(assignment_id)
+        if assignment is None or assignment.route is None or assignment.route.city is None:
+            return None
+        return self._assignment_dto(assignment)
+
+    def list_assignment_runs(self, assignment_id: str) -> list[PipelineRunDTO]:
         runs = self._session.exec(
             select(PipelineRun)
-            .where(PipelineRun.route_measurements_id == measurement_id)
+            .where(PipelineRun.assignments_id == assignment_id)
             .options(
                 selectinload(PipelineRun.artifacts),
                 noload(PipelineRun.events),
-                noload(PipelineRun.measurement),
+                noload(PipelineRun.assignment),
             )
             .order_by(PipelineRun.created_at)
         ).all()
         return [_run_to_dto(run) for run in runs]
 
-    def lock_measurement(self, measurement_id: str) -> bool:
-        """Блокирует строку замера. False, если замера нет."""
-        measurement = self._session.exec(
-            select(RouteMeasurement)
-            .where(RouteMeasurement.route_measurements_id == measurement_id)
+    def lock_assignment(self, assignment_id: str) -> bool:
+        """Блокирует строку задания. False, если задания нет."""
+        assignment = self._session.exec(
+            select(Assignment)
+            .where(Assignment.assignments_id == assignment_id)
             .with_for_update()
         ).first()
-        return measurement is not None
+        return assignment is not None
 
-    def count_measurement_runs(self, measurement_id: str) -> int:
+    def count_assignment_runs(self, assignment_id: str) -> int:
         total = self._session.exec(
             select(func.count(PipelineRun.pipeline_runs_id)).where(
-                PipelineRun.route_measurements_id == measurement_id
+                PipelineRun.assignments_id == assignment_id
             )
         ).one()
         return int(total)
@@ -354,5 +442,5 @@ class SqlCatalogRepository:
 
 __all__ = [
     "SqlCatalogRepository",
-    "measurement_title",
+    "assignment_title",
 ]

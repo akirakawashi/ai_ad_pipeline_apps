@@ -7,14 +7,14 @@ import type { GeoFeatureCollection } from '../RouteMap'
 
 interface RunCardProps {
   run: PipelineRun
-  /** Показывать город и маршрут. На странице замера они очевидны из контекста. */
+  /** Показывать город и маршрут. На странице задания они очевидны из контекста. */
   showBadges?: boolean
   /** Реальная геометрия маршрута для превью в общем архиве. */
   routePreview?: GeoFeatureCollection
 }
 
 /**
- * Карточка видео. Общая для «Все видео» и страницы замера — если у одной из
+ * Карточка видео. Общая для «Все видео» и страницы задания — если у одной из
  * них заведётся своя вёрстка, дублирование вернётся туда, откуда его убрали.
  */
 export function RunCard({ run, showBadges = false, routePreview }: RunCardProps) {
@@ -26,12 +26,12 @@ export function RunCard({ run, showBadges = false, routePreview }: RunCardProps)
   })
 
   if (showBadges) {
-    const routeText = run.measurement
-      ? `${run.measurement.city.name} · ${run.measurement.route.name}`
+    const routeText = run.assignment
+      ? `${run.assignment.city.name} · ${run.assignment.route.name}`
       : 'Разовая загрузка без маршрута'
-    const footerText = run.measurement
-      ? `${run.measurement.title} · ${date}`
-      : `Без маршрута · ${date}`
+    const footerText = run.assignment
+      ? `${run.assignment.title} · ${date}`
+      : `Без задания · ${date}`
 
     return (
       <button
@@ -56,10 +56,10 @@ export function RunCard({ run, showBadges = false, routePreview }: RunCardProps)
           </div>
           <h3>{run.source_name}</h3>
           <p className="archive-run-route">
-            {run.measurement?.route.color_hex && (
+            {run.assignment?.route.color_hex && (
               <span
                 className="archive-run-route-dot"
-                style={{ background: run.measurement.route.color_hex }}
+                style={{ background: run.assignment.route.color_hex }}
               />
             )}
             {routeText}
@@ -95,26 +95,26 @@ export function RunCard({ run, showBadges = false, routePreview }: RunCardProps)
         <h3>{run.source_name}</h3>
         {showBadges && (
           <div className="run-badges">
-            {run.measurement ? (
+            {run.assignment ? (
               <>
                 <span
                   className="run-badge"
                   style={
-                    run.measurement.route.color_hex
+                    run.assignment.route.color_hex
                       ? {
-                          background: `color-mix(in srgb, ${run.measurement.route.color_hex} 16%, transparent)`,
-                          borderColor: `color-mix(in srgb, ${run.measurement.route.color_hex} 45%, transparent)`,
-                          color: run.measurement.route.color_hex,
+                          background: `color-mix(in srgb, ${run.assignment.route.color_hex} 16%, transparent)`,
+                          borderColor: `color-mix(in srgb, ${run.assignment.route.color_hex} 45%, transparent)`,
+                          color: run.assignment.route.color_hex,
                         }
                       : undefined
                   }
                 >
-                  {run.measurement.city.name} · {run.measurement.route.name}
+                  {run.assignment.city.name} · {run.assignment.route.name}
                 </span>
-                <span className="run-badge muted">{run.measurement.title}</span>
+                <span className="run-badge muted">{run.assignment.title}</span>
               </>
             ) : (
-              <span className="run-badge muted">Без маршрута</span>
+              <span className="run-badge muted">Без задания</span>
             )}
           </div>
         )}

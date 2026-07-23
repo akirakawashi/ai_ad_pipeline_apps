@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getCities, getCity, getRouteMeasurements, listRuns } from '../api'
+import { getCities, getCity, getRouteAssignments, listRuns } from '../api'
 import { EmptyState, ErrorBanner } from '../components/common/Feedback'
 import { PageHeader } from '../components/common/PageHeader'
 import { RunCard } from '../components/common/RunCard'
@@ -7,7 +7,7 @@ import { Select } from '../components/common/Select'
 import { RunsSkeleton } from '../components/common/Skeletons'
 import { Tabs } from '../components/common/Tabs'
 import { navigate, uploadPath, videosPath, type VideoFilters } from '../routing'
-import type { City, PipelineRun, Route, RouteMeasurement } from '../types'
+import type { City, PipelineRun, Route, Assignment } from '../types'
 import type { GeoFeatureCollection } from '../components/RouteMap'
 
 const STATUS_OPTIONS: Array<{ value: string; label: string }> = [
@@ -22,9 +22,9 @@ export function VideosPage({ filters }: { filters: VideoFilters }) {
   const [runs, setRuns] = useState<PipelineRun[]>([])
   const [cities, setCities] = useState<City[]>([])
   const [routes, setRoutes] = useState<{ cityId: string; items: Route[] } | null>(null)
-  const [measurements, setMeasurements] = useState<{
+  const [assignments, setAssignments] = useState<{
     routeId: string
-    items: RouteMeasurement[]
+    items: Assignment[]
   } | null>(null)
   const [routePreviews, setRoutePreviews] = useState<Record<string, GeoFeatureCollection>>({})
   const [loading, setLoading] = useState(true)
@@ -63,14 +63,14 @@ export function VideosPage({ filters }: { filters: VideoFilters }) {
     if (!selectedCity || !selectedRoute) return
 
     let disposed = false
-    getRouteMeasurements(selectedCity.slug, selectedRoute.slug)
+    getRouteAssignments(selectedCity.slug, selectedRoute.slug)
       .then((page) => {
         if (!disposed) {
-          setMeasurements({ routeId: selectedRoute.id, items: page.items })
+          setAssignments({ routeId: selectedRoute.id, items: page.items })
         }
       })
       .catch(() => {
-        if (!disposed) setMeasurements(null)
+        if (!disposed) setAssignments(null)
       })
 
     return () => {
@@ -78,8 +78,8 @@ export function VideosPage({ filters }: { filters: VideoFilters }) {
     }
   }, [selectedCity, selectedRoute])
 
-  const activeMeasurements =
-    measurements && measurements.routeId === filters.routeId ? measurements.items : []
+  const activeAssignments =
+    assignments && assignments.routeId === filters.routeId ? assignments.items : []
 
   useEffect(() => {
     let disposed = false
@@ -87,7 +87,7 @@ export function VideosPage({ filters }: { filters: VideoFilters }) {
       listRuns({
         cityId: filters.cityId,
         routeId: filters.routeId,
-        measurementId: filters.measurementId,
+        assignmentId: filters.assignmentId,
         status: filters.status,
         assigned: filters.assigned,
       })
@@ -107,15 +107,15 @@ export function VideosPage({ filters }: { filters: VideoFilters }) {
       disposed = true
       window.clearInterval(interval)
     }
-  }, [filters.assigned, filters.measurementId, filters.cityId, filters.routeId, filters.status])
+  }, [filters.assigned, filters.assignmentId, filters.cityId, filters.routeId, filters.status])
 
   useEffect(() => {
     const targets = new Map<string, { routeId: string; citySlug: string }>()
     runs.forEach((run) => {
-      if (!run.measurement || routePreviews[run.measurement.route.id]) return
-      targets.set(run.measurement.route.id, {
-        routeId: run.measurement.route.id,
-        citySlug: run.measurement.city.slug,
+      if (!run.assignment || routePreviews[run.assignment.route.id]) return
+      targets.set(run.assignment.route.id, {
+        routeId: run.assignment.route.id,
+        citySlug: run.assignment.city.slug,
       })
     })
     const missing = [...targets.values()]
@@ -188,13 +188,13 @@ export function VideosPage({ filters }: { filters: VideoFilters }) {
         options={[
           { value: 'all', label: 'Все видео' },
           { value: 'assigned', label: 'С маршрутом' },
-          { value: 'unassigned', label: 'Без маршрута' },
+          { value: 'unassigned', label: 'Без задания' },
         ]}
         onChange={(tab) =>
           update({
             assigned: tab === 'unassigned' ? false : tab === 'assigned' ? true : undefined,
             ...(tab === 'unassigned'
-              ? { cityId: undefined, routeId: undefined, measurementId: undefined }
+              ? { cityId: undefined, routeId: undefined, assignmentId: undefined }
               : {}),
           })
         }
@@ -217,7 +217,7 @@ export function VideosPage({ filters }: { filters: VideoFilters }) {
                   update({
                     cityId: cityId || undefined,
                     routeId: undefined,
-                    measurementId: undefined,
+                    assignmentId: undefined,
                   })
                 }
               />
@@ -234,30 +234,30 @@ export function VideosPage({ filters }: { filters: VideoFilters }) {
                   ...activeRoutes.map((route) => ({ value: route.id, label: route.name })),
                 ]}
                 onChange={(routeId) =>
-                  update({ routeId: routeId || undefined, measurementId: undefined })
+                  update({ routeId: routeId || undefined, assignmentId: undefined })
                 }
               />
             </div>
             <div className="field">
-              Замер
+              Задание
               <Select
-                ariaLabel="Замер"
-                value={filters.measurementId ?? ''}
+                ariaLabel="Задание"
+                value={filters.assignmentId ?? ''}
                 disabled={!selectedRoute}
                 placeholder={
                   !selectedRoute
                     ? 'Сначала выберите маршрут'
-                    : 'Все замеры'
+                    : 'Все задания'
                 }
                 options={[
-                  { value: '', label: 'Все замеры' },
-                  ...activeMeasurements.map((measurement) => ({
-                    value: measurement.id,
-                    label: measurement.title,
+                  { value: '', label: 'Все задания' },
+                  ...activeAssignments.map((assignment) => ({
+                    value: assignment.id,
+                    label: assignment.title,
                   })),
                 ]}
-                onChange={(measurementId) =>
-                  update({ measurementId: measurementId || undefined })
+                onChange={(assignmentId) =>
+                  update({ assignmentId: assignmentId || undefined })
                 }
               />
             </div>
@@ -298,7 +298,7 @@ export function VideosPage({ filters }: { filters: VideoFilters }) {
             run={run}
             showBadges
             routePreview={
-              run.measurement ? routePreviews[run.measurement.route.id] : undefined
+              run.assignment ? routePreviews[run.assignment.route.id] : undefined
             }
           />
         ))}

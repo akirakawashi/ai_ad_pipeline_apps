@@ -5,10 +5,13 @@ from fastapi.responses import JSONResponse
 from minio.error import S3Error
 
 from application.exceptions import (
+    AssignmentFullError,
     CatalogNotFoundError,
+    InvalidAssignmentError,
+    InvalidUserError,
     InvalidVideoError,
-    MeasurementFullError,
     PipelineRunNotFoundError,
+    UserAlreadyExistsError,
 )
 
 
@@ -33,10 +36,20 @@ def setup_exception_handlers(app: FastAPI) -> None:
             content={"detail": str(exc)},
         )
 
-    @app.exception_handler(MeasurementFullError)
-    async def measurement_full_handler(
+    @app.exception_handler(AssignmentFullError)
+    async def assignment_full_handler(
         _: Request,
-        exc: MeasurementFullError,
+        exc: AssignmentFullError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=409,
+            content={"detail": str(exc)},
+        )
+
+    @app.exception_handler(UserAlreadyExistsError)
+    async def user_exists_handler(
+        _: Request,
+        exc: UserAlreadyExistsError,
     ) -> JSONResponse:
         return JSONResponse(
             status_code=409,
@@ -47,6 +60,26 @@ def setup_exception_handlers(app: FastAPI) -> None:
     async def invalid_video_handler(
         _: Request,
         exc: InvalidVideoError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=400,
+            content={"detail": str(exc)},
+        )
+
+    @app.exception_handler(InvalidUserError)
+    async def invalid_user_handler(
+        _: Request,
+        exc: InvalidUserError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=400,
+            content={"detail": str(exc)},
+        )
+
+    @app.exception_handler(InvalidAssignmentError)
+    async def invalid_assignment_handler(
+        _: Request,
+        exc: InvalidAssignmentError,
     ) -> JSONResponse:
         return JSONResponse(
             status_code=400,

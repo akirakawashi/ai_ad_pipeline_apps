@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react'
-import { getCity, getRouteMeasurements } from '../api'
+import { createAssignment, getCity, getRouteAssignments } from '../api'
+import { AssignmentForm } from '../components/AssignmentForm'
 import { EmptyState, ErrorBanner } from '../components/common/Feedback'
 import { PageHeader } from '../components/common/PageHeader'
 import { RunsSkeleton } from '../components/common/Skeletons'
-import { navigate, uploadPath } from '../routing'
-import type { Route, RouteMeasurement } from '../types'
-import { pluralMeasurements } from '../utils/formatters'
+import { navigate } from '../routing'
+import type { Assignment, AssignmentPayload, Route } from '../types'
+import { formatPeriod, pluralAssignments } from '../utils/formatters'
 
-function measurementProgressLabel(measurement: RouteMeasurement): string {
+function assignmentProgressLabel(assignment: Assignment): string {
   const { completed, processing, queued, uploading, processing_failed } =
-    measurement.status_counts
+    assignment.status_counts
   const parts: string[] = []
   if (completed) parts.push(`Готово ${completed}`)
   if (processing + queued + uploading) {
@@ -28,19 +29,22 @@ export function RoutePage({
 }) {
   const [route, setRoute] = useState<Route | null>(null)
   const [cityName, setCityName] = useState('')
-  const [measurements, setBatches] = useState<RouteMeasurement[]>([])
+  const [assignments, setAssignments] = useState<Assignment[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [creating, setCreating] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [formError, setFormError] = useState<string | null>(null)
 
   useEffect(() => {
     let disposed = false
     const load = () => {
-      Promise.all([getCity(citySlug), getRouteMeasurements(citySlug, routeSlug)])
+      Promise.all([getCity(citySlug), getRouteAssignments(citySlug, routeSlug)])
         .then(([city, page]) => {
           if (disposed) return
           setCityName(city.name)
           setRoute(city.routes.find((item) => item.slug === routeSlug) ?? null)
-          setBatches(page.items)
+          setAssignments(page.items)
         })
         .catch((reason) => {
           if (!disposed) setError(String(reason))
@@ -50,7 +54,7 @@ export function RoutePage({
         })
     }
     load()
-    // Замеры показывают статус обработки — он меняется без нашего участия.
+    // Задания показывают статус обработки — он меняется без нашего участия.
     const interval = window.setInterval(load, 5000)
     return () => {
       disposed = true
@@ -58,57 +62,80 @@ export function RoutePage({
     }
   }, [citySlug, routeSlug])
 
-  const totalVideos = measurements.reduce((sum, measurement) => sum + measurement.video_count, 0)
+  const totalVideos = assignments.reduce(
+    (sum, assignment) => sum + assignment.video_count,
+    0,
+  )
+
+  const submit = (payload: AssignmentPayload) => {
+    setSaving(true)
+    setFormError(null)
+    createAssignment(citySlug, routeSlug, payload)
+      // Сразу внутрь задания: следующий шаг — загрузить в него съёмки.
+      .then((assignment) => navigate(`/assignments/${assignment.id}`))
+      .catch((reason) => {
+        setFormError(String(reason))
+        setSaving(false)
+      })
+  }
+
+  const newAssignmentButton = (
+    <button className="primary" onClick={() => setCreating(true)}>
+      Новое задание
+    </button>
+  )
 
   return (
     <div className="page">
       <PageHeader
         eyebrow={cityName || 'Маршрут'}
-        title={route?.name ?? 'Замеры маршрута'}
+        title={route?.name ?? 'Задания маршрута'}
         description={
           route
-            ? `${pluralMeasurements(measurements.length)} · ${totalVideos} видео`
+            ? `${pluralAssignments(assignments.length)} · ${totalVideos} видео`
             : undefined
         }
-        actions={
-          <button
-            className="primary"
-            onClick={() => navigate(uploadPath({ citySlug, routeSlug }))}
-          >
-            Новый замер
-          </button>
-        }
+        actions={creating ? undefined : newAssignmentButton}
       />
 
       {error && <ErrorBanner text={error} />}
+
+      {route?.description && <p className="route-description">{route.description}</p>}
+
+      {creating && (
+        <AssignmentForm
+          submitLabel="Создать задание"
+          busy={saving}
+          error={formError}
+          onSubmit={submit}
+          onCancel={() => {
+            setCreating(false)
+            setFormError(null)
+          }}
+        />
+      )}
+
       {loading && <RunsSkeleton />}
 
-      {!loading && !error && !measurements.length && (
+      {!loading && !error && !creating && !assignments.length && (
         <EmptyState
-          text="На этом маршруте ещё нет замеров. Загрузите первый."
-          action={
-            <button
-              className="primary"
-              onClick={() => navigate(uploadPath({ citySlug, routeSlug }))}
-            >
-              Новый замер
-            </button>
-          }
+          text="На этом маршруте ещё нет заданий. Создайте первое."
+          action={newAssignmentButton}
         />
       )}
 
       <div className="runs-grid">
-        {measurements.map((measurement) => (
+        {assignments.map((assignment) => (
           <button
             className="run-card"
-            key={measurement.id}
-            onClick={() => navigate(`/measurements/${measurement.id}`)}
+            key={assignment.id}
+            onClick={() => navigate(`/assignments/${assignment.id}`)}
           >
             <div
               className="run-preview"
               style={
-                measurement.route.color_hex
-                  ? { borderColor: measurement.route.color_hex }
+                assignment.route.color_hex
+                  ? { borderColor: assignment.route.color_hex }
                   : undefined
               }
             >
@@ -116,10 +143,18 @@ export function RoutePage({
             </div>
             <div className="run-copy">
               <div className="status status-queued">
-                {measurement.video_count} видео
+                {assignment.video_count} видео
               </div>
-              <h3>{measurement.title}</h3>
-              <p>{measurementProgressLabel(measurement)}</p>
+              <h3>{assignment.title}</h3>
+              <p>{assignmentProgressLabel(assignment)}</p>
+              <p className="run-card-meta">
+                {assignment.author?.full_name ?? 'Постановщик не указан'}
+                {' · '}
+                {formatPeriod(
+                  assignment.planned_start_at,
+                  assignment.planned_end_at,
+                )}
+              </p>
             </div>
           </button>
         ))}

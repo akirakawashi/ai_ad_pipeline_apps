@@ -1,20 +1,33 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from application.common.dto import (
     CityDetailDTO,
     CityDTO,
-    MeasurementPassDTO,
-    MeasurementSummaryDTO,
-    PaginatedMeasurementsDTO,
-    PassBrandDTO,
+    ShootingMetricsDTO,
+    AssignmentSummaryDTO,
+    PaginatedAssignmentsDTO,
+    ShootingBrandDTO,
     PipelineRunDTO,
-    RouteMeasurementDTO,
+    AssignmentDTO,
 )
-from application.exceptions import CatalogNotFoundError
+from application.exceptions import CatalogNotFoundError, InvalidAssignmentError
 from application.interfaces import CatalogRepository
-from application.services.measurement_rollup import rollup_brands, rollup_totals
+from application.services.assignment_rollup import rollup_brands, rollup_totals
 from application.services.pipeline_run_service import PipelineRunService
 from domain.entities import PipelineRunStatus
+
+
+def _check_planned_window(start: object, end: object) -> None:
+    """Плановое окно не может кончиться раньше, чем началось.
+
+    Обе границы необязательны — постановщик может знать только одну.
+    """
+    if isinstance(start, datetime) and isinstance(end, datetime) and end < start:
+        raise InvalidAssignmentError(
+            "Окончание задания не может быть раньше его начала."
+        )
 
 
 class CatalogService:
@@ -35,92 +48,133 @@ class CatalogService:
             raise CatalogNotFoundError("Город не найден.")
         return city
 
-    def list_measurements(
+    def list_assignments(
         self,
         *,
         city_slug: str,
         route_slug: str,
         page: int,
         page_size: int,
-    ) -> PaginatedMeasurementsDTO:
+    ) -> PaginatedAssignmentsDTO:
         if self._repository.get_route(city_slug, route_slug) is None:
             raise CatalogNotFoundError("Маршрут не найден.")
-        items, total = self._repository.list_measurements(
+        items, total = self._repository.list_assignments(
             city_slug=city_slug,
             route_slug=route_slug,
             page=page,
             page_size=page_size,
         )
-        return PaginatedMeasurementsDTO(
+        return PaginatedAssignmentsDTO(
             items=items,
             page=page,
             page_size=page_size,
             total=total,
         )
 
-    def create_measurement(self, *, city_slug: str, route_slug: str) -> RouteMeasurementDTO:
-        measurement = self._repository.create_measurement(
+    def create_assignment(
+        self,
+        *,
+        city_slug: str,
+        route_slug: str,
+        title: str | None = None,
+        description: str | None = None,
+        planned_start_at: datetime | None = None,
+        planned_end_at: datetime | None = None,
+        author_user_id: str | None = None,
+    ) -> AssignmentDTO:
+        _check_planned_window(planned_start_at, planned_end_at)
+        assignment = self._repository.create_assignment(
             city_slug=city_slug,
             route_slug=route_slug,
+            title=title,
+            description=description,
+            planned_start_at=planned_start_at,
+            planned_end_at=planned_end_at,
+            author_user_id=author_user_id,
         )
-        if measurement is None:
+        if assignment is None:
             self._repository.rollback()
             raise CatalogNotFoundError("Маршрут не найден.")
         self._repository.commit()
-        return measurement
+        return assignment
 
-    def get_measurement(self, measurement_id: str) -> RouteMeasurementDTO:
-        measurement = self._repository.get_measurement(measurement_id)
-        if measurement is None:
-            raise CatalogNotFoundError("Замер не найден.")
-        return measurement
+    def update_assignment(
+        self,
+        assignment_id: str,
+        *,
+        fields: dict[str, object],
+    ) -> AssignmentDTO:
+        """fields содержит только те ключи, которые клиент реально прислал."""
+        current = self._repository.get_assignment(assignment_id)
+        if current is None:
+            raise CatalogNotFoundError("Задание не найдено.")
 
-    def list_measurement_runs(self, measurement_id: str) -> list[PipelineRunDTO]:
-        if self._repository.get_measurement(measurement_id) is None:
-            raise CatalogNotFoundError("Замер не найден.")
-        return self._repository.list_measurement_runs(measurement_id)
+        # Проверяем окно целиком: клиент мог прислать одну границу, и она
+        # должна быть согласована с той, что уже лежит в базе.
+        _check_planned_window(
+            fields.get("planned_start_at", current.planned_start_at),
+            fields.get("planned_end_at", current.planned_end_at),
+        )
 
-    def get_measurement_summary(self, measurement_id: str) -> MeasurementSummaryDTO:
-        """Метрики замера на лету — кэш-таблицы нет, рассинхрона тоже.
+        assignment = self._repository.update_assignment(assignment_id, fields=fields)
+        if assignment is None:
+            self._repository.rollback()
+            raise CatalogNotFoundError("Задание не найдено.")
+        self._repository.commit()
+        return assignment
 
-        Считаем только по обработанным проездам: замер отдаёт цифры по мере
+    def get_assignment(self, assignment_id: str) -> AssignmentDTO:
+        assignment = self._repository.get_assignment(assignment_id)
+        if assignment is None:
+            raise CatalogNotFoundError("Задание не найдено.")
+        return assignment
+
+    def list_assignment_runs(self, assignment_id: str) -> list[PipelineRunDTO]:
+        if self._repository.get_assignment(assignment_id) is None:
+            raise CatalogNotFoundError("Задание не найдено.")
+        return self._repository.list_assignment_runs(assignment_id)
+
+    def get_assignment_summary(self, assignment_id: str) -> AssignmentSummaryDTO:
+        """Метрики задания на лету — кэш-таблицы нет, рассинхрона тоже.
+
+        Считаем только по обработанным съёмкам: задание отдаёт цифры по мере
         готовности, а не по принципу «всё или ничего».
 
-        Суммы тут нет намеренно. Объекты в разных проездах — это разные
+        Суммы тут нет намеренно. Объекты в разных съёмках — это разные
         object_id, даже если щит один и тот же физически; сложить их значит
         посчитать один щит столько раз, сколько раз проехали. Меряем
-        «сколько видно за проезд», поэтому усредняем (see measurement_rollup).
+        «сколько видно за съёмку», поэтому усредняем (see assignment_rollup).
         """
-        measurement = self._repository.get_measurement(measurement_id)
-        if measurement is None:
-            raise CatalogNotFoundError("Замер не найден.")
+        assignment = self._repository.get_assignment(assignment_id)
+        if assignment is None:
+            raise CatalogNotFoundError("Задание не найдено.")
         if self._run_service is None:
             raise RuntimeError("CatalogService создан без run_service.")
 
-        runs = self._repository.list_measurement_runs(measurement_id)
-        passes = [
-            self._build_pass(run)
+        runs = self._repository.list_assignment_runs(assignment_id)
+        shootings = [
+            self._build_shooting(run)
             for run in runs
             if run.status == PipelineRunStatus.COMPLETED
         ]
 
-        return MeasurementSummaryDTO(
-            measurement=measurement,
-            totals=rollup_totals(passes, passes_total=len(runs)),
-            brands=rollup_brands(passes),
-            passes=passes,
+        return AssignmentSummaryDTO(
+            assignment=assignment,
+            totals=rollup_totals(shootings, shootings_total=len(runs)),
+            brands=rollup_brands(shootings),
+            shootings=shootings,
         )
 
-    def _build_pass(self, run: PipelineRunDTO) -> MeasurementPassDTO:
+    def _build_shooting(self, run: PipelineRunDTO) -> ShootingMetricsDTO:
         summary = self._run_service.get_summary(run.run_id)
-        return MeasurementPassDTO(
+        return ShootingMetricsDTO(
             run_id=run.run_id,
             source_name=run.source_name,
             duration_sec=run.duration_sec or 0.0,
             objects_count=summary.totals.total_objects,
             visibility_index=summary.totals.visibility_index,
             brands=[
-                PassBrandDTO(
+                ShootingBrandDTO(
                     brand=brand.brand,
                     objects_count=brand.object_count or 0,
                     visibility_index=brand.sum_visibility_value or 0.0,

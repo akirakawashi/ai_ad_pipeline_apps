@@ -15,6 +15,14 @@ export interface RunEvent {
   created_at: string
 }
 
+/** Человек из справочника: постановщик задания или оператор съёмки. */
+export interface User {
+  id: string
+  full_name: string
+  is_active: boolean
+  created_at: string | null
+}
+
 export interface CityRef {
   id: string
   slug: string
@@ -28,9 +36,9 @@ export interface RouteRef {
   color_hex: string | null
 }
 
-/** Ссылка на замер с карточки видео. null — «Без маршрута». */
-export interface RunMeasurementRef {
-  measurement_id: string
+/** Ссылка на задание с карточки видео. null — «Без задания». */
+export interface RunAssignmentRef {
+  assignment_id: string
   sequence_number: number
   title: string
   route: RouteRef
@@ -43,10 +51,11 @@ export interface Route {
   name: string
   color_label: string | null
   color_hex: string | null
+  description: string | null
   /** Путь относительно public/, без ведущего слэша: 'routes/simferopol/route_1.geojson'. */
   geojson_path: string
   display_order: number
-  measurement_count: number
+  assignment_count: number
   video_count: number
 }
 
@@ -59,7 +68,7 @@ export interface City {
   roads_geojson_path: string | null
   display_order: number
   route_count: number
-  measurement_count: number
+  assignment_count: number
   video_count: number
 }
 
@@ -67,7 +76,7 @@ export interface CityDetail extends City {
   routes: Route[]
 }
 
-export interface MeasurementStatusCounts {
+export interface AssignmentStatusCounts {
   uploading: number
   upload_failed: number
   queued: number
@@ -76,66 +85,84 @@ export interface MeasurementStatusCounts {
   processing_failed: number
 }
 
-export interface RouteMeasurement {
+export interface Assignment {
   id: string
   sequence_number: number
   title: string
+  description: string | null
   route: RouteRef
   city: CityRef
+  /** Постановщик задания. */
+  author: User | null
+  /** Плановое окно — его задаёт постановщик. */
+  planned_start_at: string | null
+  planned_end_at: string | null
+  /** Фактическое окно из времён съёмок. Не хранится, считается сервером. */
+  actual_start_at: string | null
+  actual_end_at: string | null
   video_count: number
-  status_counts: MeasurementStatusCounts
+  status_counts: AssignmentStatusCounts
   created_at: string
 }
 
-export interface MeasurementsPage {
-  items: RouteMeasurement[]
+/** Тело POST/PATCH задания. Отсутствующий ключ в PATCH = «не менять». */
+export interface AssignmentPayload {
+  title?: string | null
+  description?: string | null
+  planned_start_at?: string | null
+  planned_end_at?: string | null
+  author_user_id?: string | null
+}
+
+export interface AssignmentsPage {
+  items: Assignment[]
   page: number
   page_size: number
   total: number
 }
 
-export interface MeasurementStat {
+export interface AssignmentStat {
   mean: number
   std: number
 }
 
-export interface PassBrand {
+export interface ShootingBrand {
   brand: string
   objects_count: number
   visibility_index: number
 }
 
-/** Сырые метрики одного проезда — вход для сравнения проездов. */
-export interface MeasurementPass {
+/** Сырые метрики одной съёмки — вход для сравнения съёмок. */
+export interface ShootingMetrics {
   run_id: string
   source_name: string
   duration_sec: number
   objects_count: number
   visibility_index: number
-  brands: PassBrand[]
+  brands: ShootingBrand[]
 }
 
-export interface MeasurementBrand {
+export interface AssignmentBrand {
   brand: string
-  objects_per_pass: MeasurementStat
-  visibility_per_pass: MeasurementStat
+  objects_per_shooting: AssignmentStat
+  visibility_per_shooting: AssignmentStat
   visibility_share: number
 }
 
-export interface MeasurementTotals {
-  passes_total: number
-  passes_completed: number
-  /** Сумма — «сколько наснимали». Остальное усредняется по проездам. */
+export interface AssignmentTotals {
+  shootings_total: number
+  shootings_completed: number
+  /** Сумма — «сколько наснимали». Остальное усредняется по съёмкам. */
   duration_sec: number
-  objects_per_pass: MeasurementStat
-  visibility_per_pass: MeasurementStat
+  objects_per_shooting: AssignmentStat
+  visibility_per_shooting: AssignmentStat
 }
 
-export interface MeasurementSummary {
-  measurement: RouteMeasurement
-  totals: MeasurementTotals
-  brands: MeasurementBrand[]
-  passes: MeasurementPass[]
+export interface AssignmentSummary {
+  assignment: Assignment
+  totals: AssignmentTotals
+  brands: AssignmentBrand[]
+  shootings: ShootingMetrics[]
 }
 
 
@@ -161,10 +188,21 @@ export interface PipelineRun {
   started_at: string | null
   completed_at: string | null
   updated_at: string
-  /** null — «Без маршрута» либо связь не запрашивали. */
-  measurement: RunMeasurementRef | null
+  /** Когда снимали. Не путать со started_at выше — там начало обработки. */
+  shot_started_at: string | null
+  /** Считает сервер: shot_started_at + duration_sec. Не хранится. */
+  shot_finished_at: string | null
+  /** null — «Без задания» либо связь не запрашивали. */
+  assignment: RunAssignmentRef | null
+  operator: User | null
   artifacts: Artifact[]
   events: RunEvent[]
+}
+
+/** Тело PATCH съёмки. Ход обработки этим не меняется. */
+export interface ShootingPayload {
+  shot_started_at?: string | null
+  operator_user_id?: string | null
 }
 
 export interface RunsPage {

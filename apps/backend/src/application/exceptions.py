@@ -10,8 +10,20 @@ class InvalidVideoError(ValueError):
 
 
 class CatalogNotFoundError(LookupError):
-    """Не найден город, маршрут или замер."""
+    """Не найден город, маршрут, задание или человек в справочнике."""
 
 
-class MeasurementFullError(ValueError):
-    """В замере уже MAX_MEASUREMENT_VIDEOS видео."""
+class AssignmentFullError(ValueError):
+    """В задании уже MAX_ASSIGNMENT_SHOOTINGS видео."""
+
+
+class InvalidAssignmentError(ValueError):
+    """Реквизиты задания противоречивы — например, окончание раньше начала."""
+
+
+class InvalidUserError(ValueError):
+    """ФИО пустое или состоит из одних пробелов."""
+
+
+class UserAlreadyExistsError(ValueError):
+    """Человек с таким ФИО уже есть в справочнике."""

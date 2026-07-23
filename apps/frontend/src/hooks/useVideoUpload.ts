@@ -13,7 +13,6 @@ export interface UploadItem {
 }
 
 export interface UploadResult {
-  measurementId: string | null
   runIds: string[]
   failed: number
 }
@@ -21,10 +20,15 @@ export interface UploadResult {
 export interface UseVideoUploadOptions {
   maxFiles: number
   /**
-   * Зовётся один раз перед первым файлом. null — «Без маршрута».
-   * Лениво: замер появляется, только если загрузку реально начали.
+   * Задание, в которое кладём съёмки. null — «Без задания».
+   *
+   * Задание создаётся заранее, в форме на странице маршрута: съёмка
+   * подгружается в готовое задание, а не рождает его по ходу загрузки.
+   * Поэтому ретраю упавших файлов не нужен ref — id задания неизменен.
    */
-  createMeasurement?: () => Promise<string | null>
+  assignmentId: string | null
+  /** Оператор — один на всю партию: снимал её один человек. */
+  operatorUserId: string | null
   onFinish?: (result: UploadResult) => void
 }
 
@@ -34,7 +38,8 @@ function makeKey(file: File) {
 
 export function useVideoUpload({
   maxFiles,
-  createMeasurement,
+  assignmentId,
+  operatorUserId,
   onFinish,
 }: UseVideoUploadOptions) {
   const [items, setItems] = useState<UploadItem[]>([])
@@ -42,10 +47,6 @@ export function useVideoUpload({
   const [dragActive, setDragActive] = useState(false)
   const [limitNotice, setLimitNotice] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [measurementId, setMeasurementId] = useState<string | null>(null)
-  // Держим id замера и в ref: ретрай упавших должен попасть в тот же замер,
-  // а не родить фантомный следующий.
-  const measurementIdRef = useRef<string | null>(null)
   const dragDepth = useRef(0)
 
   const patch = useCallback((key: string, changes: Partial<UploadItem>) => {
@@ -104,26 +105,13 @@ export function useVideoUpload({
       setBusy(true)
       setError(null)
 
-      let currentMeasurementId = measurementIdRef.current
-      if (currentMeasurementId === null && createMeasurement) {
-        try {
-          currentMeasurementId = await createMeasurement()
-          measurementIdRef.current = currentMeasurementId
-          setMeasurementId(currentMeasurementId)
-        } catch (reason) {
-          setError(reason instanceof Error ? reason.message : String(reason))
-          setBusy(false)
-          return
-        }
-      }
-
       const runIds: string[] = []
       let failed = 0
 
       for (const item of queue) {
         patch(item.key, { status: 'uploading', progress: 0, error: undefined })
         try {
-          const run = await createRun(item.file, currentMeasurementId)
+          const run = await createRun(item.file, { assignmentId, operatorUserId })
           await uploadVideo(run.upload, item.file, (progress) =>
             patch(item.key, { progress }),
           )
@@ -140,9 +128,9 @@ export function useVideoUpload({
       }
 
       setBusy(false)
-      onFinish?.({ measurementId: currentMeasurementId, runIds, failed })
+      onFinish?.({ runIds, failed })
     },
-    [createMeasurement, onFinish, patch],
+    [assignmentId, onFinish, operatorUserId, patch],
   )
 
   const start = useCallback(() => {
@@ -187,7 +175,6 @@ export function useVideoUpload({
     dragActive,
     limitNotice,
     error,
-    measurementId,
     doneCount,
     failedCount,
     canStart: items.length > 0 && !busy && doneCount < items.length,

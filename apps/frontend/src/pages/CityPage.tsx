@@ -6,7 +6,7 @@ import { PageHeader } from '../components/common/PageHeader'
 import { RouteMapSkeleton } from '../components/common/Skeletons'
 import { navigate } from '../routing'
 import type { CityDetail } from '../types'
-import { pluralMeasurements } from '../utils/formatters'
+import { pluralAssignments } from '../utils/formatters'
 
 const FALLBACK_COLOR = '#8a8f98'
 
@@ -156,7 +156,7 @@ export function CityPage({ citySlug }: { citySlug: string }) {
                   </span>
                   <span className="route-option-copy">
                     <strong>{route.name}</strong>
-                    <small>{pluralMeasurements(route.measurement_count)}</small>
+                    <small>{pluralAssignments(route.assignment_count)}</small>
                   </span>
                   <span className="route-option-arrow" aria-hidden="true">
                     ↗
@@ -170,7 +170,7 @@ export function CityPage({ citySlug }: { citySlug: string }) {
               <h3>{focusedMeta ? focusedMeta.name : 'Маршрут не выбран'}</h3>
               <p className="route-description">
                 {focusedMeta && selectedIndex === focusedIndex
-                  ? 'Маршрут выбран. Нажмите «Открыть маршрут», чтобы увидеть замеры.'
+                  ? 'Маршрут выбран. Нажмите «Открыть маршрут», чтобы увидеть задания.'
                   : focusedMeta
                     ? 'Нажмите «Выбрать маршрут», чтобы продолжить.'
                     : 'Выберите направление в списке или наведите курсор на его линию на карте.'}

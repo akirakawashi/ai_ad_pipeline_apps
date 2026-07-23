@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func
 from sqlalchemy.orm import noload, selectinload
@@ -13,13 +13,13 @@ from application.common.dto import (
 )
 from domain.entities import PipelineArtifactType, PipelineRunStage, PipelineRunStatus
 from infrastructure.database.models import (
+    Assignment,
     PipelineArtifact,
     PipelineRun,
     PipelineRunEvent,
     Route,
-    RouteMeasurement,
 )
-from infrastructure.repositories.measurement_mapping import measurement_ref
+from infrastructure.repositories.assignment_mapping import assignment_ref, user_ref
 
 
 def _status_value(status: PipelineRunStatus) -> str:
@@ -68,11 +68,26 @@ def _event_to_dto(event: PipelineRunEvent) -> PipelineRunEventDTO:
     )
 
 
-def _run_to_dto(run: PipelineRun, *, with_measurement: bool = False) -> PipelineRunDTO:
-    # with_measurement=True только там, где связь загружена через selectinload.
-    # Воркер зовёт эту функцию на detached-инстансах — там measurement трогать нельзя.
+def _shot_finished_at(run: PipelineRun) -> datetime | None:
+    """Конец съёмки не хранится: старт плюс длительность самого видео.
+
+    Так поле физически не может разойтись с файлом. Пока видео не обработано,
+    длительность неизвестна — возвращаем None, интерфейс покажет прочерк.
+    """
+    if run.shot_started_at is None or not run.duration_sec:
+        return None
+    return run.shot_started_at + timedelta(seconds=run.duration_sec)
+
+
+def _run_to_dto(run: PipelineRun, *, with_refs: bool = False) -> PipelineRunDTO:
+    # with_refs=True только там, где связи загружены через selectinload.
+    # Воркер зовёт эту функцию на detached-инстансах — там assignment
+    # и operator трогать нельзя.
     return PipelineRunDTO(
-        measurement=measurement_ref(run) if with_measurement else None,
+        assignment=assignment_ref(run) if with_refs else None,
+        operator=user_ref(run.operator) if with_refs else None,
+        shot_started_at=run.shot_started_at,
+        shot_finished_at=_shot_finished_at(run),
         run_id=run.pipeline_runs_id,
         source_name=run.source_name,
         source_object_key=run.source_object_key,
@@ -112,7 +127,9 @@ class SqlPipelineRunRepository:
         source_object_key: str,
         content_type: str | None,
         size_bytes: int,
-        measurement_id: str | None = None,
+        assignment_id: str | None = None,
+        shot_started_at: datetime | None = None,
+        operator_user_id: str | None = None,
     ) -> PipelineRunDTO:
         run = PipelineRun(
             pipeline_runs_id=run_id,
@@ -120,7 +137,9 @@ class SqlPipelineRunRepository:
             source_object_key=source_object_key,
             source_content_type=content_type,
             source_size_bytes=size_bytes,
-            route_measurements_id=measurement_id,
+            assignments_id=assignment_id,
+            shot_started_at=shot_started_at,
+            operator_users_id=operator_user_id,
             status=PipelineRunStatus.UPLOADING.value,
             stage=PipelineRunStage.UPLOAD.value,
             progress=0,
@@ -145,30 +164,30 @@ class SqlPipelineRunRepository:
         status: PipelineRunStatus | None = None,
         city_id: str | None = None,
         route_id: str | None = None,
-        measurement_id: str | None = None,
+        assignment_id: str | None = None,
         assigned: bool | None = None,
     ) -> tuple[list[PipelineRunDTO], int]:
         filters = []
         if status:
             filters.append(PipelineRun.status == _status_value(status))
-        if measurement_id:
-            filters.append(PipelineRun.route_measurements_id == measurement_id)
+        if assignment_id:
+            filters.append(PipelineRun.assignments_id == assignment_id)
         if assigned is not None:
             if assigned:
-                filters.append(PipelineRun.route_measurements_id.is_not(None))
+                filters.append(PipelineRun.assignments_id.is_not(None))
             else:
-                filters.append(PipelineRun.route_measurements_id.is_(None))
+                filters.append(PipelineRun.assignments_id.is_(None))
         if route_id or city_id:
-            # Маршрут и город достаём подзапросом по цепочке measurement → route → city,
+            # Маршрут и город достаём подзапросом по цепочке assignment → route → city,
             # чтобы не денормализовать их в pipeline_runs.
-            measurement_ids = select(RouteMeasurement.route_measurements_id).join(
-                Route, Route.routes_id == RouteMeasurement.routes_id
+            assignment_ids = select(Assignment.assignments_id).join(
+                Route, Route.routes_id == Assignment.routes_id
             )
             if route_id:
-                measurement_ids = measurement_ids.where(Route.routes_id == route_id)
+                assignment_ids = assignment_ids.where(Route.routes_id == route_id)
             if city_id:
-                measurement_ids = measurement_ids.where(Route.cities_id == city_id)
-            filters.append(PipelineRun.route_measurements_id.in_(measurement_ids))
+                assignment_ids = assignment_ids.where(Route.cities_id == city_id)
+            filters.append(PipelineRun.assignments_id.in_(assignment_ids))
 
         total = self._session.exec(
             select(func.count(PipelineRun.pipeline_runs_id)).where(*filters)
@@ -179,8 +198,8 @@ class SqlPipelineRunRepository:
             .options(
                 selectinload(PipelineRun.artifacts),
                 noload(PipelineRun.events),
-                selectinload(PipelineRun.measurement)
-                .selectinload(RouteMeasurement.route)
+                selectinload(PipelineRun.assignment)
+                .selectinload(Assignment.route)
                 .selectinload(Route.city),
             )
             .order_by(PipelineRun.created_at.desc())
@@ -188,7 +207,7 @@ class SqlPipelineRunRepository:
             .limit(page_size)
         )
         runs = self._session.exec(statement).all()
-        return [_run_to_dto(run, with_measurement=True) for run in runs], int(total)
+        return [_run_to_dto(run, with_refs=True) for run in runs], int(total)
 
     def get(
         self,
@@ -201,9 +220,26 @@ class SqlPipelineRunRepository:
             run_id,
             with_artifacts=with_artifacts,
             with_events=with_events,
-            with_measurement=True,
+            with_refs=True,
         )
-        return _run_to_dto(run, with_measurement=True) if run else None
+        return _run_to_dto(run, with_refs=True) if run else None
+
+    def update_shooting(
+        self,
+        run_id: str,
+        *,
+        fields: dict[str, object],
+    ) -> PipelineRunDTO | None:
+        """Правит реквизиты съёмки. Статус и стадию обработки не трогает."""
+        run = self._get_model(run_id, with_artifacts=True, with_refs=True)
+        if run is None:
+            return None
+        for name, value in fields.items():
+            setattr(run, name, value)
+        self._session.add(run)
+        self._session.flush()
+        self._session.refresh(run)
+        return _run_to_dto(run, with_refs=True)
 
     def mark_upload_complete(
         self,
@@ -249,23 +285,23 @@ class SqlPipelineRunRepository:
         self._session.flush()
         return _artifact_to_dto(artifact)
 
-    def lock_measurement(self, measurement_id: str) -> bool:
-        """Блокирует строку замера до конца транзакции. False — замера нет.
+    def lock_assignment(self, assignment_id: str) -> bool:
+        """Блокирует строку задания до конца транзакции. False — задания нет.
 
         Без этого два параллельных create_run, каждый насчитав MAX-1,
         оба вставят строку и лимит будет превышен.
         """
-        measurement = self._session.exec(
-            select(RouteMeasurement)
-            .where(RouteMeasurement.route_measurements_id == measurement_id)
+        assignment = self._session.exec(
+            select(Assignment)
+            .where(Assignment.assignments_id == assignment_id)
             .with_for_update()
         ).first()
-        return measurement is not None
+        return assignment is not None
 
-    def count_measurement_runs(self, measurement_id: str) -> int:
+    def count_assignment_runs(self, assignment_id: str) -> int:
         total = self._session.exec(
             select(func.count(PipelineRun.pipeline_runs_id)).where(
-                PipelineRun.route_measurements_id == measurement_id
+                PipelineRun.assignments_id == assignment_id
             )
         ).one()
         return int(total)
@@ -407,7 +443,7 @@ class SqlPipelineRunRepository:
         *,
         with_artifacts: bool = True,
         with_events: bool = False,
-        with_measurement: bool = False,
+        with_refs: bool = False,
     ) -> PipelineRun | None:
         statement = select(PipelineRun).where(PipelineRun.pipeline_runs_id == run_id)
         if with_artifacts:
@@ -418,12 +454,16 @@ class SqlPipelineRunRepository:
             statement = statement.options(selectinload(PipelineRun.events))
         else:
             statement = statement.options(noload(PipelineRun.events))
-        if with_measurement:
+        if with_refs:
             statement = statement.options(
-                selectinload(PipelineRun.measurement)
-                .selectinload(RouteMeasurement.route)
-                .selectinload(Route.city)
+                selectinload(PipelineRun.assignment)
+                .selectinload(Assignment.route)
+                .selectinload(Route.city),
+                selectinload(PipelineRun.operator),
             )
         else:
-            statement = statement.options(noload(PipelineRun.measurement))
+            statement = statement.options(
+                noload(PipelineRun.assignment),
+                noload(PipelineRun.operator),
+            )
         return self._session.exec(statement).one_or_none()

@@ -24,6 +24,59 @@ def uuid_string() -> str:
     return str(uuid.uuid4())
 
 
+class User(SQLModel, table=True):
+    """Справочник людей: постановщики заданий и операторы съёмок.
+
+    Заглушка под будущую авторизацию. Когда она понадобится, сюда добавятся
+    email / password_hash / role — и справочник станет таблицей пользователей
+    без миграции связей. Человек без учётных данных просто не сможет войти.
+    """
+
+    __tablename__ = "users"
+
+    users_id: str = Field(
+        default_factory=uuid_string,
+        sa_column=Column(
+            String(36),
+            primary_key=True,
+            default=uuid_string,
+            nullable=False,
+        ),
+    )
+    # Уникальность защищает от дублей при создании прямо из селектора.
+    full_name: str = Field(
+        sa_column=Column(
+            String(255),
+            unique=True,
+            index=True,
+            nullable=False,
+        ),
+    )
+    # Не удаляем, а деактивируем: у ушедшего сотрудника остаются его задания
+    # и съёмки, а удаление порвало бы историю — ровно то, что нужно DWH.
+    is_active: bool = Field(
+        default=True,
+        sa_column=Column(Boolean, default=True, nullable=False),
+    )
+    created_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(
+            DateTime(timezone=True),
+            server_default=func.now(),
+            nullable=False,
+        ),
+    )
+    updated_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(
+            DateTime(timezone=True),
+            server_default=func.now(),
+            onupdate=func.now(),
+            nullable=False,
+        ),
+    )
+
+
 class City(SQLModel, table=True):
     __tablename__ = "cities"
 
@@ -129,6 +182,10 @@ class Route(SQLModel, table=True):
         default=None,
         sa_column=Column(String(16), nullable=True),
     )
+    description: str | None = Field(
+        default=None,
+        sa_column=Column(Text, nullable=True),
+    )
     # Полный путь относительно apps/frontend/public/, без ведущего слэша.
     # Пример: "routes/simferopol/route_1.geojson".
     geojson_path: str = Field(
@@ -161,11 +218,11 @@ class Route(SQLModel, table=True):
     )
 
     city: City | None = Relationship(back_populates="routes")
-    measurements: list["RouteMeasurement"] = Relationship(
+    assignments: list["Assignment"] = Relationship(
         back_populates="route",
         cascade_delete=True,
         sa_relationship_kwargs={
-            "order_by": "RouteMeasurement.sequence_number",
+            "order_by": "Assignment.sequence_number",
         },
     )
 
@@ -178,10 +235,10 @@ class Route(SQLModel, table=True):
     )
 
 
-class RouteMeasurement(SQLModel, table=True):
-    __tablename__ = "route_measurements"
+class Assignment(SQLModel, table=True):
+    __tablename__ = "assignments"
 
-    route_measurements_id: str = Field(
+    assignments_id: str = Field(
         default_factory=uuid_string,
         sa_column=Column(
             String(36),
@@ -204,10 +261,35 @@ class RouteMeasurement(SQLModel, table=True):
     sequence_number: int = Field(
         sa_column=Column(Integer, nullable=False),
     )
-    # NULL означает "вычислять": «Замер №{sequence_number} · {created_at}».
+    # NULL означает "вычислять": «Задание №{sequence_number} · {created_at}».
     title: str | None = Field(
         default=None,
         sa_column=Column(String(255), nullable=True),
+    )
+    description: str | None = Field(
+        default=None,
+        sa_column=Column(Text, nullable=True),
+    )
+    # Плановое окно выполнения — его задаёт постановщик. Фактическое не храним:
+    # оно выводится из времён съёмок (min/max) и не может с ними разойтись.
+    planned_start_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
+    planned_end_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
+    # Постановщик. Nullable в схеме — форма требует его сама; жёсткий NOT NULL
+    # заблокировал бы создание задания при пустом справочнике.
+    author_users_id: str | None = Field(
+        default=None,
+        sa_column=Column(
+            String(36),
+            ForeignKey("users.users_id", ondelete="SET NULL"),
+            index=True,
+            nullable=True,
+        ),
     )
     created_at: datetime | None = Field(
         default=None,
@@ -228,14 +310,15 @@ class RouteMeasurement(SQLModel, table=True):
         ),
     )
 
-    route: Route | None = Relationship(back_populates="measurements")
-    runs: list["PipelineRun"] = Relationship(back_populates="measurement")
+    route: Route | None = Relationship(back_populates="assignments")
+    author: User | None = Relationship()
+    runs: list["PipelineRun"] = Relationship(back_populates="assignment")
 
     __table_args__ = (
         UniqueConstraint(
             "routes_id",
             "sequence_number",
-            name="uq_route_measurements_route_sequence",
+            name="uq_assignments_route_sequence",
         ),
     )
 
@@ -275,15 +358,33 @@ class PipelineRun(SQLModel, table=True):
         ),
     )
 
-    # NULL означает «Без маршрута» — разовая загрузка вне города и маршрута.
-    route_measurements_id: str | None = Field(
+    # NULL означает «Без задания» — разовая загрузка вне города и маршрута.
+    assignments_id: str | None = Field(
         default=None,
         sa_column=Column(
             String(36),
             ForeignKey(
-                "route_measurements.route_measurements_id",
+                "assignments.assignments_id",
                 ondelete="SET NULL",
             ),
+            index=True,
+            nullable=True,
+        ),
+    )
+
+    # --- реквизиты съёмки ---------------------------------------------------
+    # Не путать со started_at / completed_at ниже: те — про обработку видео,
+    # эти — про то, когда снимали. Финиш не храним: он выводится как
+    # shot_started_at + duration_sec и потому не может разойтись с видео.
+    shot_started_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
+    operator_users_id: str | None = Field(
+        default=None,
+        sa_column=Column(
+            String(36),
+            ForeignKey("users.users_id", ondelete="SET NULL"),
             index=True,
             nullable=True,
         ),
@@ -402,7 +503,8 @@ class PipelineRun(SQLModel, table=True):
         ),
     )
 
-    measurement: RouteMeasurement | None = Relationship(back_populates="runs")
+    assignment: Assignment | None = Relationship(back_populates="runs")
+    operator: User | None = Relationship()
     artifacts: list["PipelineArtifact"] = Relationship(
         back_populates="run",
         cascade_delete=True,

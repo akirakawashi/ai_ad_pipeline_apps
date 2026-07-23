@@ -67,7 +67,7 @@ export function CitiesPage() {
       <PageHeader
         eyebrow="Города"
         title="Города и маршруты"
-        description="Выберите город, затем маршрут — внутри лежат замеры видео."
+        description="Выберите город, затем маршрут — внутри лежат задания со съёмками."
       />
 
       {loading && <RunsSkeleton />}
@@ -122,7 +122,7 @@ export function CitiesPage() {
 
           <section className="unassigned-videos" aria-labelledby="unassigned-title">
             <div>
-              <p className="unassigned-videos-kicker">Без маршрута</p>
+              <p className="unassigned-videos-kicker">Без задания</p>
               <h2 id="unassigned-title">Загрузить видео без маршрута</h2>
               <p>Разовая загрузка без привязки к городу и маршруту.</p>
             </div>

@@ -11,19 +11,20 @@ from application.common.dto import (
     CityDetailDTO,
     CityDTO,
     CityRefDTO,
-    MeasurementBrandDTO,
-    MeasurementPassDTO,
-    MeasurementStatusCountsDTO,
-    MeasurementTotalsDTO,
+    AssignmentBrandDTO,
+    ShootingMetricsDTO,
+    AssignmentStatusCountsDTO,
+    AssignmentTotalsDTO,
     OverlayPayloadDTO,
     PlaybackDTO,
     RouteDTO,
-    RouteMeasurementDTO,
+    AssignmentDTO,
     RouteRefDTO,
-    RunMeasurementRefDTO,
+    RunAssignmentRefDTO,
     RunObjectDTO,
     RunSummaryTotalsDTO,
     RunTimelinePointDTO,
+    UserDTO,
 )
 from domain.entities import PipelineArtifactType, PipelineRunStage, PipelineRunStatus
 
@@ -47,12 +48,45 @@ class UploadTargetResponse(ApiModel):
     headers: dict[str, str]
 
 
+class UserResponse(UserDTO):
+    pass
+
+
+class CreateUserRequest(ApiModel):
+    full_name: str = Field(min_length=1, max_length=255)
+
+
+class UpdateUserRequest(ApiModel):
+    """Поля со значением None не меняются."""
+
+    full_name: str | None = Field(default=None, min_length=1, max_length=255)
+    is_active: bool | None = None
+
+
 class CreateRunRequest(ApiModel):
     file_name: str = Field(min_length=1, max_length=512)
     content_type: str | None = Field(default=None, max_length=255)
     size_bytes: int = Field(gt=0)
-    # None означает «Без маршрута» — видео вне города и маршрута.
-    measurement_id: str | None = Field(default=None, max_length=36)
+    # None означает «Без задания» — видео вне города и маршрута.
+    assignment_id: str | None = Field(default=None, max_length=36)
+    # Реквизиты съёмки. Время подставляет браузер из метаданных файла,
+    # оператор — общий на всю партию загрузки.
+    shot_started_at: datetime | None = None
+    operator_user_id: str | None = Field(default=None, max_length=36)
+
+
+class UpdateShootingRequest(ApiModel):
+    """PATCH реквизитов съёмки. Ход обработки этим эндпоинтом не меняется."""
+
+    shot_started_at: datetime | None = None
+    operator_user_id: str | None = Field(default=None, max_length=36)
+
+    def changed_fields(self) -> dict[str, object]:
+        column_by_field = {"operator_user_id": "operator_users_id"}
+        return {
+            column_by_field.get(name, name): getattr(self, name)
+            for name in self.model_fields_set
+        }
 
 
 class CreateRunResponse(ApiModel):
@@ -86,7 +120,7 @@ class RouteRefResponse(RouteRefDTO):
     pass
 
 
-class RunMeasurementRefResponse(RunMeasurementRefDTO):
+class RunAssignmentRefResponse(RunAssignmentRefDTO):
     pass
 
 
@@ -102,40 +136,74 @@ class CityDetailResponse(CityDetailDTO):
     pass
 
 
-class MeasurementStatusCountsResponse(MeasurementStatusCountsDTO):
+class AssignmentStatusCountsResponse(AssignmentStatusCountsDTO):
     pass
 
 
-class MeasurementResponse(RouteMeasurementDTO):
+class AssignmentResponse(AssignmentDTO):
     pass
 
 
-class PaginatedMeasurementsResponse(ApiModel):
-    items: list[MeasurementResponse]
+class CreateAssignmentRequest(ApiModel):
+    """Реквизиты задания. Всё необязательно: маршрут и номер и так известны.
+
+    Даты — плановые, их задаёт постановщик. Фактические считаются по съёмкам.
+    """
+
+    title: str | None = Field(default=None, max_length=255)
+    description: str | None = None
+    planned_start_at: datetime | None = None
+    planned_end_at: datetime | None = None
+    author_user_id: str | None = Field(default=None, max_length=36)
+
+
+class UpdateAssignmentRequest(ApiModel):
+    """PATCH: меняются только те поля, что реально пришли в теле.
+
+    Отличить «не прислали» от «прислали null» позволяет model_fields_set —
+    иначе описание нельзя было бы очистить.
+    """
+
+    title: str | None = Field(default=None, max_length=255)
+    description: str | None = None
+    planned_start_at: datetime | None = None
+    planned_end_at: datetime | None = None
+    author_user_id: str | None = Field(default=None, max_length=36)
+
+    def changed_fields(self) -> dict[str, object]:
+        column_by_field = {"author_user_id": "author_users_id"}
+        return {
+            column_by_field.get(name, name): getattr(self, name)
+            for name in self.model_fields_set
+        }
+
+
+class PaginatedAssignmentsResponse(ApiModel):
+    items: list[AssignmentResponse]
     page: int
     page_size: int
     total: int
 
 
-class MeasurementTotalsResponse(MeasurementTotalsDTO):
+class AssignmentTotalsResponse(AssignmentTotalsDTO):
     pass
 
 
-class MeasurementBrandResponse(MeasurementBrandDTO):
+class AssignmentBrandResponse(AssignmentBrandDTO):
     pass
 
 
-class MeasurementPassResponse(MeasurementPassDTO):
+class ShootingMetricsResponse(ShootingMetricsDTO):
     pass
 
 
-class MeasurementSummaryResponse(ApiModel):
-    measurement: MeasurementResponse
-    totals: MeasurementTotalsResponse
-    brands: list[MeasurementBrandResponse] = Field(default_factory=list)
-    # Сырые метрики проездов: вход для сравнения проездов на странице
+class AssignmentSummaryResponse(ApiModel):
+    assignment: AssignmentResponse
+    totals: AssignmentTotalsResponse
+    brands: list[AssignmentBrandResponse] = Field(default_factory=list)
+    # Сырые метрики съёмок: вход для сравнения съёмок на странице
     # и для любой другой свёртки, если политика поменяется.
-    passes: list[MeasurementPassResponse] = Field(default_factory=list)
+    shootings: list[ShootingMetricsResponse] = Field(default_factory=list)
 
 
 class PipelineRunResponse(ApiModel):
@@ -160,7 +228,7 @@ class PipelineRunResponse(ApiModel):
     started_at: datetime | None
     completed_at: datetime | None
     updated_at: datetime | None
-    measurement: RunMeasurementRefResponse | None = None
+    assignment: RunAssignmentRefResponse | None = None
     artifacts: list[RunArtifactResponse] = Field(default_factory=list)
     events: list[RunEventResponse] = Field(default_factory=list)
 

@@ -4,6 +4,7 @@ import io
 import json
 import re
 import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Any, TypeVar
 
@@ -31,7 +32,7 @@ from application.common.dto import (
 from application.exceptions import (
     CatalogNotFoundError,
     InvalidVideoError,
-    MeasurementFullError,
+    AssignmentFullError,
     PipelineRunNotFoundError,
 )
 from application.interfaces import PipelineRunRepository, RunObjectStorage
@@ -47,7 +48,7 @@ ALLOWED_VIDEO_EXTENSIONS = {
 }
 
 # Ограничение продукта, а не схемы: поднять — правка одной строки, без миграции.
-MAX_MEASUREMENT_VIDEOS = 20
+MAX_ASSIGNMENT_SHOOTINGS = 20
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
@@ -90,7 +91,9 @@ class PipelineRunService:
         file_name: str,
         content_type: str | None,
         size_bytes: int,
-        measurement_id: str | None = None,
+        assignment_id: str | None = None,
+        shot_started_at: datetime | None = None,
+        operator_user_id: str | None = None,
     ) -> CreateRunDTO:
         safe_name = safe_file_name(file_name)
         if Path(safe_name).suffix.casefold() not in ALLOWED_VIDEO_EXTENSIONS:
@@ -100,16 +103,16 @@ class PipelineRunService:
         if size_bytes <= 0:
             raise InvalidVideoError("Файл пустой. Выберите другое видео.")
 
-        if measurement_id is not None:
-            # Блокировка строки замера сериализует параллельные create_run:
+        if assignment_id is not None:
+            # Блокировка строки задания сериализует параллельные create_run:
             # иначе два запроса, каждый насчитав MAX-1, оба вставят.
-            if not self._repository.lock_measurement(measurement_id):
+            if not self._repository.lock_assignment(assignment_id):
                 self._repository.rollback()
-                raise CatalogNotFoundError("Замер не найден.")
-            if self._repository.count_measurement_runs(measurement_id) >= MAX_MEASUREMENT_VIDEOS:
+                raise CatalogNotFoundError("Задание не найдено.")
+            if self._repository.count_assignment_runs(assignment_id) >= MAX_ASSIGNMENT_SHOOTINGS:
                 self._repository.rollback()
-                raise MeasurementFullError(
-                    f"В замер можно загрузить не более {MAX_MEASUREMENT_VIDEOS} видео."
+                raise AssignmentFullError(
+                    f"В задание можно загрузить не более {MAX_ASSIGNMENT_SHOOTINGS} видео."
                 )
 
         run_id = str(uuid.uuid4())
@@ -120,7 +123,9 @@ class PipelineRunService:
             source_object_key=source_object_key,
             content_type=content_type or "application/octet-stream",
             size_bytes=size_bytes,
-            measurement_id=measurement_id,
+            assignment_id=assignment_id,
+            shot_started_at=shot_started_at,
+            operator_user_id=operator_user_id,
         )
         self._repository.commit()
 
@@ -171,7 +176,7 @@ class PipelineRunService:
         status: PipelineRunStatus | None,
         city_id: str | None = None,
         route_id: str | None = None,
-        measurement_id: str | None = None,
+        assignment_id: str | None = None,
         assigned: bool | None = None,
     ) -> PaginatedRunsDTO:
         runs, total = self._repository.list_runs(
@@ -180,7 +185,7 @@ class PipelineRunService:
             status=status,
             city_id=city_id,
             route_id=route_id,
-            measurement_id=measurement_id,
+            assignment_id=assignment_id,
             assigned=assigned,
         )
         return PaginatedRunsDTO(
@@ -192,6 +197,24 @@ class PipelineRunService:
 
     def get_run(self, run_id: str) -> PipelineRunDTO:
         return self._require_run(run_id, with_events=True)
+
+    def update_shooting(
+        self,
+        run_id: str,
+        *,
+        fields: dict[str, object],
+    ) -> PipelineRunDTO:
+        """Правит реквизиты съёмки: когда снимали и кто снимал.
+
+        Отдельно от обработки: статус, стадия и прогресс сюда не приходят —
+        их ведёт воркер, и руками их менять нельзя.
+        """
+        run = self._repository.update_shooting(run_id, fields=fields)
+        if run is None:
+            self._repository.rollback()
+            raise PipelineRunNotFoundError("Съёмка не найдена.")
+        self._repository.commit()
+        return run
 
     def get_artifacts(self, run_id: str) -> list[PipelineArtifactDTO]:
         run = self._require_run(run_id)

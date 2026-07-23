@@ -10,7 +10,7 @@ UUID заданы литералами, а не сгенерированы: id �
 слэш добавляет фронтенд. Файлы остаются статикой, в БД лежит только путь.
 
 Revision ID: b1f4c07a2e91
-Revises: 9c489a3d8a73
+Revises: 0b5053bd16ee
 Create Date: 2026-07-16 09:20:00.000000
 """
 
@@ -21,7 +21,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = 'b1f4c07a2e91'
-down_revision: Union[str, Sequence[str], None] = '9c489a3d8a73'
+down_revision: Union[str, Sequence[str], None] = '0b5053bd16ee'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

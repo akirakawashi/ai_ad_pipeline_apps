@@ -12,7 +12,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import type { MeasurementBrand, MeasurementPass } from '../types'
+import type { AssignmentBrand, ShootingMetrics } from '../types'
 import { formatDuration } from '../utils/formatters'
 
 const BRAND_COLORS: Record<string, string> = {
@@ -56,29 +56,29 @@ function orderBrands(brands: string[]) {
   })
 }
 
-export function MeasurementCharts({
+export function AssignmentCharts({
   brands,
-  passes,
+  shootings,
 }: {
-  brands: MeasurementBrand[]
-  passes: MeasurementPass[]
+  brands: AssignmentBrand[]
+  shootings: ShootingMetrics[]
 }) {
-  // Усы = разброс между проездами. Это не украшение: широкий ус означает,
-  // что проезды разошлись и среднему верить рано.
+  // Усы = разброс между съёмками. Это не украшение: широкий ус означает,
+  // что съёмки разошлись и среднему верить рано.
   const brandRows = brands.map((item) => ({
     brand_key: item.brand,
     brand_label: brandLabel(item.brand),
-    objects: Number(item.objects_per_pass.mean.toFixed(2)),
-    objects_std: Number(item.objects_per_pass.std.toFixed(2)),
-    visibility: Number(item.visibility_per_pass.mean.toFixed(1)),
+    objects: Number(item.objects_per_shooting.mean.toFixed(2)),
+    objects_std: Number(item.objects_per_shooting.std.toFixed(2)),
+    visibility: Number(item.visibility_per_shooting.mean.toFixed(1)),
     share: Number((item.visibility_share * 100).toFixed(1)),
   }))
 
   const passBrands = orderBrands([
-    ...new Set(passes.flatMap((item) => item.brands.map((b) => b.brand))),
+    ...new Set(shootings.flatMap((item) => item.brands.map((b) => b.brand))),
   ])
 
-  const passRows = passes.map((item, index) => {
+  const shootingRows = shootings.map((item, index) => {
     const row: Record<string, number | string> = {
       name: `№${index + 1}`,
       source_name: item.source_name,
@@ -96,8 +96,8 @@ export function MeasurementCharts({
     <div className="charts-grid">
       <section className="panel chart-card">
         <header>
-          <h3>Объектов за проезд</h3>
-          <p>Среднее по проездам. Усы — разброс между ними.</p>
+          <h3>Объектов за съёмку</h3>
+          <p>Среднее по съёмкам. Усы — разброс между ними.</p>
         </header>
         <ResponsiveContainer width="100%" height={280}>
           <BarChart data={brandRows}>
@@ -105,7 +105,7 @@ export function MeasurementCharts({
             <XAxis dataKey="brand_label" stroke="#8d9298" />
             <YAxis stroke="#8d9298" />
             <Tooltip contentStyle={tooltipStyle} cursor={tooltipCursor} />
-            <Bar dataKey="objects" name="За проезд" radius={[6, 6, 0, 0]}>
+            <Bar dataKey="objects" name="За съёмку" radius={[6, 6, 0, 0]}>
               {brandRows.map((row) => (
                 <Cell key={row.brand_key} fill={brandColor(row.brand_key)} />
               ))}
@@ -123,7 +123,7 @@ export function MeasurementCharts({
       <section className="panel chart-card">
         <header>
           <h3>Доля заметности</h3>
-          <p>Сколько внимания забирает каждый бренд за проезд.</p>
+          <p>Сколько внимания забирает каждый бренд за съёмку.</p>
         </header>
         <ResponsiveContainer width="100%" height={280}>
           <PieChart>
@@ -150,14 +150,14 @@ export function MeasurementCharts({
 
       <section className="panel chart-card wide-chart">
         <header>
-          <h3>Сравнение проездов</h3>
+          <h3>Сравнение съёмок</h3>
           <p>
-            Каждый столбец — один проезд. Выбивающийся проезд виден сразу;
+            Каждый столбец — одна съёмка. Выбивающаяся съёмка видна сразу;
             смотрите на его длительность в подсказке.
           </p>
         </header>
         <ResponsiveContainer width="100%" height={320}>
-          <BarChart data={passRows}>
+          <BarChart data={shootingRows}>
             <CartesianGrid stroke="rgba(255,255,255,.08)" vertical={false} />
             <XAxis dataKey="name" stroke="#8d9298" />
             <YAxis allowDecimals={false} stroke="#8d9298" />
@@ -177,7 +177,7 @@ export function MeasurementCharts({
                 key={brand}
                 dataKey={brand}
                 name={brandLabel(brand)}
-                stackId="passes"
+                stackId="shootings"
                 fill={brandColor(brand)}
               />
             ))}

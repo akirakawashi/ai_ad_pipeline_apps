@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 from typing import Protocol
 
@@ -56,8 +57,19 @@ class PipelineRunRepository(Protocol):
         source_object_key: str,
         content_type: str | None,
         size_bytes: int,
-        measurement_id: str | None = None,
+        assignment_id: str | None = None,
+        shot_started_at: datetime | None = None,
+        operator_user_id: str | None = None,
     ) -> PipelineRunDTO: ...
+
+    def update_shooting(
+        self,
+        run_id: str,
+        *,
+        fields: dict[str, object],
+    ) -> PipelineRunDTO | None:
+        """Правит реквизиты съёмки. None — съёмки нет."""
+        ...
 
     def list_runs(
         self,
@@ -67,13 +79,13 @@ class PipelineRunRepository(Protocol):
         status: PipelineRunStatus | None = None,
         city_id: str | None = None,
         route_id: str | None = None,
-        measurement_id: str | None = None,
+        assignment_id: str | None = None,
         assigned: bool | None = None,
     ) -> tuple[list[PipelineRunDTO], int]: ...
 
-    def lock_measurement(self, measurement_id: str) -> bool: ...
+    def lock_assignment(self, assignment_id: str) -> bool: ...
 
-    def count_measurement_runs(self, measurement_id: str) -> int: ...
+    def count_assignment_runs(self, assignment_id: str) -> int: ...
 
     def get(
         self,

@@ -11,16 +11,11 @@ from pipeline_contracts.artifacts import (
     OverlayVideoPayload,
     TrackCsvRow,
 )
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import Field
 
+from application.common.dto.base import ApplicationDTO
+from application.common.dto.users import UserDTO
 from domain.entities import PipelineArtifactType, PipelineRunStage, PipelineRunStatus
-
-
-class ApplicationDTO(BaseModel):
-    model_config = ConfigDict(
-        from_attributes=True,
-        populate_by_name=True,
-    )
 
 
 class UploadTargetDTO(ApplicationDTO):
@@ -29,7 +24,7 @@ class UploadTargetDTO(ApplicationDTO):
     headers: dict[str, str]
 
 
-# Ref-DTO живут здесь, а не в catalog.py: PipelineRunDTO ссылается на замер,
+# Ref-DTO живут здесь, а не в catalog.py: PipelineRunDTO ссылается на задание,
 # а catalog.py импортирует ApplicationDTO отсюда — иначе получился бы цикл.
 class CityRefDTO(ApplicationDTO):
     id: str
@@ -44,8 +39,8 @@ class RouteRefDTO(ApplicationDTO):
     color_hex: str | None = None
 
 
-class RunMeasurementRefDTO(ApplicationDTO):
-    measurement_id: str
+class RunAssignmentRefDTO(ApplicationDTO):
+    assignment_id: str
     sequence_number: int
     title: str
     route: RouteRefDTO
@@ -94,9 +89,15 @@ class PipelineRunDTO(ApplicationDTO):
     started_at: datetime | None
     completed_at: datetime | None
     updated_at: datetime | None
-    # Заполняется только там, где связь загружена явно (_run_to_dto(with_measurement=...)).
-    # None означает «Без маршрута» либо «связь не запрашивали».
-    measurement: RunMeasurementRefDTO | None = None
+    # --- реквизиты съёмки ---------------------------------------------------
+    # Не путать со started_at / completed_at выше: те про обработку видео.
+    shot_started_at: datetime | None = None
+    # Не хранится: shot_started_at + duration_sec. None, пока нет одного из двух.
+    shot_finished_at: datetime | None = None
+    # Заполняются только там, где связи загружены явно (_run_to_dto(with_refs=...)).
+    # None означает «Без задания» либо «связь не запрашивали».
+    assignment: RunAssignmentRefDTO | None = None
+    operator: UserDTO | None = None
     artifacts: list[PipelineArtifactDTO] = Field(default_factory=list)
     events: list[PipelineRunEventDTO] = Field(default_factory=list)
 

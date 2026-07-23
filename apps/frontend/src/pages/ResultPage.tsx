@@ -7,6 +7,7 @@ import {
   getRunTimeline,
 } from '../api'
 import { RunCharts } from '../components/RunCharts'
+import { ShootingFacts } from '../components/ShootingFacts'
 import { VideoOverlayPlayer } from '../components/VideoOverlayPlayer'
 import { EmptyState, ErrorBanner } from '../components/common/Feedback'
 import { Metric } from '../components/common/Metric'
@@ -31,10 +32,12 @@ import { formatDuration, formatNumber } from '../utils/formatters'
 export function ResultPage({
   run,
   initialSeek,
+  onRunUpdated,
 }: {
   run: PipelineRun
-  /** Приходит из ?t= — переход с топа объектов замера на нужный кадр. */
+  /** Приходит из ?t= — переход с топа объектов задания на нужный кадр. */
   initialSeek?: number
+  onRunUpdated: (run: PipelineRun) => void
 }) {
   const [summary, setSummary] = useState<RunSummary | null>(null)
   const [objects, setObjects] = useState<RunObjects | null>(null)
@@ -89,20 +92,20 @@ export function ResultPage({
     <div className="page">
       <PageHeader
         eyebrow={
-          run.measurement
-            ? `${run.measurement.city.name} · ${run.measurement.route.name} · ${run.measurement.title}`
+          run.assignment
+            ? `${run.assignment.city.name} · ${run.assignment.route.name} · ${run.assignment.title}`
             : 'Результат анализа'
         }
         title={run.source_name}
         description={`${formatDuration(run.duration_sec)} · ${run.width ?? 0}×${run.height ?? 0}`}
         actions={
           <div className="page-actions">
-            {run.measurement && (
+            {run.assignment && (
               <button
                 className="secondary"
-                onClick={() => navigate(`/measurements/${run.measurement!.measurement_id}`)}
+                onClick={() => navigate(`/assignments/${run.assignment!.assignment_id}`)}
               >
-                К замеру
+                К заданию
               </button>
             )}
             <button className="secondary" onClick={() => navigate('/videos')}>
@@ -117,6 +120,8 @@ export function ResultPage({
           </div>
         }
       />
+
+      <ShootingFacts run={run} onUpdated={onRunUpdated} />
 
       {summary ? (
         <div className="summary-grid">

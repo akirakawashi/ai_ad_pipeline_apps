@@ -1,13 +1,14 @@
-import { useEffect, useMemo, useState } from 'react'
-import { createMeasurement, getCities, getCity } from '../api'
+import { useEffect, useState } from 'react'
+import { getAssignment, getCities, getCity, getRouteAssignments } from '../api'
 import { FileCard } from '../components/common/FileCard'
 import { ErrorBanner, InfoBanner } from '../components/common/Feedback'
 import { PageHeader } from '../components/common/PageHeader'
 import { ProgressBar } from '../components/common/ProgressBar'
 import { Select } from '../components/common/Select'
+import { UserSelect } from '../components/common/UserSelect'
 import { useVideoUpload } from '../hooks/useVideoUpload'
 import { navigate } from '../routing'
-import type { City, CityDetail } from '../types'
+import type { Assignment, City, CityDetail } from '../types'
 
 const MAX_FILES = 20
 
@@ -27,19 +28,30 @@ const STATUS_TEXT: Record<string, string> = {
 interface UploadPageProps {
   citySlug?: string
   routeSlug?: string
-  /** Догрузка в существующую замер: назначение зафиксировано. */
-  measurementId?: string
+  /** Догрузка в конкретное задание: назначение зафиксировано. */
+  assignmentId?: string
 }
 
-export function UploadPage({ citySlug, routeSlug, measurementId }: UploadPageProps) {
+export function UploadPage({ citySlug, routeSlug, assignmentId }: UploadPageProps) {
   const [cities, setCities] = useState<City[]>([])
   const [detail, setDetail] = useState<CityDetail | null>(null)
+  const [assignments, setAssignments] = useState<Assignment[]>([])
+  const [pinnedAssignment, setPinnedAssignment] = useState<Assignment | null>(null)
   const [selectedCity, setSelectedCity] = useState(citySlug ?? '')
   const [selectedRoute, setSelectedRoute] = useState(routeSlug ?? '')
-  const [noRoute, setNoRoute] = useState(!citySlug && !measurementId)
+  const [selectedAssignment, setSelectedAssignment] = useState('')
+  const [operatorId, setOperatorId] = useState('')
+  const [noAssignment, setNoAssignment] = useState(!citySlug && !assignmentId)
   const [catalogError, setCatalogError] = useState<string | null>(null)
 
-  const pinned = Boolean(measurementId)
+  const pinned = Boolean(assignmentId)
+
+  useEffect(() => {
+    if (!assignmentId) return
+    getAssignment(assignmentId)
+      .then(setPinnedAssignment)
+      .catch((reason) => setCatalogError(String(reason)))
+  }, [assignmentId])
 
   useEffect(() => {
     if (pinned) return
@@ -69,27 +81,49 @@ export function UploadPage({ citySlug, routeSlug, measurementId }: UploadPagePro
     }
   }, [pinned, selectedCity])
 
+  useEffect(() => {
+    if (pinned || !selectedCity || !selectedRoute) {
+      setAssignments([])
+      return
+    }
+    let disposed = false
+    getRouteAssignments(selectedCity, selectedRoute)
+      .then((page) => {
+        if (disposed) return
+        setAssignments(page.items)
+        // Список идёт от свежих: обычно грузят в последнее заведённое задание.
+        setSelectedAssignment(page.items[0]?.id ?? '')
+      })
+      .catch((reason) => {
+        if (!disposed) setCatalogError(String(reason))
+      })
+    return () => {
+      disposed = true
+    }
+  }, [pinned, selectedCity, selectedRoute])
+
   // Выводим, а не сбрасываем в эффекте: пока грузится новый город, старый
   // список маршрутов не должен показываться как его.
   const activeDetail = detail && detail.slug === selectedCity ? detail : null
-  const destinationReady = pinned || noRoute || Boolean(selectedCity && selectedRoute)
+
+  const targetAssignmentId = pinned
+    ? (assignmentId ?? null)
+    : noAssignment
+      ? null
+      : selectedAssignment || null
+
+  const destinationReady = pinned || noAssignment || Boolean(selectedAssignment)
+  const routeChosen = Boolean(selectedCity && selectedRoute)
 
   const upload = useVideoUpload({
     maxFiles: MAX_FILES,
-    createMeasurement: useMemo(
-      () => async () => {
-        if (measurementId) return measurementId
-        if (noRoute) return null
-        const measurement = await createMeasurement(selectedCity, selectedRoute)
-        return measurement.id
-      },
-      [measurementId, noRoute, selectedCity, selectedRoute],
-    ),
-    onFinish: ({ measurementId: finishedMeasurementId, runIds, failed }) => {
-      // При частичном сбое остаёмся на странице: «Повторить» дольёт в тот же замер.
+    assignmentId: targetAssignmentId,
+    operatorUserId: operatorId || null,
+    onFinish: ({ runIds, failed }) => {
+      // При частичном сбое остаёмся на странице: «Повторить» дольёт туда же.
       if (failed > 0) return
-      if (finishedMeasurementId) {
-        navigate(`/measurements/${finishedMeasurementId}`)
+      if (targetAssignmentId) {
+        navigate(`/assignments/${targetAssignmentId}`)
       } else if (runIds.length === 1) {
         navigate(`/videos/${runIds[0]}`)
       } else if (runIds.length > 0) {
@@ -99,9 +133,9 @@ export function UploadPage({ citySlug, routeSlug, measurementId }: UploadPagePro
   })
 
   const eyebrow = pinned
-    ? 'Догрузка в замер'
-    : noRoute
-      ? 'Без маршрута'
+    ? (pinnedAssignment?.title ?? 'Догрузка в задание')
+    : noAssignment
+      ? 'Без задания'
       : activeDetail && selectedRoute
         ? `${activeDetail.name} · ${
             activeDetail.routes.find((route) => route.slug === selectedRoute)?.name ?? ''
@@ -112,60 +146,103 @@ export function UploadPage({ citySlug, routeSlug, measurementId }: UploadPagePro
     <div className="page narrow-page">
       <PageHeader
         eyebrow={eyebrow}
-        title="Загрузка видео"
+        title="Загрузка съёмок"
         description={
-          noRoute
+          noAssignment
             ? 'Разовая загрузка — видео уйдёт в обработку вне города и маршрута.'
-            : `Видео попадут в один замер маршрута. До ${MAX_FILES} штук.`
+            : `Съёмки попадут в выбранное задание. До ${MAX_FILES} штук.`
         }
       />
 
       {catalogError && <ErrorBanner text={catalogError} />}
 
-      {!pinned && (
-        <section className="panel destination-panel">
-          <h2>Куда загрузить?</h2>
-          <div className="destination-fields">
-            <div className="field">
-              Город
-              <Select
-                ariaLabel="Город"
-                value={selectedCity}
-                disabled={noRoute || upload.busy}
-                placeholder="Выберите город"
-                options={cities.map((city) => ({ value: city.slug, label: city.name }))}
-                onChange={setSelectedCity}
-              />
+      <section className="panel destination-panel">
+        <h2>Куда загрузить?</h2>
+
+        {!pinned && (
+          <>
+            <div className="destination-fields">
+              <div className="field">
+                Город
+                <Select
+                  ariaLabel="Город"
+                  value={selectedCity}
+                  disabled={noAssignment || upload.busy}
+                  placeholder="Выберите город"
+                  options={cities.map((city) => ({
+                    value: city.slug,
+                    label: city.name,
+                  }))}
+                  onChange={setSelectedCity}
+                />
+              </div>
+              <div className="field">
+                Маршрут
+                <Select
+                  ariaLabel="Маршрут"
+                  value={selectedRoute}
+                  disabled={noAssignment || !activeDetail || upload.busy}
+                  placeholder={
+                    activeDetail ? 'Выберите маршрут' : 'Сначала выберите город'
+                  }
+                  options={
+                    activeDetail?.routes.map((route) => ({
+                      value: route.slug,
+                      label: route.name,
+                    })) ?? []
+                  }
+                  onChange={setSelectedRoute}
+                />
+              </div>
+              <div className="field">
+                Задание
+                <Select
+                  ariaLabel="Задание"
+                  value={selectedAssignment}
+                  disabled={noAssignment || !assignments.length || upload.busy}
+                  placeholder={
+                    routeChosen ? 'Заданий пока нет' : 'Сначала выберите маршрут'
+                  }
+                  options={assignments.map((assignment) => ({
+                    value: assignment.id,
+                    label: assignment.title,
+                  }))}
+                  onChange={setSelectedAssignment}
+                />
+              </div>
             </div>
-            <div className="field">
-              Маршрут
-              <Select
-                ariaLabel="Маршрут"
-                value={selectedRoute}
-                disabled={noRoute || !activeDetail || upload.busy}
-                placeholder={activeDetail ? 'Выберите маршрут' : 'Сначала выберите город'}
-                options={
-                  activeDetail?.routes.map((route) => ({
-                    value: route.slug,
-                    label: route.name,
-                  })) ?? []
-                }
-                onChange={setSelectedRoute}
+
+            {!noAssignment && routeChosen && !assignments.length && (
+              <InfoBanner text="На этом маршруте нет заданий. Заведите задание на странице маршрута: съёмки загружаются в готовое задание." />
+            )}
+
+            <label className="destination-toggle">
+              <input
+                type="checkbox"
+                className="checkbox"
+                checked={noAssignment}
+                disabled={upload.busy}
+                onChange={(event) => setNoAssignment(event.target.checked)}
               />
-            </div>
-          </div>
-          <label className="destination-toggle">
-            <input
-              type="checkbox"
-              className="checkbox"
-              checked={noRoute}
-              disabled={upload.busy}
-              onChange={(event) => setNoRoute(event.target.checked)}
-            />
-            Без маршрута (разовая загрузка)
-          </label>
-        </section>
-      )}
+              Без задания (разовая загрузка)
+            </label>
+          </>
+        )}
+
+        <div className="destination-fields">
+          <UserSelect
+            label="Оператор"
+            value={operatorId}
+            disabled={upload.busy}
+            placeholder="Кто снимал"
+            onChange={setOperatorId}
+          />
+        </div>
+        <p className="destination-hint">
+          Время съёмки подставится из метаданных каждого файла — поправить его
+          можно на странице съёмки.
+        </p>
+      </section>
 
       <section
         className={`upload-panel${upload.busy ? ' busy' : ''}${
@@ -205,7 +282,7 @@ export function UploadPage({ citySlug, routeSlug, measurementId }: UploadPagePro
         {upload.error && <ErrorBanner text={upload.error} />}
 
         {upload.items.length > 0 && (
-          <div className="upload-measurement-list">
+          <div className="upload-file-list">
             {upload.items.map((item) => (
               <FileCard
                 key={item.key}
@@ -232,7 +309,7 @@ export function UploadPage({ citySlug, routeSlug, measurementId }: UploadPagePro
                   <ProgressBar progress={item.progress} label="Загружается" animated />
                 )}
                 {item.status === 'error' && (
-                  <span className="upload-measurement-error">{item.error}</span>
+                  <span className="upload-file-error">{item.error}</span>
                 )}
               </FileCard>
             ))}
@@ -240,7 +317,7 @@ export function UploadPage({ citySlug, routeSlug, measurementId }: UploadPagePro
         )}
 
         {upload.items.length > 0 && (
-          <p className="upload-measurement-summary">
+          <p className="upload-file-summary">
             Загружено {upload.doneCount} из {upload.items.length}
           </p>
         )}
@@ -260,7 +337,7 @@ export function UploadPage({ citySlug, routeSlug, measurementId }: UploadPagePro
         </button>
 
         {!destinationReady && upload.items.length > 0 && (
-          <InfoBanner text="Выберите город и маршрут или отметьте «Без маршрута»." />
+          <InfoBanner text="Выберите задание или отметьте «Без задания»." />
         )}
       </section>
     </div>

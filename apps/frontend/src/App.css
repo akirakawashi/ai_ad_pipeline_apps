@@ -3332,7 +3332,7 @@ button:disabled,
   border-style: dashed;
 }
 
-.measurement-heading {
+.assignment-heading {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -3341,15 +3341,209 @@ button:disabled,
   font-size: 13px;
 }
 
-.measurement-dot {
+.assignment-dot {
   width: 10px;
   height: 10px;
   border-radius: 999px;
   background: var(--muted);
 }
 
-.measurement-pending-note {
+.assignment-pending-note {
   margin: 0 0 12px;
   color: var(--muted);
   font-size: 13px;
+}
+
+/* Текстовые поля форм (справочник людей, реквизиты задания) */
+
+.text-input,
+.text-area {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(21, 21, 21, 0.94);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: normal;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.text-area {
+  min-height: 84px;
+  resize: vertical;
+}
+
+.text-input:hover:not(:disabled),
+.text-area:hover:not(:disabled) {
+  border-color: rgba(5, 195, 161, 0.5);
+}
+
+.text-input:focus,
+.text-area:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(5, 195, 161, 0.22);
+}
+
+.text-input:disabled,
+.text-area:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Выбор человека из справочника (components/common/UserSelect.tsx) */
+
+.user-select-create {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.user-select-create .text-input {
+  flex: 1 1 180px;
+}
+
+.user-select-create button {
+  min-height: 40px;
+  padding: 10px 16px;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.user-select-add {
+  justify-self: start;
+  min-height: 0;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: normal;
+  cursor: pointer;
+}
+
+.user-select-add:hover:not(:disabled) {
+  background: transparent;
+  transform: none;
+  text-decoration: underline;
+}
+
+.user-select-error {
+  color: var(--danger);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+/* Форма и реквизиты задания (components/AssignmentForm.tsx) */
+
+.assignment-form {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 18px;
+  padding: 20px;
+}
+
+.assignment-form h2 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.assignment-form-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.assignment-form .field {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.assignment-form-wide {
+  grid-column: 1 / -1;
+}
+
+.assignment-form-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.assignment-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.assignment-form-actions button {
+  min-height: 40px;
+  padding: 10px 20px;
+  border-radius: 7px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.assignment-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px 20px;
+  margin: 0 0 18px;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(21, 21, 21, 0.6);
+}
+
+.assignment-facts-wide {
+  grid-column: 1 / -1;
+}
+
+.assignment-facts dt {
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.assignment-facts dd {
+  margin: 0;
+  font-size: 14px;
+  white-space: pre-wrap;
+}
+
+.run-card-meta {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.destination-hint,
+.route-description {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.route-description {
+  max-width: 720px;
+  margin-bottom: 16px;
+  white-space: pre-wrap;
 }

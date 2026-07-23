@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Protocol
 
 from application.common.dto import (
@@ -7,7 +8,7 @@ from application.common.dto import (
     CityDTO,
     PipelineRunDTO,
     RouteDTO,
-    RouteMeasurementDTO,
+    AssignmentDTO,
 )
 
 
@@ -22,30 +23,44 @@ class CatalogRepository(Protocol):
         route_slug: str,
     ) -> RouteDTO | None: ...
 
-    def list_measurements(
+    def list_assignments(
         self,
         *,
         city_slug: str,
         route_slug: str,
         page: int,
         page_size: int,
-    ) -> tuple[list[RouteMeasurementDTO], int]: ...
+    ) -> tuple[list[AssignmentDTO], int]: ...
 
-    def create_measurement(
+    def create_assignment(
         self,
         *,
         city_slug: str,
         route_slug: str,
-    ) -> RouteMeasurementDTO | None:
+        title: str | None,
+        description: str | None,
+        planned_start_at: datetime | None,
+        planned_end_at: datetime | None,
+        author_user_id: str | None,
+    ) -> AssignmentDTO | None:
         """Аллоцирует sequence_number под блокировкой строки маршрута.
 
         Возвращает None, если города или маршрута нет.
         """
         ...
 
-    def get_measurement(self, measurement_id: str) -> RouteMeasurementDTO | None: ...
+    def update_assignment(
+        self,
+        assignment_id: str,
+        *,
+        fields: dict[str, object],
+    ) -> AssignmentDTO | None:
+        """Перезаписывает только переданные поля. None — задания нет."""
+        ...
 
-    def list_measurement_runs(self, measurement_id: str) -> list[PipelineRunDTO]: ...
+    def get_assignment(self, assignment_id: str) -> AssignmentDTO | None: ...
+
+    def list_assignment_runs(self, assignment_id: str) -> list[PipelineRunDTO]: ...
 
     def commit(self) -> None: ...
 

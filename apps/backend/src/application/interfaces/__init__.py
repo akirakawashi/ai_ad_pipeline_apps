@@ -5,11 +5,13 @@ from application.interfaces.pipeline import (
     RunObjectStorage,
     WorkerObjectStorage,
 )
+from application.interfaces.users import UserRepository
 
 __all__ = [
     "CatalogRepository",
     "ObjectStat",
     "PipelineRunRepository",
     "RunObjectStorage",
+    "UserRepository",
     "WorkerObjectStorage",
 ]

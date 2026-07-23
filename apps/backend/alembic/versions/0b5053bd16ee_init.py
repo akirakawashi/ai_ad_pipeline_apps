@@ -1,17 +1,17 @@
 """init
 
-Revision ID: 9c489a3d8a73
+Revision ID: 0b5053bd16ee
 Revises: 
-Create Date: 2026-07-16 08:53:06.628231
+Create Date: 2026-07-23 12:04:28.181382
 """
 
 from typing import Sequence, Union
 
+from alembic import op
 import sqlalchemy as sa
 
-from alembic import op
 
-revision: str = '9c489a3d8a73'
+revision: str = '0b5053bd16ee'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -32,6 +32,15 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('cities_id')
     )
     op.create_index(op.f('ix_cities_slug'), 'cities', ['slug'], unique=True)
+    op.create_table('users',
+    sa.Column('users_id', sa.String(length=36), nullable=False),
+    sa.Column('full_name', sa.String(length=255), nullable=False),
+    sa.Column('is_active', sa.Boolean(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+    sa.PrimaryKeyConstraint('users_id')
+    )
+    op.create_index(op.f('ix_users_full_name'), 'users', ['full_name'], unique=True)
     op.create_table('routes',
     sa.Column('routes_id', sa.String(length=36), nullable=False),
     sa.Column('cities_id', sa.String(length=36), nullable=False),
@@ -39,6 +48,7 @@ def upgrade() -> None:
     sa.Column('name', sa.String(length=255), nullable=False),
     sa.Column('color_label', sa.String(length=64), nullable=True),
     sa.Column('color_hex', sa.String(length=16), nullable=True),
+    sa.Column('description', sa.Text(), nullable=True),
     sa.Column('geojson_path', sa.String(length=512), nullable=False),
     sa.Column('display_order', sa.Integer(), nullable=False),
     sa.Column('is_active', sa.Boolean(), nullable=False),
@@ -49,26 +59,34 @@ def upgrade() -> None:
     sa.UniqueConstraint('cities_id', 'slug', name='uq_routes_city_slug')
     )
     op.create_index(op.f('ix_routes_cities_id'), 'routes', ['cities_id'], unique=False)
-    op.create_table('route_measurements',
-    sa.Column('route_measurements_id', sa.String(length=36), nullable=False),
+    op.create_table('assignments',
+    sa.Column('assignments_id', sa.String(length=36), nullable=False),
     sa.Column('routes_id', sa.String(length=36), nullable=False),
     sa.Column('sequence_number', sa.Integer(), nullable=False),
     sa.Column('title', sa.String(length=255), nullable=True),
+    sa.Column('description', sa.Text(), nullable=True),
+    sa.Column('planned_start_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('planned_end_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('author_users_id', sa.String(length=36), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+    sa.ForeignKeyConstraint(['author_users_id'], ['users.users_id'], ondelete='SET NULL'),
     sa.ForeignKeyConstraint(['routes_id'], ['routes.routes_id'], ondelete='CASCADE'),
-    sa.PrimaryKeyConstraint('route_measurements_id'),
-    sa.UniqueConstraint('routes_id', 'sequence_number', name='uq_route_measurements_route_sequence')
+    sa.PrimaryKeyConstraint('assignments_id'),
+    sa.UniqueConstraint('routes_id', 'sequence_number', name='uq_assignments_route_sequence')
     )
-    op.create_index(op.f('ix_route_measurements_created_at'), 'route_measurements', ['created_at'], unique=False)
-    op.create_index(op.f('ix_route_measurements_routes_id'), 'route_measurements', ['routes_id'], unique=False)
+    op.create_index(op.f('ix_assignments_author_users_id'), 'assignments', ['author_users_id'], unique=False)
+    op.create_index(op.f('ix_assignments_created_at'), 'assignments', ['created_at'], unique=False)
+    op.create_index(op.f('ix_assignments_routes_id'), 'assignments', ['routes_id'], unique=False)
     op.create_table('pipeline_runs',
     sa.Column('pipeline_runs_id', sa.String(length=36), nullable=False),
     sa.Column('source_name', sa.String(length=512), nullable=False),
     sa.Column('source_object_key', sa.String(length=1024), nullable=False),
     sa.Column('source_content_type', sa.String(length=255), nullable=True),
     sa.Column('source_size_bytes', sa.BigInteger(), nullable=False),
-    sa.Column('route_measurements_id', sa.String(length=36), nullable=True),
+    sa.Column('assignments_id', sa.String(length=36), nullable=True),
+    sa.Column('shot_started_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('operator_users_id', sa.String(length=36), nullable=True),
     sa.Column('status', sa.String(length=32), nullable=False),
     sa.Column('stage', sa.String(length=64), nullable=False),
     sa.Column('progress', sa.Integer(), nullable=False),
@@ -87,13 +105,15 @@ def upgrade() -> None:
     sa.Column('upload_completed_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('started_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('completed_at', sa.DateTime(timezone=True), nullable=True),
-    sa.ForeignKeyConstraint(['route_measurements_id'], ['route_measurements.route_measurements_id'], ondelete='SET NULL'),
+    sa.ForeignKeyConstraint(['assignments_id'], ['assignments.assignments_id'], ondelete='SET NULL'),
+    sa.ForeignKeyConstraint(['operator_users_id'], ['users.users_id'], ondelete='SET NULL'),
     sa.PrimaryKeyConstraint('pipeline_runs_id'),
     sa.UniqueConstraint('source_object_key')
     )
+    op.create_index(op.f('ix_pipeline_runs_assignments_id'), 'pipeline_runs', ['assignments_id'], unique=False)
     op.create_index(op.f('ix_pipeline_runs_created_at'), 'pipeline_runs', ['created_at'], unique=False)
+    op.create_index(op.f('ix_pipeline_runs_operator_users_id'), 'pipeline_runs', ['operator_users_id'], unique=False)
     op.create_index('ix_pipeline_runs_queue', 'pipeline_runs', ['status', 'created_at'], unique=False)
-    op.create_index(op.f('ix_pipeline_runs_route_measurements_id'), 'pipeline_runs', ['route_measurements_id'], unique=False)
     op.create_index(op.f('ix_pipeline_runs_status'), 'pipeline_runs', ['status'], unique=False)
     op.create_index(op.f('ix_pipeline_runs_worker_id'), 'pipeline_runs', ['worker_id'], unique=False)
     op.create_table('pipeline_artifacts',
@@ -136,15 +156,19 @@ def downgrade() -> None:
     op.drop_table('pipeline_artifacts')
     op.drop_index(op.f('ix_pipeline_runs_worker_id'), table_name='pipeline_runs')
     op.drop_index(op.f('ix_pipeline_runs_status'), table_name='pipeline_runs')
-    op.drop_index(op.f('ix_pipeline_runs_route_measurements_id'), table_name='pipeline_runs')
     op.drop_index('ix_pipeline_runs_queue', table_name='pipeline_runs')
+    op.drop_index(op.f('ix_pipeline_runs_operator_users_id'), table_name='pipeline_runs')
     op.drop_index(op.f('ix_pipeline_runs_created_at'), table_name='pipeline_runs')
+    op.drop_index(op.f('ix_pipeline_runs_assignments_id'), table_name='pipeline_runs')
     op.drop_table('pipeline_runs')
-    op.drop_index(op.f('ix_route_measurements_routes_id'), table_name='route_measurements')
-    op.drop_index(op.f('ix_route_measurements_created_at'), table_name='route_measurements')
-    op.drop_table('route_measurements')
+    op.drop_index(op.f('ix_assignments_routes_id'), table_name='assignments')
+    op.drop_index(op.f('ix_assignments_created_at'), table_name='assignments')
+    op.drop_index(op.f('ix_assignments_author_users_id'), table_name='assignments')
+    op.drop_table('assignments')
     op.drop_index(op.f('ix_routes_cities_id'), table_name='routes')
     op.drop_table('routes')
+    op.drop_index(op.f('ix_users_full_name'), table_name='users')
+    op.drop_table('users')
     op.drop_index(op.f('ix_cities_slug'), table_name='cities')
     op.drop_table('cities')
     # ### end Alembic commands ###
