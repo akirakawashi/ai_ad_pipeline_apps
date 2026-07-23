@@ -61,6 +61,7 @@ def _assignment_to_dto(
         id=assignment.assignments_id,
         sequence_number=assignment.sequence_number,
         title=assignment_title(assignment),
+        custom_title=assignment.title,
         description=assignment.description,
         route=route_ref(route),
         city=city_ref(city),

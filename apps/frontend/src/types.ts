@@ -88,7 +88,10 @@ export interface AssignmentStatusCounts {
 export interface Assignment {
   id: string
   sequence_number: number
+  /** Отображаемое имя: своё название либо «Задание №N · дата». */
   title: string
+  /** Хранимое название, null — своего нет. Форма правит именно его. */
+  custom_title: string | null
   description: string | null
   route: RouteRef
   city: CityRef

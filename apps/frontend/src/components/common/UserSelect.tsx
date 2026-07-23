@@ -10,6 +10,14 @@ interface UserSelectProps {
   label: string
   placeholder?: string
   disabled?: boolean
+  /**
+   * Уже выбранный человек, если он мог выпасть из справочника.
+   *
+   * Список отдаёт только активных, поэтому у задания с уволившимся автором
+   * выбранное значение не нашлось бы среди вариантов — селектор показал бы
+   * плейсхолдер, будто автора нет. Подмешиваем его вручную.
+   */
+  current?: User | null
 }
 
 /**
@@ -28,6 +36,7 @@ export function UserSelect({
   label,
   placeholder = 'Выберите человека',
   disabled,
+  current,
 }: UserSelectProps) {
   const [users, setUsers] = useState<User[]>([])
   const [creating, setCreating] = useState(false)
@@ -72,6 +81,14 @@ export function UserSelect({
     setError(null)
   }
 
+  const options = users.map((user) => ({ value: user.id, label: user.full_name }))
+  if (current && value === current.id && !users.some((user) => user.id === current.id)) {
+    options.unshift({
+      value: current.id,
+      label: `${current.full_name} (не в справочнике)`,
+    })
+  }
+
   return (
     <div className="field user-select">
       {label}
@@ -106,7 +123,7 @@ export function UserSelect({
             value={value}
             disabled={disabled}
             placeholder={placeholder}
-            options={users.map((user) => ({ value: user.id, label: user.full_name }))}
+            options={options}
             onChange={onChange}
           />
           <button

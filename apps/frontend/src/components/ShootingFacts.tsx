@@ -69,6 +69,7 @@ export function ShootingFacts({
           <UserSelect
             label="Оператор"
             value={operatorId}
+            current={run.operator}
             disabled={busy}
             placeholder="Кто снимал"
             onChange={setOperatorId}

@@ -41,6 +41,16 @@ backend = [
     "sqlmodel>=0.0.38",
     "uvicorn[standard]>=0.34.0",
 ]
+dev = [
+    "httpx>=0.28.0",
+    "pytest>=8.4.0",
+]
+
+[tool.pytest.ini_options]
+# apps/backend/src — чтобы работали импорты бэкенда (как prepend_sys_path
+# в alembic.ini), корень — ради пакетов pipeline_contracts и ml.
+pythonpath = ["apps/backend/src", "."]
+testpaths = ["tests"]
 
 [tool.mypy]
 python_version = "3.12"

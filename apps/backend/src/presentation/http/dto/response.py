@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Generic, TypeVar
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, AwareDatetime, BaseModel, ConfigDict, Field
 
 from application.common.dto import (
     ArtifactUrlDTO,
@@ -71,14 +71,14 @@ class CreateRunRequest(ApiModel):
     assignment_id: str | None = Field(default=None, max_length=36)
     # Реквизиты съёмки. Время подставляет браузер из метаданных файла,
     # оператор — общий на всю партию загрузки.
-    shot_started_at: datetime | None = None
+    shot_started_at: AwareDatetime | None = None
     operator_user_id: str | None = Field(default=None, max_length=36)
 
 
 class UpdateShootingRequest(ApiModel):
     """PATCH реквизитов съёмки. Ход обработки этим эндпоинтом не меняется."""
 
-    shot_started_at: datetime | None = None
+    shot_started_at: AwareDatetime | None = None
     operator_user_id: str | None = Field(default=None, max_length=36)
 
     def changed_fields(self) -> dict[str, object]:
@@ -152,8 +152,8 @@ class CreateAssignmentRequest(ApiModel):
 
     title: str | None = Field(default=None, max_length=255)
     description: str | None = None
-    planned_start_at: datetime | None = None
-    planned_end_at: datetime | None = None
+    planned_start_at: AwareDatetime | None = None
+    planned_end_at: AwareDatetime | None = None
     author_user_id: str | None = Field(default=None, max_length=36)
 
 
@@ -166,8 +166,8 @@ class UpdateAssignmentRequest(ApiModel):
 
     title: str | None = Field(default=None, max_length=255)
     description: str | None = None
-    planned_start_at: datetime | None = None
-    planned_end_at: datetime | None = None
+    planned_start_at: AwareDatetime | None = None
+    planned_end_at: AwareDatetime | None = None
     author_user_id: str | None = Field(default=None, max_length=36)
 
     def changed_fields(self) -> dict[str, object]:
@@ -225,10 +225,14 @@ class PipelineRunResponse(ApiModel):
     height: int | None
     created_at: datetime | None
     upload_completed_at: datetime | None
+    # Времена обработки. Реквизиты съёмки — ниже, их не путать.
     started_at: datetime | None
     completed_at: datetime | None
     updated_at: datetime | None
+    shot_started_at: datetime | None = None
+    shot_finished_at: datetime | None = None
     assignment: RunAssignmentRefResponse | None = None
+    operator: UserResponse | None = None
     artifacts: list[RunArtifactResponse] = Field(default_factory=list)
     events: list[RunEventResponse] = Field(default_factory=list)
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from minio.error import S3Error
+from sqlalchemy.exc import IntegrityError
 
 from application.exceptions import (
     AssignmentFullError,
@@ -13,6 +14,10 @@ from application.exceptions import (
     PipelineRunNotFoundError,
     UserAlreadyExistsError,
 )
+
+# SQLSTATE PostgreSQL: ссылка на несуществующую строку и нарушение уникальности.
+FOREIGN_KEY_VIOLATION = "23503"
+UNIQUE_VIOLATION = "23505"
 
 
 def setup_exception_handlers(app: FastAPI) -> None:
@@ -84,6 +89,32 @@ def setup_exception_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=400,
             content={"detail": str(exc)},
+        )
+
+    @app.exception_handler(IntegrityError)
+    async def integrity_handler(
+        _: Request,
+        exc: IntegrityError,
+    ) -> JSONResponse:
+        """Последний рубеж перед 500 на нарушениях целостности.
+
+        Наружу нельзя отдавать str(exc): SQLAlchemy кладёт туда текст запроса
+        и все параметры. Различаем по SQLSTATE — сообщения разные по смыслу.
+        """
+        sqlstate = getattr(exc.orig, "sqlstate", None)
+        if sqlstate == FOREIGN_KEY_VIOLATION:
+            return JSONResponse(
+                status_code=400,
+                content={"detail": "Ссылка на запись, которой не существует."},
+            )
+        if sqlstate == UNIQUE_VIOLATION:
+            return JSONResponse(
+                status_code=409,
+                content={"detail": "Такая запись уже есть."},
+            )
+        return JSONResponse(
+            status_code=409,
+            content={"detail": "Не удалось сохранить: данные противоречат друг другу."},
         )
 
     @app.exception_handler(S3Error)

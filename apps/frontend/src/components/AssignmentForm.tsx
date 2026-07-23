@@ -29,7 +29,9 @@ export function AssignmentForm({
   onSubmit,
   onCancel,
 }: AssignmentFormProps) {
-  const [title, setTitle] = useState(initial?.title ?? '')
+  // Именно custom_title, а не title: в title сервер уже подставил запасное
+  // «Задание №N · дата», и вернув его в PATCH мы бы сделали его хранимым.
+  const [title, setTitle] = useState(initial?.custom_title ?? '')
   const [description, setDescription] = useState(initial?.description ?? '')
   const [authorId, setAuthorId] = useState(initial?.author?.id ?? '')
   const [startAt, setStartAt] = useState(
@@ -74,6 +76,7 @@ export function AssignmentForm({
         <UserSelect
           label="Постановщик"
           value={authorId}
+          current={initial?.author}
           disabled={busy}
           onChange={setAuthorId}
         />

@@ -50,7 +50,12 @@ class AssignmentStatusCountsDTO(ApplicationDTO):
 class AssignmentDTO(ApplicationDTO):
     id: str
     sequence_number: int
+    # Отображаемое имя: своё название либо запасное «Задание №N · дата».
     title: str
+    # Хранимое название, None — своего нет. Форма правки обязана редактировать
+    # именно его: подставь в поле ввода вычисленный title — и он молча станет
+    # хранимым, зафиксировав номер и дату в тексте навсегда.
+    custom_title: str | None = None
     description: str | None = None
     route: RouteRefDTO
     city: CityRefDTO
