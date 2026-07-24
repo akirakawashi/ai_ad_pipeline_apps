@@ -22,6 +22,23 @@ class RouteDTO(ApplicationDTO):
     video_count: int = 0
 
 
+class GeozoneDTO(ApplicationDTO):
+    """Участок маршрута со значимостью β: доля [start, end) от длительности.
+
+    Границы локальны для маршрута и применяются ко всем его съёмкам. Вне
+    размеченных участков β = 1.0 — считается на бэкенде, тут его нет.
+    """
+
+    id: str
+    route_id: str
+    name: str
+    start_fraction: float
+    end_fraction: float
+    coefficient: float
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
 class CityDTO(ApplicationDTO):
     id: str
     slug: str

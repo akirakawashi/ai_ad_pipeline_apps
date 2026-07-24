@@ -225,6 +225,13 @@ class Route(SQLModel, table=True):
             "order_by": "Assignment.sequence_number",
         },
     )
+    geozones: list["RouteGeozone"] = Relationship(
+        back_populates="route",
+        cascade_delete=True,
+        sa_relationship_kwargs={
+            "order_by": "RouteGeozone.start_fraction",
+        },
+    )
 
     __table_args__ = (
         UniqueConstraint(
@@ -321,6 +328,76 @@ class Assignment(SQLModel, table=True):
             name="uq_assignments_route_sequence",
         ),
     )
+
+
+class RouteGeozone(SQLModel, table=True):
+    """Участок маршрута с коэффициентом значимости β.
+
+    Привязка по времени, не по координатам: доля [start_fraction, end_fraction)
+    от длительности видео. Камера включается на старте маршрута, поэтому доля
+    времени ≈ доля пути — центр города на середине видео и есть середина пути.
+
+    Интервалы одного маршрута не пересекаются (валидация в сервисе), дыры между
+    ними разрешены: неразмеченный участок даёт β = 1.0 при расчёте на бэкенде.
+    Границы — свойство маршрута, применяются ко всем его съёмкам.
+    """
+
+    __tablename__ = "route_geozones"
+
+    route_geozones_id: str = Field(
+        default_factory=uuid_string,
+        sa_column=Column(
+            String(36),
+            primary_key=True,
+            default=uuid_string,
+            nullable=False,
+        ),
+    )
+    routes_id: str = Field(
+        sa_column=Column(
+            String(36),
+            ForeignKey(
+                "routes.routes_id",
+                ondelete="CASCADE",
+            ),
+            index=True,
+            nullable=False,
+        ),
+    )
+    name: str = Field(
+        sa_column=Column(String(255), nullable=False),
+    )
+    # Доля [0…1] от длительности видео. Полуинтервал: начало включается,
+    # конец — нет, чтобы смежные участки не спорили за точку стыка.
+    start_fraction: float = Field(
+        sa_column=Column(Float, nullable=False),
+    )
+    end_fraction: float = Field(
+        sa_column=Column(Float, nullable=False),
+    )
+    # Множитель β: 1.0 нейтрально, > 1 важнее места, < 1 слабее.
+    coefficient: float = Field(
+        sa_column=Column(Float, nullable=False),
+    )
+    created_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(
+            DateTime(timezone=True),
+            server_default=func.now(),
+            nullable=False,
+        ),
+    )
+    updated_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(
+            DateTime(timezone=True),
+            server_default=func.now(),
+            onupdate=func.now(),
+            nullable=False,
+        ),
+    )
+
+    route: Route | None = Relationship(back_populates="geozones")
 
 
 class PipelineRun(SQLModel, table=True):

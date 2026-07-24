@@ -6,6 +6,7 @@ import {
   getRunSummary,
   getRunTimeline,
 } from '../api'
+import { GeozoneMarker } from '../components/GeozoneMarker'
 import { RunCharts } from '../components/RunCharts'
 import { ShootingFacts } from '../components/ShootingFacts'
 import { VideoOverlayPlayer } from '../components/VideoOverlayPlayer'
@@ -149,6 +150,15 @@ export function ResultPage({
         </section>
       ) : (
         <PlayerSkeleton />
+      )}
+
+      {run.assignment && playback?.source_url && (
+        <GeozoneMarker
+          citySlug={run.assignment.city.slug}
+          routeSlug={run.assignment.route.slug}
+          routeName={run.assignment.route.name}
+          sourceUrl={playback.source_url}
+        />
       )}
 
       {summary && timeline && (

@@ -1,10 +1,11 @@
-"""Слой расчёта метрики заметности (новая логика).
+"""Слой расчёта метрики заметности (физика).
 
-Извлечение признаков (area / position / contrast / …) отдельно от сборки
-балла (combiner). Формулы:
+Извлечение признаков (area / position / contrast / …) и сборка секунд внимания.
+Пайплайн доходит до S·α; значимость места β и итог V = S·α·β считает бэкенд из
+геозон маршрута — здесь их нет. Формулы:
     I = A · P · C            (на кадр)
     S = Σ (I · Δt)           (на объект — секунды внимания)
-    V = S · α · β            (итоговый балл объекта)
+    α = confidence           (уверенность классификации)
 """
 
 from __future__ import annotations
@@ -13,13 +14,11 @@ from ..config import PipelineConfig
 from ..schemas import DetectionRecord, FrameRecord
 from .area import area_coefficient
 from .attention import attention_seconds
-from .combiner import visibility_value
 from .confidence import confidence_coefficient
 from .contrast import contrast_coefficient
 from .geometry import fill_geometry
 from .intensity import intensity
 from .position import position_coefficient
-from .significance import significance_coefficient
 
 __all__ = [
     "area_coefficient",
@@ -30,8 +29,6 @@ __all__ = [
     "fill_geometry",
     "intensity",
     "position_coefficient",
-    "significance_coefficient",
-    "visibility_value",
 ]
 
 

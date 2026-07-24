@@ -100,10 +100,10 @@ class TrackCsvRow(ArtifactModel):
     detections_count: int
     best_crop_path: str
     best_timestamp_sec: float
+    # S и α — физика заметности. Значимость места β и итог V = S·α·β считает
+    # бэкенд из геозон маршрута на лету: в артефакте их больше нет.
     attention_seconds: float
     confidence_coef: float
-    significance_coef: float
-    visibility_value: float
     final_brand: str
     final_brand_conf: float
     final_status: FinalStatus

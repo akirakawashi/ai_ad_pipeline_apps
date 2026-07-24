@@ -6,6 +6,7 @@ from typing import Protocol
 
 from application.common.dto import PipelineArtifactDTO, PipelineRunDTO
 from domain.entities import PipelineArtifactType, PipelineRunStage, PipelineRunStatus
+from domain.geozones import GeozoneInterval
 
 
 class ObjectStat(Protocol):
@@ -94,6 +95,10 @@ class PipelineRunRepository(Protocol):
         with_artifacts: bool = True,
         with_events: bool = False,
     ) -> PipelineRunDTO | None: ...
+
+    def get_geozone_intervals(self, run_id: str) -> list[GeozoneInterval]:
+        """Участки значимости маршрута съёмки. Пусто — β = 1.0 у всех."""
+        ...
 
     def mark_upload_complete(
         self,

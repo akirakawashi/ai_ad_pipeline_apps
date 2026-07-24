@@ -141,6 +141,10 @@ class RunSummaryDTO(ApplicationDTO):
 
 
 class RunObjectDTO(TrackCsvRow):
+    # β и итог V = S·α·β считает бэкенд из геозон — в CSV-контракте их больше
+    # нет. Объект отдаётся уже посчитанным (see PipelineRunService._apply_beta).
+    significance_coef: float = 0.0
+    visibility_value: float = 0.0
     crop_url: str | None = None
 
 

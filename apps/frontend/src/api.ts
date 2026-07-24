@@ -4,7 +4,9 @@ import type {
   AssignmentSummary,
   City,
   CityDetail,
+  CreateGeozonePayload,
   CreateRunResult,
+  Geozone,
   OverlayPayload,
   PipelineRun,
   Playback,
@@ -14,6 +16,7 @@ import type {
   RunSummary,
   RunTimeline,
   ShootingPayload,
+  UpdateGeozonePayload,
   User,
 } from './types'
 
@@ -194,6 +197,45 @@ export function getAssignmentRuns(assignmentId: string): Promise<PipelineRun[]> 
 
 export function getAssignmentSummary(assignmentId: string): Promise<AssignmentSummary> {
   return apiFetch(`/assignments/${assignmentId}/summary`)
+}
+
+export function getRouteGeozones(
+  citySlug: string,
+  routeSlug: string,
+): Promise<Geozone[]> {
+  return apiFetch(`/cities/${citySlug}/routes/${routeSlug}/geozones`)
+}
+
+export function createGeozone(
+  citySlug: string,
+  routeSlug: string,
+  payload: CreateGeozonePayload,
+): Promise<Geozone> {
+  return apiFetch(`/cities/${citySlug}/routes/${routeSlug}/geozones`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function updateGeozone(
+  geozoneId: string,
+  payload: UpdateGeozonePayload,
+): Promise<Geozone> {
+  return apiFetch(`/geozones/${geozoneId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function deleteGeozone(geozoneId: string): Promise<void> {
+  // DELETE отдаёт 204 без тела — apiFetch ждёт конверт, поэтому отдельно.
+  const response = await fetch(`${API_BASE}/geozones/${geozoneId}`, {
+    method: 'DELETE',
+  })
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null)
+    throw new Error(payload?.detail ?? `HTTP ${response.status}`)
+  }
 }
 
 export function getRun(runId: string): Promise<PipelineRun> {

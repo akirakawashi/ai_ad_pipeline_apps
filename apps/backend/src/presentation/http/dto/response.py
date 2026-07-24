@@ -15,6 +15,7 @@ from application.common.dto import (
     ShootingMetricsDTO,
     AssignmentStatusCountsDTO,
     AssignmentTotalsDTO,
+    GeozoneDTO,
     OverlayPayloadDTO,
     PlaybackDTO,
     RouteDTO,
@@ -126,6 +127,31 @@ class RunAssignmentRefResponse(RunAssignmentRefDTO):
 
 class RouteResponse(RouteDTO):
     pass
+
+
+class GeozoneResponse(GeozoneDTO):
+    pass
+
+
+class CreateGeozoneRequest(ApiModel):
+    """Новый участок значимости. Границы — доли [0,1] от длительности видео."""
+
+    name: str = Field(min_length=1, max_length=255)
+    start_fraction: float = Field(ge=0.0, le=1.0)
+    end_fraction: float = Field(ge=0.0, le=1.0)
+    coefficient: float = Field(gt=0.0)
+
+
+class UpdateGeozoneRequest(ApiModel):
+    """PATCH участка: меняются только пришедшие поля. Имена колонок совпадают."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    start_fraction: float | None = Field(default=None, ge=0.0, le=1.0)
+    end_fraction: float | None = Field(default=None, ge=0.0, le=1.0)
+    coefficient: float | None = Field(default=None, gt=0.0)
+
+    def changed_fields(self) -> dict[str, object]:
+        return {name: getattr(self, name) for name in self.model_fields_set}
 
 
 class CityResponse(CityDTO):

@@ -12,12 +12,14 @@ from application.common.dto import (
     PipelineRunEventDTO,
 )
 from domain.entities import PipelineArtifactType, PipelineRunStage, PipelineRunStatus
+from domain.geozones import GeozoneInterval
 from infrastructure.database.models import (
     Assignment,
     PipelineArtifact,
     PipelineRun,
     PipelineRunEvent,
     Route,
+    RouteGeozone,
 )
 from infrastructure.repositories.assignment_mapping import assignment_ref, user_ref
 
@@ -223,6 +225,25 @@ class SqlPipelineRunRepository:
             with_refs=True,
         )
         return _run_to_dto(run, with_refs=True) if run else None
+
+    def get_geozone_intervals(self, run_id: str) -> list[GeozoneInterval]:
+        """Участки значимости маршрута этой съёмки — вход для расчёта β.
+
+        Пусто, если съёмка без задания (маршрута нет) или маршрут не размечен;
+        тогда β = 1.0 у всех объектов. Цепочка: run → assignment → route → зоны.
+        """
+        rows = self._session.exec(
+            select(
+                RouteGeozone.start_fraction,
+                RouteGeozone.end_fraction,
+                RouteGeozone.coefficient,
+            )
+            .join(Route, Route.routes_id == RouteGeozone.routes_id)
+            .join(Assignment, Assignment.routes_id == Route.routes_id)
+            .join(PipelineRun, PipelineRun.assignments_id == Assignment.assignments_id)
+            .where(PipelineRun.pipeline_runs_id == run_id)
+        ).all()
+        return [GeozoneInterval(start, end, coef) for start, end, coef in rows]
 
     def update_shooting(
         self,

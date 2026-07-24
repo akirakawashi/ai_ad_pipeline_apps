@@ -18,13 +18,11 @@ from ml.pipeline.scripts.schemas import DetectionRecord, FrameRecord
 from ml.pipeline.scripts.scoring import fill_detection_scoring
 from ml.pipeline.scripts.scoring.area import area_coefficient
 from ml.pipeline.scripts.scoring.attention import attention_seconds
-from ml.pipeline.scripts.scoring.combiner import visibility_value
 from ml.pipeline.scripts.scoring.confidence import confidence_coefficient
 from ml.pipeline.scripts.scoring.contrast import contrast_coefficient
 from ml.pipeline.scripts.scoring.geometry import fill_geometry
 from ml.pipeline.scripts.scoring.intensity import intensity
 from ml.pipeline.scripts.scoring.interpolation import piecewise_linear
-from ml.pipeline.scripts.scoring.significance import significance_coefficient
 
 
 @pytest.fixture
@@ -240,12 +238,6 @@ class TestComposition:
             detection.intensity = value
         assert attention_seconds(detections) == pytest.approx(0.8)
 
-    def test_visibility_value_is_product(self):
-        assert visibility_value(0.144, 0.5, 1.0) == pytest.approx(0.072)
-
-    def test_significance_is_stub_until_geozones(self, config):
-        assert significance_coefficient([], config) == 1.0
-
     def test_geometry_normalises_center(self):
         detection = make_detection(bbox=(0, 0, 100, 50))
         fill_geometry(detection, make_frame(np.zeros((200, 400, 3), dtype=np.uint8)))
@@ -253,8 +245,12 @@ class TestComposition:
         assert detection.center_x_norm == pytest.approx(0.125)
         assert detection.center_y_norm == pytest.approx(0.125)
 
-    def test_end_to_end_frame_to_value(self, config):
-        """Сквозной проход: A·P·C → интенсивность → секунды внимания → балл."""
+    def test_end_to_end_frame_to_base_visibility(self, config):
+        """Сквозной проход: A·P·C → интенсивность → секунды внимания → S·α.
+
+        Дальше β и итог V = S·α·β накладывает бэкенд из геозон — пайплайн до них
+        не доходит, поэтому и проверяем только физику.
+        """
         image = np.zeros((100, 100, 3), dtype=np.uint8)
         image[40:60, 60:80] = 255
         frame = make_frame(image)
@@ -269,7 +265,5 @@ class TestComposition:
         assert seconds == pytest.approx(detection.intensity * 0.2)
 
         alpha = confidence_coefficient([detection], 0.85, config)
-        beta = significance_coefficient([detection], config)
-        assert visibility_value(seconds, alpha, beta) == pytest.approx(
-            seconds * alpha * beta
-        )
+        assert 0.0 < alpha <= 1.0
+        assert seconds * alpha > 0.0

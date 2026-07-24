@@ -5,6 +5,7 @@ from datetime import datetime
 from application.common.dto import (
     CityDetailDTO,
     CityDTO,
+    GeozoneDTO,
     ShootingMetricsDTO,
     AssignmentSummaryDTO,
     PaginatedAssignmentsDTO,
@@ -12,7 +13,11 @@ from application.common.dto import (
     PipelineRunDTO,
     AssignmentDTO,
 )
-from application.exceptions import CatalogNotFoundError, InvalidAssignmentError
+from application.exceptions import (
+    CatalogNotFoundError,
+    InvalidAssignmentError,
+    InvalidGeozoneError,
+)
 from application.interfaces import CatalogRepository
 from application.services.assignment_rollup import rollup_brands, rollup_totals
 from application.services.pipeline_run_service import PipelineRunService
@@ -27,6 +32,20 @@ def _check_planned_window(start: object, end: object) -> None:
     if isinstance(start, datetime) and isinstance(end, datetime) and end < start:
         raise InvalidAssignmentError(
             "Окончание задания не может быть раньше его начала."
+        )
+
+
+def _check_geozone_bounds(start: object, end: object) -> None:
+    """Границы участка: 0 ≤ начало < конец ≤ 1.
+
+    Каждое поле по отдельности держит Pydantic (ge/le), здесь — их порядок и
+    полнота, в том числе при PATCH одной границы поверх лежащей в базе другой.
+    """
+    if not (isinstance(start, (int, float)) and isinstance(end, (int, float))):
+        raise InvalidGeozoneError("Границы участка не заданы.")
+    if not (0.0 <= start < end <= 1.0):
+        raise InvalidGeozoneError(
+            "Начало участка должно быть строго раньше конца, обе в пределах 0…1."
         )
 
 
@@ -133,6 +152,77 @@ class CatalogService:
         if self._repository.get_assignment(assignment_id) is None:
             raise CatalogNotFoundError("Задание не найдено.")
         return self._repository.list_assignment_runs(assignment_id)
+
+    # --- геозоны ------------------------------------------------------------
+
+    def list_geozones(self, *, city_slug: str, route_slug: str) -> list[GeozoneDTO]:
+        geozones = self._repository.list_geozones(city_slug, route_slug)
+        if geozones is None:
+            raise CatalogNotFoundError("Маршрут не найден.")
+        return geozones
+
+    def create_geozone(
+        self,
+        *,
+        city_slug: str,
+        route_slug: str,
+        name: str,
+        start_fraction: float,
+        end_fraction: float,
+        coefficient: float,
+    ) -> GeozoneDTO:
+        _check_geozone_bounds(start_fraction, end_fraction)
+        geozone = self._repository.create_geozone(
+            city_slug=city_slug,
+            route_slug=route_slug,
+            name=name,
+            start_fraction=start_fraction,
+            end_fraction=end_fraction,
+            coefficient=coefficient,
+        )
+        if geozone is None:
+            self._repository.rollback()
+            raise CatalogNotFoundError("Маршрут не найден.")
+        self._repository.commit()
+        return geozone
+
+    def get_geozone(self, geozone_id: str) -> GeozoneDTO:
+        geozone = self._repository.get_geozone(geozone_id)
+        if geozone is None:
+            raise CatalogNotFoundError("Участок не найден.")
+        return geozone
+
+    def update_geozone(
+        self,
+        geozone_id: str,
+        *,
+        fields: dict[str, object],
+    ) -> GeozoneDTO:
+        """fields содержит только присланные ключи; None ни в одном не бывает —
+        все поля участка обязательны, очистка запрещена."""
+        current = self._repository.get_geozone(geozone_id)
+        if current is None:
+            raise CatalogNotFoundError("Участок не найден.")
+        if any(value is None for value in fields.values()):
+            raise InvalidGeozoneError("Поле участка нельзя очистить.")
+
+        # Проверяем границы целиком: клиент мог прислать одну, вторая — из базы.
+        _check_geozone_bounds(
+            fields.get("start_fraction", current.start_fraction),
+            fields.get("end_fraction", current.end_fraction),
+        )
+        geozone = self._repository.update_geozone(geozone_id, fields=fields)
+        if geozone is None:
+            self._repository.rollback()
+            raise CatalogNotFoundError("Участок не найден.")
+        self._repository.commit()
+        return geozone
+
+    def delete_geozone(self, geozone_id: str) -> None:
+        if not self._repository.delete_geozone(geozone_id):
+            self._repository.rollback()
+            raise CatalogNotFoundError("Участок не найден.")
+        self._repository.commit()
 
     def get_assignment_summary(self, assignment_id: str) -> AssignmentSummaryDTO:
         """Метрики задания на лету — кэш-таблицы нет, рассинхрона тоже.

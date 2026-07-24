@@ -37,6 +37,7 @@ from application.exceptions import (
 )
 from application.interfaces import PipelineRunRepository, RunObjectStorage
 from domain.entities import PipelineArtifactType, PipelineRunStatus
+from domain.geozones import GeozoneInterval, beta
 
 ALLOWED_VIDEO_EXTENSIONS = {
     ".avi",
@@ -263,21 +264,26 @@ class PipelineRunService:
         return OverlayPayloadDTO.model_validate(payload)
 
     def get_summary(self, run_id: str) -> RunSummaryDTO:
+        """Сводка по брендам с живым β: источник — TRACKS, не BRAND_SUMMARY.
+
+        Бэкенд больше не читает готовый visibility_value из артефакта (там β = 1),
+        а считает V = S·α·β сам из зон маршрута, актуальных на момент запроса.
+        """
         run = self._require_run(run_id)
-        artifact = self._find_artifact(
-            run.artifacts,
-            PipelineArtifactType.BRAND_SUMMARY,
-        )
+        artifact = self._find_artifact(run.artifacts, PipelineArtifactType.TRACKS)
         brands: list[BrandSummaryDTO] = []
-        if artifact:
+        total_objects = 0
+        total_visibility = 0.0
+        if artifact is not None:
             dataframe = self._read_csv(artifact)
             if not dataframe.empty:
-                brands = self._dataframe_models(dataframe, BrandSummaryDTO)
-
-        total_objects = sum(item.object_count for item in brands)
-        total_visibility = sum(
-            item.sum_visibility_value or 0.0 for item in brands
-        )
+                dataframe = self._filter_business_visible(dataframe)
+            if not dataframe.empty:
+                intervals = self._repository.get_geozone_intervals(run_id)
+                dataframe = self._apply_beta(dataframe, intervals, run.duration_sec)
+                brands, total_objects, total_visibility = self._summarize_brands(
+                    dataframe
+                )
         return RunSummaryDTO(
             run=run,
             totals=RunSummaryTotalsDTO(
@@ -286,6 +292,81 @@ class PipelineRunService:
             ),
             brands=brands,
         )
+
+    def _apply_beta(
+        self,
+        dataframe: pd.DataFrame,
+        intervals: list[GeozoneInterval],
+        duration_sec: float | None,
+    ) -> pd.DataFrame:
+        """Пересчитывает β и итоговую заметность V по геозонам маршрута.
+
+        β = beta(best_timestamp / duration): доля времени → участок → коэффициент.
+        V = attention_seconds (S) · confidence_coef (α) · β. Перекрывает значения
+        из CSV, где β = 1: источник β — живые зоны, а не артефакт пайплайна.
+        Без длительности локализовать объект нельзя — β нейтральный.
+        """
+        dataframe = dataframe.copy()
+        attention = pd.to_numeric(
+            dataframe["attention_seconds"], errors="coerce"
+        ).fillna(0.0)
+        confidence = pd.to_numeric(
+            dataframe["confidence_coef"], errors="coerce"
+        ).fillna(0.0)
+        duration = duration_sec or 0.0
+        if duration > 0 and intervals:
+            timestamp = pd.to_numeric(
+                dataframe["best_timestamp_sec"], errors="coerce"
+            ).fillna(0.0)
+            fraction = (timestamp / duration).clip(lower=0.0, upper=1.0)
+            betas = fraction.map(lambda value: beta(float(value), intervals))
+        else:
+            betas = pd.Series(1.0, index=dataframe.index)
+        dataframe["significance_coef"] = betas
+        dataframe["visibility_value"] = attention * confidence * betas
+        return dataframe
+
+    def _summarize_brands(
+        self,
+        dataframe: pd.DataFrame,
+    ) -> tuple[list[BrandSummaryDTO], int, float]:
+        """Свёртка видимых треков в бренды в два уровня, как в пайплайне.
+
+        Сначала по объекту (фрагменты одного object_id складываются), потом по
+        бренду. object_count — число различных объектов, а не фрагментов трека.
+        """
+        object_level = (
+            dataframe.groupby(["object_id", "business_brand"], dropna=False)
+            .agg(
+                track_fragment_count=("track_id", "count"),
+                sum_visibility_value=("visibility_value", "sum"),
+                sum_attention_seconds=("attention_seconds", "sum"),
+                mean_final_brand_conf=("final_brand_conf", "mean"),
+                max_final_brand_conf=("final_brand_conf", "max"),
+                first_timestamp_sec=("first_timestamp_sec", "min"),
+                last_timestamp_sec=("last_timestamp_sec", "max"),
+            )
+            .reset_index()
+        )
+        brand_level = (
+            object_level.groupby("business_brand", dropna=False)
+            .agg(
+                object_count=("object_id", "count"),
+                track_fragment_count=("track_fragment_count", "sum"),
+                sum_visibility_value=("sum_visibility_value", "sum"),
+                sum_attention_seconds=("sum_attention_seconds", "sum"),
+                mean_final_brand_conf=("mean_final_brand_conf", "mean"),
+                max_final_brand_conf=("max_final_brand_conf", "max"),
+                first_timestamp_sec=("first_timestamp_sec", "min"),
+                last_timestamp_sec=("last_timestamp_sec", "max"),
+            )
+            .reset_index()
+            .rename(columns={"business_brand": "brand"})
+        )
+        brands = self._dataframe_models(brand_level, BrandSummaryDTO)
+        total_objects = int(len(object_level))
+        total_visibility = float(object_level["sum_visibility_value"].sum())
+        return brands, total_objects, total_visibility
 
     def get_objects(
         self,
@@ -303,6 +384,8 @@ class PipelineRunService:
         dataframe = self._filter_business_visible(dataframe)
         if dataframe.empty:
             return RunObjectsDTO(run_id=run_id, objects=[])
+        intervals = self._repository.get_geozone_intervals(run_id)
+        dataframe = self._apply_beta(dataframe, intervals, run.duration_sec)
         dataframe = dataframe.sort_values(
             "visibility_value",
             ascending=False,

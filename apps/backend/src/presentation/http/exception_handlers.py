@@ -8,7 +8,9 @@ from sqlalchemy.exc import IntegrityError
 from application.exceptions import (
     AssignmentFullError,
     CatalogNotFoundError,
+    GeozoneOverlapError,
     InvalidAssignmentError,
+    InvalidGeozoneError,
     InvalidUserError,
     InvalidVideoError,
     PipelineRunNotFoundError,
@@ -88,6 +90,26 @@ def setup_exception_handlers(app: FastAPI) -> None:
     ) -> JSONResponse:
         return JSONResponse(
             status_code=400,
+            content={"detail": str(exc)},
+        )
+
+    @app.exception_handler(InvalidGeozoneError)
+    async def invalid_geozone_handler(
+        _: Request,
+        exc: InvalidGeozoneError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=400,
+            content={"detail": str(exc)},
+        )
+
+    @app.exception_handler(GeozoneOverlapError)
+    async def geozone_overlap_handler(
+        _: Request,
+        exc: GeozoneOverlapError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=409,
             content={"detail": str(exc)},
         )
 

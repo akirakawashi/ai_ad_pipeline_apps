@@ -27,3 +27,11 @@ class InvalidUserError(ValueError):
 
 class UserAlreadyExistsError(ValueError):
     """Человек с таким ФИО уже есть в справочнике."""
+
+
+class InvalidGeozoneError(ValueError):
+    """Границы участка неверны — вне [0,1] или начало не раньше конца."""
+
+
+class GeozoneOverlapError(ValueError):
+    """Участок пересекается с уже размеченным на этом маршруте."""

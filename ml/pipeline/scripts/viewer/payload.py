@@ -82,7 +82,13 @@ def detection_to_overlay_object(
     brand = (track.business_brand if track else detection.business_brand) or "other"
     style = BRAND_STYLES.get(brand, BRAND_STYLES["other"])
     brand_conf = track.final_brand_conf if track else detection.brand_conf
-    object_value = track.visibility_value if track else detection.intensity
+    # Карточка оверлея — физика S·α, без β: значимость места живёт на бэкенде,
+    # а карточка показывает, сколько внимания щит забрал сам по себе.
+    object_value = (
+        track.attention_seconds * track.confidence_coef
+        if track
+        else detection.intensity
+    )
 
     return OverlayObjectPayload(
         object_id=detection.object_id,

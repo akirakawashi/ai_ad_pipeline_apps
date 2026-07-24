@@ -11,8 +11,6 @@ from .schemas import DetectionRecord, TrackRecord
 from .scoring import (
     attention_seconds,
     confidence_coefficient,
-    significance_coefficient,
-    visibility_value,
 )
 
 
@@ -85,10 +83,6 @@ def _aggregate_one(
 
     object_attention_seconds = attention_seconds(detections)
     object_confidence_coef = confidence_coefficient(detections, final_conf, config)
-    object_significance_coef = significance_coefficient(detections, config)
-    object_visibility_value = visibility_value(
-        object_attention_seconds, object_confidence_coef, object_significance_coef
-    )
 
     return TrackRecord(
         run_id=detections[0].run_id,
@@ -105,8 +99,6 @@ def _aggregate_one(
         best_timestamp_sec=best_detection.timestamp_sec,
         attention_seconds=object_attention_seconds,
         confidence_coef=object_confidence_coef,
-        significance_coef=object_significance_coef,
-        visibility_value=object_visibility_value,
         final_brand=final_brand,
         final_brand_conf=final_conf,
         final_status=final_status,

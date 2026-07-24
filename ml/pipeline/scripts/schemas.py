@@ -116,10 +116,9 @@ class TrackRecord:
     detections_count: int
     best_crop_path: str
     best_timestamp_sec: float
+    # Только физика S·α. Значимость β и итог V считает бэкенд из геозон.
     attention_seconds: float
     confidence_coef: float
-    significance_coef: float
-    visibility_value: float
     final_brand: str
     final_brand_conf: float
     final_status: FinalStatus

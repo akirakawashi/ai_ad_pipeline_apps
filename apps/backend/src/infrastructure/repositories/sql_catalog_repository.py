@@ -11,10 +11,19 @@ from application.common.dto import (
     AssignmentStatusCountsDTO,
     CityDetailDTO,
     CityDTO,
+    GeozoneDTO,
     PipelineRunDTO,
     RouteDTO,
 )
-from infrastructure.database.models import Assignment, City, PipelineRun, Route
+from application.exceptions import GeozoneOverlapError
+from domain.geozones import GeozoneInterval, overlaps
+from infrastructure.database.models import (
+    Assignment,
+    City,
+    PipelineRun,
+    Route,
+    RouteGeozone,
+)
 from infrastructure.repositories.assignment_mapping import (
     assignment_title,
     city_ref,
@@ -44,6 +53,19 @@ def _route_to_dto(
         display_order=route.display_order,
         assignment_count=assignment_count,
         video_count=video_count,
+    )
+
+
+def _geozone_to_dto(geozone: RouteGeozone) -> GeozoneDTO:
+    return GeozoneDTO(
+        id=geozone.route_geozones_id,
+        route_id=geozone.routes_id,
+        name=geozone.name,
+        start_fraction=geozone.start_fraction,
+        end_fraction=geozone.end_fraction,
+        coefficient=geozone.coefficient,
+        created_at=geozone.created_at,
+        updated_at=geozone.updated_at,
     )
 
 
@@ -433,6 +455,131 @@ class SqlCatalogRepository:
             )
         ).one()
         return int(total)
+
+    # --- геозоны ------------------------------------------------------------
+
+    def list_geozones(
+        self,
+        city_slug: str,
+        route_slug: str,
+    ) -> list[GeozoneDTO] | None:
+        """Участки маршрута по возрастанию начала. None — маршрута нет."""
+        route = self._get_route_model(city_slug, route_slug)
+        if route is None:
+            return None
+        rows = self._session.exec(
+            select(RouteGeozone)
+            .where(RouteGeozone.routes_id == route.routes_id)
+            .order_by(RouteGeozone.start_fraction)
+        ).all()
+        return [_geozone_to_dto(geozone) for geozone in rows]
+
+    def create_geozone(
+        self,
+        *,
+        city_slug: str,
+        route_slug: str,
+        name: str,
+        start_fraction: float,
+        end_fraction: float,
+        coefficient: float,
+    ) -> GeozoneDTO | None:
+        """Добавляет участок. None — маршрута нет; пересечение → исключение."""
+        route = self._get_route_model(city_slug, route_slug)
+        if route is None:
+            return None
+
+        # Блокируем строку маршрута: под замком читаем соседей и проверяем
+        # пересечение, чтобы два одновременных POST не вставили налезающие
+        # участки — БД такой инвариант через constraint не выразить.
+        self._lock_route(route.routes_id)
+        self._ensure_no_overlap(route.routes_id, start_fraction, end_fraction)
+
+        geozone = RouteGeozone(
+            routes_id=route.routes_id,
+            name=name,
+            start_fraction=start_fraction,
+            end_fraction=end_fraction,
+            coefficient=coefficient,
+        )
+        self._session.add(geozone)
+        self._session.flush()
+        self._session.refresh(geozone)
+        return _geozone_to_dto(geozone)
+
+    def get_geozone(self, geozone_id: str) -> GeozoneDTO | None:
+        geozone = self._get_geozone_model(geozone_id)
+        return _geozone_to_dto(geozone) if geozone is not None else None
+
+    def update_geozone(
+        self,
+        geozone_id: str,
+        *,
+        fields: dict[str, object],
+    ) -> GeozoneDTO | None:
+        """Перезаписывает переданные поля. None — участка нет; пересечение →
+        исключение. Слитые границы проверяются до записи, без грязной модели."""
+        geozone = self._get_geozone_model(geozone_id)
+        if geozone is None:
+            return None
+
+        self._lock_route(geozone.routes_id)
+        merged_start = fields.get("start_fraction", geozone.start_fraction)
+        merged_end = fields.get("end_fraction", geozone.end_fraction)
+        self._ensure_no_overlap(
+            geozone.routes_id,
+            float(merged_start),
+            float(merged_end),
+            exclude_id=geozone.route_geozones_id,
+        )
+
+        for name, value in fields.items():
+            setattr(geozone, name, value)
+        self._session.add(geozone)
+        self._session.flush()
+        self._session.refresh(geozone)
+        return _geozone_to_dto(geozone)
+
+    def delete_geozone(self, geozone_id: str) -> bool:
+        """False, если участка нет."""
+        geozone = self._get_geozone_model(geozone_id)
+        if geozone is None:
+            return False
+        self._session.delete(geozone)
+        self._session.flush()
+        return True
+
+    def _get_geozone_model(self, geozone_id: str) -> RouteGeozone | None:
+        return self._session.exec(
+            select(RouteGeozone).where(
+                RouteGeozone.route_geozones_id == geozone_id
+            )
+        ).first()
+
+    def _lock_route(self, routes_id: str) -> None:
+        self._session.exec(
+            select(Route).where(Route.routes_id == routes_id).with_for_update()
+        ).first()
+
+    def _ensure_no_overlap(
+        self,
+        routes_id: str,
+        start_fraction: float,
+        end_fraction: float,
+        *,
+        exclude_id: str | None = None,
+    ) -> None:
+        query = select(RouteGeozone).where(RouteGeozone.routes_id == routes_id)
+        if exclude_id is not None:
+            query = query.where(RouteGeozone.route_geozones_id != exclude_id)
+        siblings = [
+            GeozoneInterval(g.start_fraction, g.end_fraction, g.coefficient)
+            for g in self._session.exec(query).all()
+        ]
+        if overlaps(start_fraction, end_fraction, siblings):
+            raise GeozoneOverlapError(
+                "Участок пересекается с уже размеченным на этом маршруте."
+            )
 
     def commit(self) -> None:
         self._session.commit()

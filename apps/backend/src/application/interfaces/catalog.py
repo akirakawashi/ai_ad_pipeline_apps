@@ -6,6 +6,7 @@ from typing import Protocol
 from application.common.dto import (
     CityDetailDTO,
     CityDTO,
+    GeozoneDTO,
     PipelineRunDTO,
     RouteDTO,
     AssignmentDTO,
@@ -61,6 +62,42 @@ class CatalogRepository(Protocol):
     def get_assignment(self, assignment_id: str) -> AssignmentDTO | None: ...
 
     def list_assignment_runs(self, assignment_id: str) -> list[PipelineRunDTO]: ...
+
+    def list_geozones(
+        self,
+        city_slug: str,
+        route_slug: str,
+    ) -> list[GeozoneDTO] | None:
+        """Участки маршрута. None — маршрута нет."""
+        ...
+
+    def create_geozone(
+        self,
+        *,
+        city_slug: str,
+        route_slug: str,
+        name: str,
+        start_fraction: float,
+        end_fraction: float,
+        coefficient: float,
+    ) -> GeozoneDTO | None:
+        """None — маршрута нет; GeozoneOverlapError при пересечении."""
+        ...
+
+    def get_geozone(self, geozone_id: str) -> GeozoneDTO | None: ...
+
+    def update_geozone(
+        self,
+        geozone_id: str,
+        *,
+        fields: dict[str, object],
+    ) -> GeozoneDTO | None:
+        """Перезаписывает переданные поля. None — участка нет."""
+        ...
+
+    def delete_geozone(self, geozone_id: str) -> bool:
+        """False — участка нет."""
+        ...
 
     def commit(self) -> None: ...
 

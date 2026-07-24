@@ -281,6 +281,34 @@ export interface Playback {
   annotated_url: string | null
 }
 
+/** Участок значимости маршрута: доля [start, end) времени видео и множитель β. */
+export interface Geozone {
+  id: string
+  route_id: string
+  name: string
+  start_fraction: number
+  end_fraction: number
+  coefficient: number
+  created_at: string | null
+  updated_at: string | null
+}
+
+/** Тело POST участка: границы — доли [0,1] от длительности видео. */
+export interface CreateGeozonePayload {
+  name: string
+  start_fraction: number
+  end_fraction: number
+  coefficient: number
+}
+
+/** Тело PATCH участка: отсутствующий ключ = «не менять». */
+export interface UpdateGeozonePayload {
+  name?: string
+  start_fraction?: number
+  end_fraction?: number
+  coefficient?: number
+}
+
 export interface OverlayObject {
   object_id: number | null
   track_id: number | null
