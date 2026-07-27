@@ -1,5 +1,6 @@
 import { useEffect, useState, type CSSProperties } from 'react'
 import { getAdStructures, getCity } from '../api'
+import { RouteGeozones } from '../components/RouteGeozones'
 import { RouteMap, type GeoFeatureCollection } from '../components/RouteMap'
 import { EmptyState, ErrorBanner } from '../components/common/Feedback'
 import { PageHeader } from '../components/common/PageHeader'
@@ -88,6 +89,9 @@ export function CityPage({ citySlug }: { citySlug: string }) {
   const routeColors = routesMeta.map((route) => route.color_hex ?? FALLBACK_COLOR)
   const focusedIndex = hoveredIndex ?? selectedIndex
   const focusedMeta = focusedIndex !== null ? routesMeta[focusedIndex] : null
+  // Зоны — только для выбранного маршрута, не для подсвеченного мышью: панель с
+  // формой не должна перезагружаться и терять набранный текст от движения курсора.
+  const selectedMeta = selectedIndex !== null ? routesMeta[selectedIndex] : null
 
   const handleReset = () => {
     setHoveredIndex(null)
@@ -205,6 +209,17 @@ export function CityPage({ citySlug }: { citySlug: string }) {
             </section>
           </aside>
         </div>
+      )}
+
+      {/* key по слагу: смена маршрута создаёт панель заново, а не тащит в неё
+          черновик формы от предыдущего. */}
+      {selectedMeta && (
+        <RouteGeozones
+          key={selectedMeta.slug}
+          citySlug={citySlug}
+          routeSlug={selectedMeta.slug}
+          routeName={selectedMeta.name}
+        />
       )}
     </div>
   )

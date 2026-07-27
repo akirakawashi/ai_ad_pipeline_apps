@@ -189,6 +189,51 @@ def test_bad_bounds_rejected(client, geozone_schema, city_route):
     ).status_code == 422
 
 
+def test_description_is_optional_and_editable(client, geozone_schema, city_route):
+    """Описание — единственное место, где живёт причина коэффициента.
+
+    Не обязательно при создании, стирается пустой строкой, null запрещён — как
+    и остальные поля участка.
+    """
+    city_slug, route_slug = city_route
+    base = _geozones_url(city_slug, route_slug)
+
+    silent = client.post(
+        base,
+        json={"name": "Окраина", "start_fraction": 0.0, "end_fraction": 0.2, "coefficient": 0.8},
+    ).json()["data"]
+    assert silent["description"] == ""
+
+    described = client.post(
+        base,
+        json={
+            "name": "Центр",
+            "description": "Пешеходный поток, светофор — стоим до 40 секунд.",
+            "start_fraction": 0.35,
+            "end_fraction": 0.6,
+            "coefficient": 1.5,
+        },
+    )
+    assert described.status_code == 201
+    zone_id = described.json()["data"]["id"]
+    assert client.get(base).json()["data"][1]["description"].startswith("Пешеходный")
+
+    patched = client.patch(
+        f"/api/v1/geozones/{zone_id}", json={"description": "Ремонт, поток упал."}
+    )
+    assert patched.json()["data"]["description"] == "Ремонт, поток упал."
+
+    cleared = client.patch(f"/api/v1/geozones/{zone_id}", json={"description": ""})
+    assert cleared.json()["data"]["description"] == ""
+
+    assert (
+        client.patch(
+            f"/api/v1/geozones/{zone_id}", json={"description": None}
+        ).status_code
+        == 400
+    )
+
+
 def test_missing_targets_are_404(client, geozone_schema, city_route):
     city_slug, _ = city_route
     assert client.get(f"/api/v1/cities/{city_slug}/routes/nope/geozones").status_code == 404

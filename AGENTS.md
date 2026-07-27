@@ -159,6 +159,7 @@ only feed the pipeline's own `report.html`.
 | Change how a factor is computed | the one file in `ml/pipeline/scripts/scoring/`, plus its class in [tests/test_scoring.py](tests/test_scoring.py) |
 | Add/remove a CSV column | `pipeline_contracts/artifacts.py` (field list is derived from the model) → the dataclass in `ml/pipeline/scripts/schemas.py` → whoever reads it |
 | Change β semantics / zone model | `apps/backend/src/domain/geozones.py` + `_apply_beta` in `pipeline_run_service.py` + `RouteGeozone` model |
+| Change how zones are entered or edited | `apps/frontend/src/components/RouteGeozones.tsx` — one panel for both mounts (city page without video, shooting card with it); percent↔fraction lives in `toFraction`/`percentText` there |
 | Add an endpoint | router in `presentation/http/routers/v1/` → response DTO in `presentation/http/dto/response.py` → service → repository interface → SQL repository |
 | Add a DB table/column | `infrastructure/database/models.py`, then **the owner writes the migration** (existing convention) |
 | Change how an assignment aggregates shootings | `application/services/assignment_rollup.py` — the only place that decides mean vs median vs filtering |
@@ -226,6 +227,11 @@ cd apps/frontend && pnpm dev && pnpm build && pnpm lint
   no route → no zones → β = 1 everywhere.
 * Geozone validation is split: bounds (`0 ≤ start < end ≤ 1`) in `catalog_service`, overlap detection
   in `sql_catalog_repository` under a route row lock (`GeozoneOverlapError` → HTTP 409).
+* **Zones are stored as fractions, entered as percent.** The API only ever sees `[0,1]`; the ×100 is
+  purely a UI affordance in `RouteGeozones.tsx`. Minutes were rejected on purpose — different drives
+  have different durations, so "minute four" is a different place each time.
+* `route_geozones.description` is `NOT NULL DEFAULT ''` — empty string, never NULL. `PATCH` with `""`
+  clears the text; `PATCH` with `null` is a 400, same as every other field of a zone.
 * Tests rely on cities/routes seeded **by migrations** (`simferopol/route-1`, sevastopol) and truncate
   only mutable tables between tests.
 * `README.md` predates the metric rewrite; §"Как проходит обработка видео" is still accurate, metric

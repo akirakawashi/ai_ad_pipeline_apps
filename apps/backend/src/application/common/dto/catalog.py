@@ -33,6 +33,7 @@ class GeozoneDTO(ApplicationDTO):
     id: str
     route_id: str
     name: str
+    description: str = ""
     start_fraction: float
     end_fraction: float
     coefficient: float

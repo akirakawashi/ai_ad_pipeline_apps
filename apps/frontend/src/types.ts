@@ -286,6 +286,8 @@ export interface Geozone {
   id: string
   route_id: string
   name: string
+  /** Зачем такой коэффициент. Может быть пустым, но не null. */
+  description: string
   start_fraction: number
   end_fraction: number
   coefficient: number
@@ -296,14 +298,16 @@ export interface Geozone {
 /** Тело POST участка: границы — доли [0,1] от длительности видео. */
 export interface CreateGeozonePayload {
   name: string
+  description: string
   start_fraction: number
   end_fraction: number
   coefficient: number
 }
 
-/** Тело PATCH участка: отсутствующий ключ = «не менять». */
+/** Тело PATCH участка: отсутствующий ключ = «не менять», пустая строка стирает. */
 export interface UpdateGeozonePayload {
   name?: string
+  description?: string
   start_fraction?: number
   end_fraction?: number
   coefficient?: number

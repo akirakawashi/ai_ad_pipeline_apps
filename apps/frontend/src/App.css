@@ -3549,8 +3549,9 @@ button:disabled,
   white-space: pre-wrap;
 }
 
-/* --- геозоны: разметка значимости по времени видео --------------------- */
+/* --- геозоны: разметка значимости долями проезда ----------------------- */
 .geozone-panel {
+  margin-top: 18px;
   padding: 20px;
 }
 
@@ -3600,6 +3601,12 @@ button:disabled,
   object-fit: contain;
 }
 
+.geozone-ruler {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .geozone-timeline {
   position: relative;
   height: 44px;
@@ -3607,7 +3614,18 @@ button:disabled,
   border: 1px solid var(--line-strong);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.04);
+}
+
+/* Курсор-палец только когда клик действительно перематывает видео. */
+.geozone-timeline.is-seekable {
   cursor: pointer;
+}
+
+.geozone-scale {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 11px;
 }
 
 .geozone-band {
@@ -3647,6 +3665,33 @@ button:disabled,
   pointer-events: none;
 }
 
+.geozone-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.geozone-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.geozone-fields .field {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.geozone-field-wide {
+  grid-column: 1 / -1;
+}
+
+/* Отметка границ по играющему видео: главный способ разметки, когда оно есть. */
 .geozone-controls {
   display: flex;
   flex-wrap: wrap;
@@ -3654,31 +3699,19 @@ button:disabled,
   align-items: center;
 }
 
-.geozone-name-input {
-  flex: 1 1 200px;
-  min-width: 160px;
-  padding: 9px 12px;
-  border: 1px solid var(--line-strong);
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.4);
-  color: var(--text);
+.geozone-controls .geozone-hint {
+  flex: 1 1 220px;
 }
 
-.geozone-coef-field {
-  display: inline-flex;
-  gap: 6px;
+.geozone-textarea {
+  resize: vertical;
+}
+
+.geozone-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
   align-items: center;
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.geozone-coef-field input {
-  width: 68px;
-  padding: 8px 10px;
-  border: 1px solid var(--line-strong);
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.4);
-  color: var(--text);
 }
 
 .geozone-list {
@@ -3693,26 +3726,46 @@ button:disabled,
 .geozone-row {
   display: flex;
   gap: 12px;
-  align-items: center;
-  padding: 8px 12px;
+  align-items: flex-start;
+  padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.03);
 }
 
+/* Строка в правке разворачивается в ту же форму, что и создание. */
+.geozone-row.is-editing {
+  flex-direction: column;
+  gap: 12px;
+  border-color: var(--accent);
+}
+
 .geozone-swatch {
   width: 12px;
   height: 12px;
+  margin-top: 4px;
   border-radius: 3px;
   flex: 0 0 auto;
+}
+
+.geozone-row-copy {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
 
 .geozone-row-name {
   font-weight: 600;
 }
 
+.geozone-row-name em {
+  font-style: normal;
+  color: var(--accent);
+}
+
 .geozone-row-range {
-  flex: 1 1 auto;
   color: var(--muted);
   font-size: 13px;
 }
@@ -3722,17 +3775,31 @@ button:disabled,
   opacity: 0.7;
 }
 
+.geozone-row-description {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  white-space: pre-wrap;
+}
+
 .geozone-delete {
-  padding: 6px 12px;
+  min-height: 30px;
+  padding: 5px 12px;
   border: 1px solid var(--line-strong);
   border-radius: 8px;
   background: transparent;
   color: var(--danger);
+  font-size: 12px;
   cursor: pointer;
 }
 
-.geozone-delete:hover {
+.geozone-delete:hover:not(:disabled) {
   border-color: var(--danger);
+}
+
+.geozone-delete:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* Каталог рекламных конструкций (pages/CatalogPage.tsx) */

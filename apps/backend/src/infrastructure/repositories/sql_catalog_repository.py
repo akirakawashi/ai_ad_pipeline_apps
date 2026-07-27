@@ -61,6 +61,7 @@ def _geozone_to_dto(geozone: RouteGeozone) -> GeozoneDTO:
         id=geozone.route_geozones_id,
         route_id=geozone.routes_id,
         name=geozone.name,
+        description=geozone.description,
         start_fraction=geozone.start_fraction,
         end_fraction=geozone.end_fraction,
         coefficient=geozone.coefficient,
@@ -480,6 +481,7 @@ class SqlCatalogRepository:
         city_slug: str,
         route_slug: str,
         name: str,
+        description: str,
         start_fraction: float,
         end_fraction: float,
         coefficient: float,
@@ -498,6 +500,7 @@ class SqlCatalogRepository:
         geozone = RouteGeozone(
             routes_id=route.routes_id,
             name=name,
+            description=description,
             start_fraction=start_fraction,
             end_fraction=end_fraction,
             coefficient=coefficient,

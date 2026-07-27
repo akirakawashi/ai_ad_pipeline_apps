@@ -6,7 +6,7 @@ import {
   getRunSummary,
   getRunTimeline,
 } from '../api'
-import { GeozoneMarker } from '../components/GeozoneMarker'
+import { RouteGeozones } from '../components/RouteGeozones'
 import { RunCharts } from '../components/RunCharts'
 import { ShootingFacts } from '../components/ShootingFacts'
 import { VideoOverlayPlayer } from '../components/VideoOverlayPlayer'
@@ -152,12 +152,12 @@ export function ResultPage({
         <PlayerSkeleton />
       )}
 
-      {run.assignment && playback?.source_url && (
-        <GeozoneMarker
+      {run.assignment && (
+        <RouteGeozones
           citySlug={run.assignment.city.slug}
           routeSlug={run.assignment.route.slug}
           routeName={run.assignment.route.name}
-          sourceUrl={playback.source_url}
+          sourceUrl={playback?.source_url ?? undefined}
         />
       )}
 

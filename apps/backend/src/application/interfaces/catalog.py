@@ -77,6 +77,7 @@ class CatalogRepository(Protocol):
         city_slug: str,
         route_slug: str,
         name: str,
+        description: str,
         start_fraction: float,
         end_fraction: float,
         coefficient: float,
