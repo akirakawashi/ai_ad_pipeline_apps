@@ -9,9 +9,11 @@ from application.exceptions import (
     AssignmentFullError,
     CatalogImportStateError,
     CatalogNotFoundError,
+    DuplicateSlugError,
     GeozoneOverlapError,
     InvalidAssignmentError,
     InvalidCatalogFileError,
+    InvalidGeometryError,
     InvalidGeozoneError,
     InvalidUserError,
     InvalidVideoError,
@@ -122,6 +124,26 @@ def setup_exception_handlers(app: FastAPI) -> None:
     ) -> JSONResponse:
         return JSONResponse(
             status_code=400,
+            content={"detail": str(exc)},
+        )
+
+    @app.exception_handler(InvalidGeometryError)
+    async def invalid_geometry_handler(
+        _: Request,
+        exc: InvalidGeometryError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=400,
+            content={"detail": str(exc)},
+        )
+
+    @app.exception_handler(DuplicateSlugError)
+    async def duplicate_slug_handler(
+        _: Request,
+        exc: DuplicateSlugError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=409,
             content={"detail": str(exc)},
         )
 

@@ -106,15 +106,19 @@ class City(SQLModel, table=True):
         default=None,
         sa_column=Column(String(255), nullable=True),
     )
-    # Путь относительно apps/frontend/public/, без ведущего слэша и домена.
-    # Пример: "routes/simferopol/export.geojson". Слэш добавляет фронтенд.
-    roads_geojson_path: str | None = Field(
+    # Дорожный слой города — FeatureCollection как пришёл из OSM. NULL — слой не
+    # загружен, карта рисует только маршруты. В списки городов не отдаётся
+    # никогда: это до полутора мегабайт на город, у геометрии свой эндпоинт.
+    # none_as_null обязателен: по умолчанию JSONB пишет питоновский None как
+    # JSON-литерал null, и тогда «слой не загружен» перестаёт отличаться от
+    # загруженного — `IS NOT NULL` истинно для обоих.
+    roads_geometry: dict | None = Field(
         default=None,
-        sa_column=Column(String(512), nullable=True),
+        sa_column=Column(JSONB(none_as_null=True), nullable=True),
     )
     # Прямоугольник города по дорожному слою: им отсекаются точки каталога,
-    # оказавшиеся за десятки километров от города. Лежит в базе, а не читается
-    # из geojson: бэкенду папка фронта недоступна (в контейнер не монтируется).
+    # оказавшиеся за десятки километров от города. Пересчитывается при каждой
+    # заливке слоя — иначе импорт каталога начнёт врать по устаревшей рамке.
     # NULL — рамки нет, значит и не фильтруем: лучше принять лишнее, чем молча
     # выбросить чужой город, у которого рамку не посчитали.
     bounds_min_latitude: float | None = Field(
@@ -209,10 +213,14 @@ class Route(SQLModel, table=True):
         default=None,
         sa_column=Column(Text, nullable=True),
     )
-    # Полный путь относительно apps/frontend/public/, без ведущего слэша.
-    # Пример: "routes/simferopol/route_1.geojson".
-    geojson_path: str = Field(
-        sa_column=Column(String(512), nullable=False),
+    # Линия маршрута — FeatureCollection как пришёл из OSM: мешок несвязанных
+    # кусков дороги, годный для отрисовки и негодный для «доли пути» (ось
+    # маршрута отложена отдельным решением). NULL — законное состояние: сначала
+    # маршрут создают, потом загружают линию, и между этим на нём уже можно
+    # завести задание и разметить зоны.
+    geometry: dict | None = Field(
+        default=None,
+        sa_column=Column(JSONB(none_as_null=True), nullable=True),
     )
     display_order: int = Field(
         default=0,

@@ -6,11 +6,13 @@ from typing import Protocol
 from application.common.dto import (
     CityDetailDTO,
     CityDTO,
+    GeometryDTO,
     GeozoneDTO,
     PipelineRunDTO,
     RouteDTO,
     AssignmentDTO,
 )
+from domain.catalog import CityBounds
 
 
 class CatalogRepository(Protocol):
@@ -23,6 +25,85 @@ class CatalogRepository(Protocol):
         city_slug: str,
         route_slug: str,
     ) -> RouteDTO | None: ...
+
+    # --- справочники: правка ------------------------------------------------
+
+    def city_slug_taken(self, slug: str) -> bool: ...
+
+    def create_city(
+        self,
+        *,
+        slug: str,
+        name: str,
+        region: str | None,
+        display_order: int,
+    ) -> CityDTO: ...
+
+    def update_city(self, city_slug: str, *, fields: dict[str, object]) -> bool:
+        """False — города нет."""
+        ...
+
+    def set_city_active(self, city_slug: str, *, is_active: bool) -> bool: ...
+
+    def route_slug_taken(self, city_slug: str, slug: str) -> bool: ...
+
+    def create_route(
+        self,
+        *,
+        city_slug: str,
+        slug: str,
+        name: str,
+        color_label: str | None,
+        color_hex: str | None,
+        description: str | None,
+        display_order: int,
+    ) -> RouteDTO | None:
+        """None — города нет."""
+        ...
+
+    def update_route(
+        self,
+        city_slug: str,
+        route_slug: str,
+        *,
+        fields: dict[str, object],
+    ) -> bool: ...
+
+    def set_route_active(
+        self,
+        city_slug: str,
+        route_slug: str,
+        *,
+        is_active: bool,
+    ) -> bool: ...
+
+    # --- справочники: геометрия ---------------------------------------------
+
+    def set_roads_geometry(
+        self,
+        city_slug: str,
+        *,
+        geometry: dict,
+        bounds: CityBounds | None,
+    ) -> bool:
+        """Заливает дорожный слой и переписывает рамку города одной операцией."""
+        ...
+
+    def get_roads_geometry(self, city_slug: str) -> GeometryDTO | None: ...
+
+    def set_route_geometry(
+        self,
+        city_slug: str,
+        route_slug: str,
+        *,
+        geometry: dict,
+    ) -> bool: ...
+
+    def get_route_geometry(
+        self,
+        city_slug: str,
+        route_slug: str,
+    ) -> GeometryDTO | None: ...
 
     def list_assignments(
         self,

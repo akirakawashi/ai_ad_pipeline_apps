@@ -91,7 +91,7 @@ export function RouteSummaryPanel({ summary }: { summary: RouteSummary }) {
                 <tr
                   key={item.run_id}
                   className="is-clickable"
-                  onClick={() => navigate(`/runs/${item.run_id}`)}
+                  onClick={() => navigate(`/videos/${item.run_id}`)}
                 >
                   <td>{formatDateTime(item.shot_started_at)}</td>
                   <td>{item.assignment.title}</td>

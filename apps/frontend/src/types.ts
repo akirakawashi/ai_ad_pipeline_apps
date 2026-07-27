@@ -52,8 +52,8 @@ export interface Route {
   color_label: string | null
   color_hex: string | null
   description: string | null
-  /** Путь относительно public/, без ведущего слэша: 'routes/simferopol/route_1.geojson'. */
-  geojson_path: string
+  /** Есть ли залитая линия. Сама геометрия — отдельным запросом: она тяжёлая. */
+  has_geometry: boolean
   display_order: number
   assignment_count: number
   video_count: number
@@ -64,8 +64,8 @@ export interface City {
   slug: string
   name: string
   region: string | null
-  /** Путь относительно public/, без ведущего слэша. */
-  roads_geojson_path: string | null
+  /** Есть ли залитый дорожный слой. Сам слой — до полутора мегабайт, отдельно. */
+  has_roads_geometry: boolean
   display_order: number
   route_count: number
   assignment_count: number
@@ -74,6 +74,38 @@ export interface City {
 
 export interface CityDetail extends City {
   routes: Route[]
+}
+
+/** Тело POST города. Слаг задаётся один раз: он в URL. */
+export interface CityPayload {
+  slug: string
+  name: string
+  region?: string | null
+  display_order?: number
+}
+
+/** Тело PATCH города: отсутствующий ключ = «не менять». Слага здесь нет. */
+export interface CityUpdatePayload {
+  name?: string
+  region?: string | null
+  display_order?: number
+}
+
+export interface RoutePayload {
+  slug: string
+  name: string
+  color_label?: string | null
+  color_hex?: string | null
+  description?: string | null
+  display_order?: number
+}
+
+export interface RouteUpdatePayload {
+  name?: string
+  color_label?: string | null
+  color_hex?: string | null
+  description?: string | null
+  display_order?: number
 }
 
 export interface AssignmentStatusCounts {

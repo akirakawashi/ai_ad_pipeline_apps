@@ -1,5 +1,11 @@
 import { useEffect, useState } from 'react'
-import { getCities, getCity, getRouteAssignments, listRuns } from '../api'
+import {
+  getCities,
+  getCity,
+  getRouteAssignments,
+  getRouteGeometry,
+  listRuns,
+} from '../api'
 import { EmptyState, ErrorBanner } from '../components/common/Feedback'
 import { PageHeader } from '../components/common/PageHeader'
 import { RunCard } from '../components/common/RunCard'
@@ -131,13 +137,14 @@ export function VideosPage({ filters }: { filters: VideoFilters }) {
       )
       const sources = missing.flatMap(({ routeId, citySlug }) => {
         const route = cityDetails.get(citySlug)?.routes.find((item) => item.id === routeId)
-        return route ? ([[routeId, route.geojson_path]] as const) : []
+        // Без залитой линии превью не существует — и запроса тоже.
+        return route?.has_geometry ? ([[routeId, citySlug, route.slug]] as const) : []
       })
       const previews = await Promise.all(
-        sources.map(async ([routeId, path]) => {
-          const response = await fetch(`/${path}`)
-          if (!response.ok) return null
-          return [routeId, (await response.json()) as GeoFeatureCollection] as const
+        sources.map(async ([routeId, citySlug, routeSlug]) => {
+          const geometry = await getRouteGeometry(citySlug, routeSlug).catch(() => null)
+          if (geometry === null) return null
+          return [routeId, geometry as GeoFeatureCollection] as const
         }),
       )
       if (disposed) return

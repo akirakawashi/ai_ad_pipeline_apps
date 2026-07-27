@@ -15,13 +15,20 @@ from domain.catalog import CatalogImportStatus
 
 
 class RouteDTO(ApplicationDTO):
+    """Маршрут без геометрии — она отдаётся только своим эндпоинтом.
+
+    `has_geometry` вместо самой геометрии: строка списка должна оставаться
+    килобайтами, а линия маршрута это десятки килобайт, дорожный слой города —
+    полтора мегабайта.
+    """
+
     id: str
     slug: str
     name: str
     color_label: str | None
     color_hex: str | None
     description: str | None = None
-    geojson_path: str
+    has_geometry: bool = False
     display_order: int
     assignment_count: int = 0
     video_count: int = 0
@@ -50,7 +57,7 @@ class CityDTO(ApplicationDTO):
     slug: str
     name: str
     region: str | None
-    roads_geojson_path: str | None
+    has_roads_geometry: bool = False
     display_order: int
     route_count: int = 0
     assignment_count: int = 0
@@ -59,6 +66,17 @@ class CityDTO(ApplicationDTO):
 
 class CityDetailDTO(CityDTO):
     routes: list[RouteDTO] = Field(default_factory=list)
+
+
+class GeometryDTO(ApplicationDTO):
+    """Геометрия и её версия для ETag.
+
+    Версия — `updated_at` строки: она меняется ровно тогда, когда меняется
+    геометрия, и сравнить её дешевле, чем гонять полтора мегабайта по сети.
+    """
+
+    version: str
+    geometry: dict
 
 
 class AssignmentStatusCountsDTO(ApplicationDTO):

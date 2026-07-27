@@ -17,12 +17,18 @@ def test_city_detail_carries_routes(client):
     assert len(city["routes"]) == 4
 
 
-def test_route_exposes_geojson_and_description(client):
-    """geojson_path — путь относительно public/, без ведущего слэша."""
+def test_route_reports_geometry_by_flag_not_content(client):
+    """Геометрия в списки не попадает: строка отдаёт только признак наличия.
+
+    Линия маршрута — десятки килобайт, дорожный слой города — полтора мегабайта;
+    в карточке города им места нет.
+    """
     city = payload(client.get("/api/v1/cities/simferopol"))
     route = city["routes"][0]
-    assert route["geojson_path"].startswith("routes/simferopol/")
-    assert not route["geojson_path"].startswith("/")
+    assert route["has_geometry"] is False
+    assert "geometry" not in route
+    assert "has_roads_geometry" in city
+    assert "roads_geometry" not in city
     assert "description" in route
 
 

@@ -3,6 +3,8 @@ import type {
   AssignmentsPage,
   AssignmentSummary,
   City,
+  CityPayload,
+  CityUpdatePayload,
   CatalogImport,
   CatalogImportReport,
   CityDetail,
@@ -14,7 +16,10 @@ import type {
   PipelineRun,
   Playback,
   Assignment,
+  Route,
+  RoutePayload,
   RouteSummary,
+  RouteUpdatePayload,
   RunObjects,
   RunsPage,
   RunSummary,
@@ -161,6 +166,100 @@ export function getCities(): Promise<City[]> {
 
 export function getCity(citySlug: string): Promise<CityDetail> {
   return apiFetch(`/cities/${citySlug}`)
+}
+
+// --- справочники городов и маршрутов --------------------------------------
+
+export function createCity(payload: CityPayload): Promise<City> {
+  return apiFetch('/cities', { method: 'POST', body: JSON.stringify(payload) })
+}
+
+export function updateCity(
+  citySlug: string,
+  payload: CityUpdatePayload,
+): Promise<CityDetail> {
+  return apiFetch(`/cities/${citySlug}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function deactivateCity(citySlug: string): Promise<void> {
+  return apiDelete(`/cities/${citySlug}`)
+}
+
+export function createRoute(
+  citySlug: string,
+  payload: RoutePayload,
+): Promise<Route> {
+  return apiFetch(`/cities/${citySlug}/routes`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function updateRoute(
+  citySlug: string,
+  routeSlug: string,
+  payload: RouteUpdatePayload,
+): Promise<Route> {
+  return apiFetch(`/cities/${citySlug}/routes/${routeSlug}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function deactivateRoute(citySlug: string, routeSlug: string): Promise<void> {
+  return apiDelete(`/cities/${citySlug}/routes/${routeSlug}`)
+}
+
+/**
+ * Геометрия города и маршрута. Загружается формой (файл идёт прямо в бэкенд и
+ * там разбирается), читается обычным GET — бэкенд отдаёт её с ETag, поэтому
+ * повторные заходы на карту получают 304 вместо полутора мегабайт.
+ */
+export function uploadRoadsGeometry(
+  citySlug: string,
+  file: File,
+): Promise<CityDetail> {
+  return uploadGeometry(`/cities/${citySlug}/roads-geometry`, file)
+}
+
+export function uploadRouteGeometry(
+  citySlug: string,
+  routeSlug: string,
+  file: File,
+): Promise<Route> {
+  return uploadGeometry(`/cities/${citySlug}/routes/${routeSlug}/geometry`, file)
+}
+
+export function getRoadsGeometry(citySlug: string): Promise<unknown> {
+  return apiFetch(`/cities/${citySlug}/roads-geometry`)
+}
+
+export function getRouteGeometry(
+  citySlug: string,
+  routeSlug: string,
+): Promise<unknown> {
+  return apiFetch(`/cities/${citySlug}/routes/${routeSlug}/geometry`)
+}
+
+async function uploadGeometry<T>(path: string, file: File): Promise<T> {
+  // Content-Type не ставим руками — браузер сам допишет boundary.
+  const form = new FormData()
+  form.append('file', file)
+  const response = await fetch(`${API_BASE}${path}`, { method: 'PUT', body: form })
+  const body = await response.json().catch(() => null)
+  if (!response.ok) throw new Error(body?.detail ?? `HTTP ${response.status}`)
+  return (body as ApiEnvelope<T>).data
+}
+
+async function apiDelete(path: string): Promise<void> {
+  const response = await fetch(`${API_BASE}${path}`, { method: 'DELETE' })
+  if (!response.ok) {
+    const body = await response.json().catch(() => null)
+    throw new Error(body?.detail ?? `HTTP ${response.status}`)
+  }
 }
 
 export function getRouteAssignments(

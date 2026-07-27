@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import json
+import re
 from datetime import datetime
 
 from application.common.dto import (
     CityDetailDTO,
     CityDTO,
+    GeometryDTO,
     GeozoneDTO,
     ShootingMetricsDTO,
     AssignmentSummaryDTO,
@@ -12,18 +15,59 @@ from application.common.dto import (
     ShootingBrandDTO,
     PipelineRunDTO,
     AssignmentDTO,
+    RouteDTO,
     RouteShootingMetricsDTO,
     RouteSummaryDTO,
 )
 from application.exceptions import (
     CatalogNotFoundError,
+    DuplicateSlugError,
     InvalidAssignmentError,
+    InvalidGeometryError,
     InvalidGeozoneError,
 )
 from application.interfaces import CatalogRepository
 from application.services.metrics_rollup import rollup_brands, rollup_totals
 from application.services.pipeline_run_service import PipelineRunService
 from domain.entities import PipelineRunStatus
+from domain.geometry import InvalidGeometryError as DomainGeometryError
+from domain.geometry import bounds_of, parse_feature_collection
+
+# Слаг живёт в URL, поэтому только то, что в URL не портится.
+SLUG_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{1,63}$")
+
+# Дорожный слой Севастополя — 1.5 МБ, самый крупный из имеющихся. Запас
+# четырёхкратный: файл больше почти наверняка не геометрия города.
+MAX_GEOMETRY_BYTES = 8 * 1024 * 1024
+
+
+def _check_slug(slug: str) -> None:
+    if not SLUG_PATTERN.match(slug):
+        raise InvalidAssignmentError(
+            "Слаг — латиница в нижнем регистре, цифры и дефис, от 2 до 64 знаков."
+        )
+
+
+def _parse_geometry(content: bytes) -> dict:
+    """Байты файла → проверенный FeatureCollection.
+
+    Ошибки домена переводим в прикладные: домен не знает про HTTP, а причина
+    («не тот файл») должна дойти до человека дословно.
+    """
+    if not content:
+        raise InvalidGeometryError("Файл пустой.")
+    if len(content) > MAX_GEOMETRY_BYTES:
+        raise InvalidGeometryError(
+            f"Файл больше {MAX_GEOMETRY_BYTES // (1024 * 1024)} МБ."
+        )
+    try:
+        raw = json.loads(content.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise InvalidGeometryError(f"Файл не читается как JSON: {error}") from error
+    try:
+        return parse_feature_collection(raw)
+    except DomainGeometryError as error:
+        raise InvalidGeometryError(str(error)) from error
 
 
 def _check_planned_window(start: object, end: object) -> None:
@@ -68,6 +112,158 @@ class CatalogService:
         if city is None:
             raise CatalogNotFoundError("Город не найден.")
         return city
+
+    # --- справочники: города ------------------------------------------------
+
+    def create_city(
+        self,
+        *,
+        slug: str,
+        name: str,
+        region: str | None,
+        display_order: int,
+    ) -> CityDTO:
+        _check_slug(slug)
+        if self._repository.city_slug_taken(slug):
+            raise DuplicateSlugError(f"Город со слагом «{slug}» уже есть.")
+        city = self._repository.create_city(
+            slug=slug,
+            name=name,
+            region=region,
+            display_order=display_order,
+        )
+        self._repository.commit()
+        return city
+
+    def update_city(self, city_slug: str, *, fields: dict[str, object]) -> CityDetailDTO:
+        """Слаг в fields не приходит — его нет в модели запроса.
+
+        Причина: слаг лежит в URL, и его правка тихо ломает все сохранённые
+        ссылки на город и его маршруты.
+        """
+        if not self._repository.update_city(city_slug, fields=fields):
+            self._repository.rollback()
+            raise CatalogNotFoundError("Город не найден.")
+        self._repository.commit()
+        return self.get_city(city_slug)
+
+    def deactivate_city(self, city_slug: str) -> None:
+        """Не удаляем: у заданий и съёмок каскад на маршруты, они бы исчезли."""
+        if not self._repository.set_city_active(city_slug, is_active=False):
+            self._repository.rollback()
+            raise CatalogNotFoundError("Город не найден.")
+        self._repository.commit()
+
+    # --- справочники: маршруты ----------------------------------------------
+
+    def create_route(
+        self,
+        *,
+        city_slug: str,
+        slug: str,
+        name: str,
+        color_label: str | None,
+        color_hex: str | None,
+        description: str | None,
+        display_order: int,
+    ) -> RouteDTO:
+        _check_slug(slug)
+        if self._repository.route_slug_taken(city_slug, slug):
+            raise DuplicateSlugError(
+                f"Маршрут со слагом «{slug}» в этом городе уже есть."
+            )
+        route = self._repository.create_route(
+            city_slug=city_slug,
+            slug=slug,
+            name=name,
+            color_label=color_label,
+            color_hex=color_hex,
+            description=description,
+            display_order=display_order,
+        )
+        if route is None:
+            self._repository.rollback()
+            raise CatalogNotFoundError("Город не найден.")
+        self._repository.commit()
+        return route
+
+    def update_route(
+        self,
+        city_slug: str,
+        route_slug: str,
+        *,
+        fields: dict[str, object],
+    ) -> RouteDTO:
+        if not self._repository.update_route(city_slug, route_slug, fields=fields):
+            self._repository.rollback()
+            raise CatalogNotFoundError("Маршрут не найден.")
+        self._repository.commit()
+        return self.get_route(city_slug, route_slug)
+
+    def get_route(self, city_slug: str, route_slug: str) -> RouteDTO:
+        route = self._repository.get_route(city_slug, route_slug)
+        if route is None:
+            raise CatalogNotFoundError("Маршрут не найден.")
+        return route
+
+    def deactivate_route(self, city_slug: str, route_slug: str) -> None:
+        if not self._repository.set_route_active(
+            city_slug,
+            route_slug,
+            is_active=False,
+        ):
+            self._repository.rollback()
+            raise CatalogNotFoundError("Маршрут не найден.")
+        self._repository.commit()
+
+    # --- справочники: геометрия ---------------------------------------------
+
+    def set_roads_geometry(self, city_slug: str, *, content: bytes) -> CityDetailDTO:
+        """Дорожный слой города; рамка города пересчитывается здесь же.
+
+        Рамкой каталог отсекает точки чужого города. Слой без пересчитанной
+        рамки означал бы, что следующий импорт молча выбросит нормальные точки.
+        """
+        geometry = _parse_geometry(content)
+        if not self._repository.set_roads_geometry(
+            city_slug,
+            geometry=geometry,
+            bounds=bounds_of(geometry),
+        ):
+            self._repository.rollback()
+            raise CatalogNotFoundError("Город не найден.")
+        self._repository.commit()
+        return self.get_city(city_slug)
+
+    def get_roads_geometry(self, city_slug: str) -> GeometryDTO:
+        geometry = self._repository.get_roads_geometry(city_slug)
+        if geometry is None:
+            raise CatalogNotFoundError("Дорожный слой города не загружен.")
+        return geometry
+
+    def set_route_geometry(
+        self,
+        city_slug: str,
+        route_slug: str,
+        *,
+        content: bytes,
+    ) -> RouteDTO:
+        geometry = _parse_geometry(content)
+        if not self._repository.set_route_geometry(
+            city_slug,
+            route_slug,
+            geometry=geometry,
+        ):
+            self._repository.rollback()
+            raise CatalogNotFoundError("Маршрут не найден.")
+        self._repository.commit()
+        return self.get_route(city_slug, route_slug)
+
+    def get_route_geometry(self, city_slug: str, route_slug: str) -> GeometryDTO:
+        geometry = self._repository.get_route_geometry(city_slug, route_slug)
+        if geometry is None:
+            raise CatalogNotFoundError("Геометрия маршрута не загружена.")
+        return geometry
 
     def list_assignments(
         self,

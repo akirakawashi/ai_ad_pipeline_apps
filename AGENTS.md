@@ -63,13 +63,14 @@ Three target brands: `mts`, `plus7`, `miranda`. Everything else collapses to `ot
 | `ml/pipeline/scripts/` (rest) | `detection`, `crops`, `quality`, `classification`, `tracking`, `track_groups`, `aggregation`, `io`, `schemas`, `config`, `visualization`. |
 | `ml/pipeline/scripts/reporting/` | CSV + charts + `report.html` (standalone pipeline reports, **not** the product UI). |
 | `ml/pipeline/scripts/viewer/` | `overlay.json` + `viewer.html` (standalone player with cards). |
-| `apps/backend/src/domain/` | Pure logic, no I/O: `geozones.py` (`beta`, `overlaps`), `catalog.py` (point collapsing, revision diff, city bounds) + entity facades. |
+| `apps/backend/src/domain/` | Pure logic, no I/O: `geozones.py` (`beta`, `overlaps`), `catalog.py` (point collapsing, revision diff, city bounds), `geometry.py` (geojson validation, bbox) + entity facades. |
 | `apps/backend/src/application/` | Services (`pipeline_run_service`, `catalog_service`, `metrics_rollup`, `user_service`), DTOs, repository interfaces. |
 | `apps/backend/src/infrastructure/` | SQLModel models, SQL repositories, MinIO storage, `catalog/parser.py` (xlsx/xls/csv). |
 | `apps/backend/src/presentation/http/` | FastAPI routers, request/response DTOs, DI, exception handlers. |
 | `apps/backend/src/worker/` | Queue worker that runs the ML pipeline out-of-process. |
 | `apps/backend/alembic/` | Migrations, including seed migrations for cities/routes. |
 | `apps/frontend/src/` | React 19 + Vite + Recharts. Hand-rolled router (`routing.ts`), no react-router. |
+| `scripts/` | `dev.sh` (whole stack) and `import_geometry.py` — a one-off that pushes the nine geojson files from `apps/frontend/public/routes/` into the DB through the API. Delete it once the geometry is loaded and verified. |
 | `tests/` | pytest. Needs a live Postgres; MinIO is faked. |
 | `docs/plan.md` + `docs/plan-NN-*.md` | **Intent, not state**: accepted decisions with reasons, open decisions that block work, and the step list. Per-step detail files are deleted once the step lands and its content moves into `pipeline-and-metrics.md`. Never describe working behaviour here. |
 | `README.md` | Setup/ops guide. Predates the metric rewrite; treat metric statements in it as stale. |
@@ -146,7 +147,11 @@ On the backend `visibility_value` means **S·α·β**. They are different number
    `/cities/{c}/routes/{r}/summary` (all shootings of the route). **The route averages shootings
    directly — there is no mean-of-means step**, so a two-drive campaign cannot outweigh a
    twenty-drive one; the route response also carries every shooting with its assignment.
-9. Frontend renders charts from `/summary`, `/objects`, `/timeline`, and the player from
+9. Route/city geometry lives in the DB (`routes.geometry`, `cities.roads_geometry`) and is served by
+   `/cities/{c}/roads-geometry` and `/cities/{c}/routes/{r}/geometry` with weak `ETag`s. Nothing reads
+   `apps/frontend/public/routes/` any more; the folder still exists only as the source for the one-off
+   `scripts/import_geometry.py`, and the owner deletes it once the load is verified.
+10. Frontend renders charts from `/summary`, `/objects`, `/timeline`, and the player from
    `/overlay` + `/playback`.
 
 `brand_summary_by_tracks.csv`, `brand_summary_by_detections.csv`, `frame_summary.csv` are written and
@@ -167,6 +172,7 @@ only feed the pipeline's own `report.html`.
 | Add an endpoint | router in `presentation/http/routers/v1/` → response DTO in `presentation/http/dto/response.py` → service → repository interface → SQL repository |
 | Add a DB table/column | `infrastructure/database/models.py`, then **the owner writes the migration** (existing convention) |
 | Change how an assignment **or a route** aggregates shootings | `application/services/metrics_rollup.py` — the only place that decides mean vs median vs filtering, shared by both levels |
+| Add a city/route field, change geometry handling | `domain/geometry.py` (validation only) → `models.py` → `sql_catalog_repository` → `catalog_service` → `cities.py` router → `AdminPage.tsx`. Geometry must stay out of list responses |
 | Change catalogue parsing (new column, new format) | `infrastructure/catalog/parser.py` only; the row/point types live in `domain/catalog.py` |
 | Retune catalogue distance thresholds | `MERGE_DISTANCE_M` / `DIFF_DISTANCE_M` / `CITY_BOUNDS_MARGIN_M` in `domain/catalog.py` |
 | Change what the overlay card shows | `viewer/payload.py` + `OverlayObjectPayload` in `pipeline_contracts/artifacts.py` + `VideoOverlayPlayer.tsx` |
@@ -231,6 +237,16 @@ cd apps/frontend && pnpm dev && pnpm build && pnpm lint
   no route → no zones → β = 1 everywhere.
 * Geozone validation is split: bounds (`0 ≤ start < end ≤ 1`) in `catalog_service`, overlap detection
   in `sql_catalog_repository` under a route row lock (`GeozoneOverlapError` → HTTP 409).
+* **`JSONB` needs `none_as_null=True`.** By default SQLAlchemy writes Python `None` into a JSONB
+  column as the JSON literal `null`, so `IS NOT NULL` is true and "geometry not loaded" becomes
+  indistinguishable from loaded. Both geometry columns declare `JSONB(none_as_null=True)`; any new
+  nullable JSONB column must do the same.
+* **Geometry never travels in a list response.** `cities.roads_geometry` is up to 1.5 MB. Every query
+  that loads `City` or `Route` models carries `defer(...)` on those columns, and DTOs expose only
+  `has_geometry` / `has_roads_geometry`. `_route_to_dto` takes the flag as an argument on purpose —
+  reading `route.geometry` there would undo the deferral. Geometry has its own endpoints with `ETag`.
+* **Uploading a city's road layer recomputes `bounds_*` in the same operation.** The catalogue parser
+  uses that box to drop out-of-town points; a new layer with a stale box silently discards good rows.
 * **`ShootingMetricsDTO` is the unit of account at every level.** Assignment and route both read it;
   nothing aggregates aggregates. A route summary therefore re-reads `tracks.csv` for every completed
   shooting on the route — that is why `RoutePage` refetches its summary only when the completed count

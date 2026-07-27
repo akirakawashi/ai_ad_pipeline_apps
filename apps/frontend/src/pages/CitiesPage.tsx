@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getCities } from '../api'
-import { getCity } from '../api'
+import { getCities, getCity, getRouteGeometry } from '../api'
 import { CityRoutePreview } from '../components/CityRoutePreview'
 import { EmptyState, ErrorBanner } from '../components/common/Feedback'
 import { PageHeader } from '../components/common/PageHeader'
@@ -41,13 +40,18 @@ export function CitiesPage() {
       cities.map(async (city) => {
         try {
           const detail = await getCity(city.slug)
-          const responses = await Promise.all(
-            detail.routes.map((route) => fetch(`/${route.geojson_path}`)),
+          // Геометрия — из API, по одному запросу на маршрут. Маршруты без
+          // залитой линии пропускаем: рисовать нечего, спрашивать незачем.
+          const loaded: (unknown | null)[] = await Promise.all(
+            detail.routes
+              .filter((route) => route.has_geometry)
+              .map((route) =>
+                getRouteGeometry(city.slug, route.slug).catch(() => null),
+              ),
           )
-          if (responses.some((response) => !response.ok)) return [city.id, []] as const
-          const routes = (await Promise.all(
-            responses.map((response) => response.json()),
-          )) as GeoFeatureCollection[]
+          const routes = loaded.filter(
+            (item): item is GeoFeatureCollection => item !== null,
+          )
           return [city.id, routes] as const
         } catch {
           return [city.id, []] as const

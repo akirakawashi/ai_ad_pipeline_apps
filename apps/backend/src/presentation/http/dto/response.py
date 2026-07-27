@@ -134,6 +134,50 @@ class RouteResponse(RouteDTO):
     pass
 
 
+class CreateCityRequest(ApiModel):
+    """Новый город. Слаг задаётся один раз: он в URL и его правка ломает ссылки."""
+
+    slug: str = Field(min_length=2, max_length=64)
+    name: str = Field(min_length=1, max_length=255)
+    region: str | None = Field(default=None, max_length=255)
+    display_order: int = Field(default=0, ge=0)
+
+
+class UpdateCityRequest(ApiModel):
+    """PATCH города: меняются только пришедшие поля. Слага здесь нет намеренно."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    region: str | None = Field(default=None, max_length=255)
+    display_order: int | None = Field(default=None, ge=0)
+
+    def changed_fields(self) -> dict[str, object]:
+        return {name: getattr(self, name) for name in self.model_fields_set}
+
+
+class CreateRouteRequest(ApiModel):
+    """Новый маршрут. Геометрия загружается отдельным запросом, потом."""
+
+    slug: str = Field(min_length=2, max_length=64)
+    name: str = Field(min_length=1, max_length=255)
+    color_label: str | None = Field(default=None, max_length=64)
+    color_hex: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
+    description: str | None = Field(default=None, max_length=2000)
+    display_order: int = Field(default=0, ge=0)
+
+
+class UpdateRouteRequest(ApiModel):
+    """PATCH маршрута: меняются только пришедшие поля, слаг неизменяем."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    color_label: str | None = Field(default=None, max_length=64)
+    color_hex: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
+    description: str | None = Field(default=None, max_length=2000)
+    display_order: int | None = Field(default=None, ge=0)
+
+    def changed_fields(self) -> dict[str, object]:
+        return {name: getattr(self, name) for name in self.model_fields_set}
+
+
 class GeozoneResponse(GeozoneDTO):
     pass
 

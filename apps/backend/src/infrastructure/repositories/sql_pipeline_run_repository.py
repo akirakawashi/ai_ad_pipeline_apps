@@ -15,6 +15,7 @@ from domain.entities import PipelineArtifactType, PipelineRunStage, PipelineRunS
 from domain.geozones import GeozoneInterval
 from infrastructure.database.models import (
     Assignment,
+    City,
     PipelineArtifact,
     PipelineRun,
     PipelineRunEvent,
@@ -202,7 +203,9 @@ class SqlPipelineRunRepository:
                 noload(PipelineRun.events),
                 selectinload(PipelineRun.assignment)
                 .selectinload(Assignment.route)
-                .selectinload(Route.city),
+                .defer(Route.geometry)
+                .selectinload(Route.city)
+                .defer(City.roads_geometry),
             )
             .order_by(PipelineRun.created_at.desc())
             .offset((page - 1) * page_size)
@@ -479,7 +482,9 @@ class SqlPipelineRunRepository:
             statement = statement.options(
                 selectinload(PipelineRun.assignment)
                 .selectinload(Assignment.route)
-                .selectinload(Route.city),
+                .defer(Route.geometry)
+                .selectinload(Route.city)
+                .defer(City.roads_geometry),
                 selectinload(PipelineRun.operator),
             )
         else:

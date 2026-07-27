@@ -11,6 +11,7 @@ export type Route =
   | { page: 'home' }
   | { page: 'archive' }
   | { page: 'catalog' }
+  | { page: 'admin' }
   | { page: 'city'; citySlug: string }
   | { page: 'route'; citySlug: string; routeSlug: string }
   | { page: 'assignment'; assignmentId: string }
@@ -36,6 +37,7 @@ export function currentRoute(): Route {
   if (pathname === '/') return { page: 'home' }
   if (pathname === '/archive') return { page: 'archive' }
   if (pathname === '/catalog') return { page: 'catalog' }
+  if (pathname === '/admin') return { page: 'admin' }
   if (pathname === '/videos') return { page: 'videos', filters: parseVideoFilters(search) }
   if (pathname === '/upload') {
     return {
@@ -105,6 +107,7 @@ export function workspaceTitle(route: Route) {
   if (route.page === 'run') return 'Результат'
   if (route.page === 'archive') return 'Города и маршруты'
   if (route.page === 'catalog') return 'Каталог конструкций'
+  if (route.page === 'admin') return 'Справочники'
   if (route.page === 'city') return 'Маршруты города'
   if (route.page === 'route') return 'Задания маршрута'
   if (route.page === 'assignment') return 'Задание'
