@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getAssignmentRuns, getAssignmentSummary, updateAssignment } from '../api'
-import { AssignmentCharts } from '../components/AssignmentCharts'
+import { RollupCharts } from '../components/RollupCharts'
 import { AssignmentForm } from '../components/AssignmentForm'
 import { EmptyState, ErrorBanner } from '../components/common/Feedback'
 import { Metric } from '../components/common/Metric'
@@ -10,7 +10,7 @@ import { RunsSkeleton } from '../components/common/Skeletons'
 import { navigate, uploadPath } from '../routing'
 import type {
   AssignmentPayload,
-  AssignmentStat,
+  MetricStat,
   AssignmentSummary,
   PipelineRun,
 } from '../types'
@@ -24,7 +24,7 @@ import {
 /** Обработка идёт минутами — чаще смотреть незачем. */
 const POLL_INTERVAL_MS = 20000
 
-function stat(value: AssignmentStat, digits = 1): string {
+function stat(value: MetricStat, digits = 1): string {
   if (!value.mean) return '—'
   const mean = formatNumber(Number(value.mean.toFixed(digits)))
   if (!value.std) return mean
@@ -225,7 +225,7 @@ export function AssignmentPage({ assignmentId }: { assignmentId: string }) {
               работе — данные обновятся после обработки.
             </p>
           )}
-          <AssignmentCharts brands={brands} shootings={shootings} />
+          <RollupCharts brands={brands} shootings={shootings} />
         </>
       )}
 

@@ -14,10 +14,11 @@ from application.common.dto import (
     CityDetailDTO,
     CityDTO,
     CityRefDTO,
-    AssignmentBrandDTO,
+    RollupBrandDTO,
+    RollupTotalsDTO,
+    RouteShootingMetricsDTO,
     ShootingMetricsDTO,
     AssignmentStatusCountsDTO,
-    AssignmentTotalsDTO,
     GeozoneDTO,
     OverlayPayloadDTO,
     PaginatedAdStructuresDTO,
@@ -236,11 +237,11 @@ class PaginatedAssignmentsResponse(ApiModel):
     total: int
 
 
-class AssignmentTotalsResponse(AssignmentTotalsDTO):
+class RollupTotalsResponse(RollupTotalsDTO):
     pass
 
 
-class AssignmentBrandResponse(AssignmentBrandDTO):
+class RollupBrandResponse(RollupBrandDTO):
     pass
 
 
@@ -248,13 +249,31 @@ class ShootingMetricsResponse(ShootingMetricsDTO):
     pass
 
 
+class RouteShootingMetricsResponse(RouteShootingMetricsDTO):
+    pass
+
+
 class AssignmentSummaryResponse(ApiModel):
     assignment: AssignmentResponse
-    totals: AssignmentTotalsResponse
-    brands: list[AssignmentBrandResponse] = Field(default_factory=list)
+    totals: RollupTotalsResponse
+    brands: list[RollupBrandResponse] = Field(default_factory=list)
     # Сырые метрики съёмок: вход для сравнения съёмок на странице
     # и для любой другой свёртки, если политика поменяется.
     shootings: list[ShootingMetricsResponse] = Field(default_factory=list)
+
+
+class RouteSummaryResponse(ApiModel):
+    """Свёртка маршрута. Форма та же, что у задания, — считается тем же кодом.
+
+    Съёмки идут плоским списком по времени съёмки, у каждой своё задание:
+    маршрут показывает каждое видео отдельно, а не средние по кампаниям.
+    """
+
+    route: RouteResponse
+    assignments_total: int = 0
+    totals: RollupTotalsResponse
+    brands: list[RollupBrandResponse] = Field(default_factory=list)
+    shootings: list[RouteShootingMetricsResponse] = Field(default_factory=list)
 
 
 class PipelineRunResponse(ApiModel):

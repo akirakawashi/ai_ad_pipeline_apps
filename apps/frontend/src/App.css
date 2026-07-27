@@ -3549,6 +3549,55 @@ button:disabled,
   white-space: pre-wrap;
 }
 
+/* --- аналитика маршрута (components/RouteSummaryPanel.tsx) -------------- */
+.route-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+
+.route-summary-head {
+  margin: 8px 0 0;
+}
+
+.route-summary-head h2 {
+  margin: 0 0 4px;
+  font-size: 18px;
+  color: #ffffff;
+}
+
+.route-summary-head p {
+  margin: 0;
+  max-width: 720px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* Легенда заданий под графиком: цвет столбца → кампания и число съёмок в ней. */
+.route-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 10px 0 0;
+  padding: 0 8px;
+  list-style: none;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.route-legend li {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.route-legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
 /* --- геозоны: разметка значимости долями проезда ----------------------- */
 .geozone-panel {
   margin-top: 18px;
@@ -3963,6 +4012,10 @@ button:disabled,
 
 .data-table tr.is-current td {
   color: var(--accent);
+}
+
+.data-table tr.is-clickable {
+  cursor: pointer;
 }
 
 .row-actions {

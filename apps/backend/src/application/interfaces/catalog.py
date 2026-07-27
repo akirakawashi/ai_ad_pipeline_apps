@@ -63,6 +63,15 @@ class CatalogRepository(Protocol):
 
     def list_assignment_runs(self, assignment_id: str) -> list[PipelineRunDTO]: ...
 
+    def list_route_runs(
+        self,
+        city_slug: str,
+        route_slug: str,
+    ) -> list[PipelineRunDTO] | None:
+        """Съёмки всех заданий маршрута с загруженным заданием. None — маршрута
+        нет. Порядок — по времени съёмки."""
+        ...
+
     def list_geozones(
         self,
         city_slug: str,

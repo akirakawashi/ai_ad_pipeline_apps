@@ -14,6 +14,7 @@ import type {
   PipelineRun,
   Playback,
   Assignment,
+  RouteSummary,
   RunObjects,
   RunsPage,
   RunSummary,
@@ -200,6 +201,13 @@ export function getAssignmentRuns(assignmentId: string): Promise<PipelineRun[]> 
 
 export function getAssignmentSummary(assignmentId: string): Promise<AssignmentSummary> {
   return apiFetch(`/assignments/${assignmentId}/summary`)
+}
+
+export function getRouteSummary(
+  citySlug: string,
+  routeSlug: string,
+): Promise<RouteSummary> {
+  return apiFetch(`/cities/${citySlug}/routes/${routeSlug}/summary`)
 }
 
 export function getRouteGeozones(

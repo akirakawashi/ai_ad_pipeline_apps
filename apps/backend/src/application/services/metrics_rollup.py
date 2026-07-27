@@ -1,11 +1,16 @@
-"""Свёртка съёмок в метрики задания.
+"""Свёртка съёмок в метрики уровня выше: задания и маршрута.
 
-Единственное место, где решается, КАК считается задание. Слой съёмок
+Единственное место, где решается, КАК считается уровень выше съёмки. Слой съёмок
 (ShootingMetricsDTO) от этого не зависит и остаётся тем же, если политика
 поменяется: среднее вместо медианы, отбраковка коротких съёмок, нормировка.
 
+Один и тот же код обслуживает оба уровня: разница только в том, какой список ему
+дать — съёмки одного задания или все съёмки маршрута. **Маршрут считается из
+съёмок напрямую, а не из результатов заданий**, иначе задание из двух проездов
+весило бы столько же, сколько задание из двадцати.
+
 Сейчас: среднее по всем готовым съёмкам плюс разброс между ними.
-Разброс не украшение — он показывает, можно ли верить заданию.
+Разброс не украшение — он показывает, можно ли верить цифре.
 """
 
 from __future__ import annotations
@@ -14,18 +19,18 @@ from collections import defaultdict
 from statistics import fmean, stdev
 
 from application.common.dto import (
-    AssignmentBrandDTO,
+    MetricStatDTO,
+    RollupBrandDTO,
+    RollupTotalsDTO,
     ShootingMetricsDTO,
-    AssignmentStatDTO,
-    AssignmentTotalsDTO,
 )
 
 
-def _stat(values: list[float]) -> AssignmentStatDTO:
+def _stat(values: list[float]) -> MetricStatDTO:
     if not values:
-        return AssignmentStatDTO()
+        return MetricStatDTO()
     # stdev требует минимум двух точек; на одной съёмке разброса просто нет.
-    return AssignmentStatDTO(
+    return MetricStatDTO(
         mean=fmean(values),
         std=stdev(values) if len(values) > 1 else 0.0,
     )
@@ -35,8 +40,8 @@ def rollup_totals(
     shootings: list[ShootingMetricsDTO],
     *,
     shootings_total: int,
-) -> AssignmentTotalsDTO:
-    return AssignmentTotalsDTO(
+) -> RollupTotalsDTO:
+    return RollupTotalsDTO(
         shootings_total=shootings_total,
         shootings_completed=len(shootings),
         duration_sec=sum(item.duration_sec for item in shootings),
@@ -45,7 +50,7 @@ def rollup_totals(
     )
 
 
-def rollup_brands(shootings: list[ShootingMetricsDTO]) -> list[AssignmentBrandDTO]:
+def rollup_brands(shootings: list[ShootingMetricsDTO]) -> list[RollupBrandDTO]:
     if not shootings:
         return []
 
@@ -63,7 +68,7 @@ def rollup_brands(shootings: list[ShootingMetricsDTO]) -> list[AssignmentBrandDT
             visibility[brand].append(found.visibility_index if found else 0.0)
 
     rows = [
-        AssignmentBrandDTO(
+        RollupBrandDTO(
             brand=brand,
             objects_per_shooting=_stat(objects[brand]),
             visibility_per_shooting=_stat(visibility[brand]),

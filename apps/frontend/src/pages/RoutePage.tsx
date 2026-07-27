@@ -1,11 +1,17 @@
 import { useEffect, useState } from 'react'
-import { createAssignment, getCity, getRouteAssignments } from '../api'
+import {
+  createAssignment,
+  getCity,
+  getRouteAssignments,
+  getRouteSummary,
+} from '../api'
 import { AssignmentForm } from '../components/AssignmentForm'
+import { RouteSummaryPanel } from '../components/RouteSummaryPanel'
 import { EmptyState, ErrorBanner } from '../components/common/Feedback'
 import { PageHeader } from '../components/common/PageHeader'
 import { RunsSkeleton } from '../components/common/Skeletons'
 import { navigate } from '../routing'
-import type { Assignment, AssignmentPayload, Route } from '../types'
+import type { Assignment, AssignmentPayload, Route, RouteSummary } from '../types'
 import { formatPeriod, pluralAssignments } from '../utils/formatters'
 
 function assignmentProgressLabel(assignment: Assignment): string {
@@ -32,6 +38,7 @@ export function RoutePage({
   const [assignments, setAssignments] = useState<Assignment[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [summary, setSummary] = useState<RouteSummary | null>(null)
   const [creating, setCreating] = useState(false)
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
@@ -66,6 +73,25 @@ export function RoutePage({
     (sum, assignment) => sum + assignment.video_count,
     0,
   )
+  const completedVideos = assignments.reduce(
+    (sum, assignment) => sum + assignment.status_counts.completed,
+    0,
+  )
+
+  // Сводка маршрута читает tracks.csv каждой готовой съёмки, поэтому её нельзя
+  // тянуть на пятисекундном таймере вместе с заданиями. Перечитываем только
+  // когда обработалась ещё одна съёмка — этот момент виден по счётчикам заданий.
+  useEffect(() => {
+    let disposed = false
+    getRouteSummary(citySlug, routeSlug)
+      .then((loaded) => {
+        if (!disposed) setSummary(loaded)
+      })
+      .catch(() => undefined)
+    return () => {
+      disposed = true
+    }
+  }, [citySlug, routeSlug, completedVideos])
 
   const submit = (payload: AssignmentPayload) => {
     setSaving(true)
@@ -122,6 +148,27 @@ export function RoutePage({
           text="На этом маршруте ещё нет заданий. Создайте первое."
           action={newAssignmentButton}
         />
+      )}
+
+      {summary && (
+        <section className="route-summary">
+          <header className="route-summary-head">
+            <h2>Аналитика маршрута</h2>
+            <p>
+              Считается из съёмок напрямую, а не из средних по заданиям: иначе
+              кампания из двух проездов весила бы столько же, сколько кампания из
+              двадцати.
+            </p>
+          </header>
+          <RouteSummaryPanel summary={summary} />
+        </section>
+      )}
+
+      {assignments.length > 0 && (
+        <header className="route-summary-head">
+          <h2>Задания</h2>
+          <p>Кампания на маршруте: серия съёмок с плановым окном.</p>
+        </header>
       )}
 
       <div className="runs-grid">

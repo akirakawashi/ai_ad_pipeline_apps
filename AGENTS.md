@@ -64,7 +64,7 @@ Three target brands: `mts`, `plus7`, `miranda`. Everything else collapses to `ot
 | `ml/pipeline/scripts/reporting/` | CSV + charts + `report.html` (standalone pipeline reports, **not** the product UI). |
 | `ml/pipeline/scripts/viewer/` | `overlay.json` + `viewer.html` (standalone player with cards). |
 | `apps/backend/src/domain/` | Pure logic, no I/O: `geozones.py` (`beta`, `overlaps`), `catalog.py` (point collapsing, revision diff, city bounds) + entity facades. |
-| `apps/backend/src/application/` | Services (`pipeline_run_service`, `catalog_service`, `assignment_rollup`, `user_service`), DTOs, repository interfaces. |
+| `apps/backend/src/application/` | Services (`pipeline_run_service`, `catalog_service`, `metrics_rollup`, `user_service`), DTOs, repository interfaces. |
 | `apps/backend/src/infrastructure/` | SQLModel models, SQL repositories, MinIO storage, `catalog/parser.py` (xlsx/xls/csv). |
 | `apps/backend/src/presentation/http/` | FastAPI routers, request/response DTOs, DI, exception handlers. |
 | `apps/backend/src/worker/` | Queue worker that runs the ML pipeline out-of-process. |
@@ -141,7 +141,11 @@ On the backend `visibility_value` means **S·α·β**. They are different number
    value.
 7. Reads: `GET /runs/{id}/summary` and `/objects` parse **`tracks.csv`** from MinIO and apply β on
    the fly; `/timeline` parses `detections.csv`; `/overlay` returns `overlay.json`.
-8. Assignment rollup calls `get_summary` per completed shooting → mean ± std across shootings.
+8. Rollup calls `get_summary` per completed shooting → mean ± std across shootings. Two entry points,
+   one code path: `/assignments/{id}/summary` (shootings of one assignment) and
+   `/cities/{c}/routes/{r}/summary` (all shootings of the route). **The route averages shootings
+   directly — there is no mean-of-means step**, so a two-drive campaign cannot outweigh a
+   twenty-drive one; the route response also carries every shooting with its assignment.
 9. Frontend renders charts from `/summary`, `/objects`, `/timeline`, and the player from
    `/overlay` + `/playback`.
 
@@ -162,7 +166,7 @@ only feed the pipeline's own `report.html`.
 | Change how zones are entered or edited | `apps/frontend/src/components/RouteGeozones.tsx` — one panel for both mounts (city page without video, shooting card with it); percent↔fraction lives in `toFraction`/`percentText` there |
 | Add an endpoint | router in `presentation/http/routers/v1/` → response DTO in `presentation/http/dto/response.py` → service → repository interface → SQL repository |
 | Add a DB table/column | `infrastructure/database/models.py`, then **the owner writes the migration** (existing convention) |
-| Change how an assignment aggregates shootings | `application/services/assignment_rollup.py` — the only place that decides mean vs median vs filtering |
+| Change how an assignment **or a route** aggregates shootings | `application/services/metrics_rollup.py` — the only place that decides mean vs median vs filtering, shared by both levels |
 | Change catalogue parsing (new column, new format) | `infrastructure/catalog/parser.py` only; the row/point types live in `domain/catalog.py` |
 | Retune catalogue distance thresholds | `MERGE_DISTANCE_M` / `DIFF_DISTANCE_M` / `CITY_BOUNDS_MARGIN_M` in `domain/catalog.py` |
 | Change what the overlay card shows | `viewer/payload.py` + `OverlayObjectPayload` in `pipeline_contracts/artifacts.py` + `VideoOverlayPlayer.tsx` |
@@ -227,6 +231,10 @@ cd apps/frontend && pnpm dev && pnpm build && pnpm lint
   no route → no zones → β = 1 everywhere.
 * Geozone validation is split: bounds (`0 ≤ start < end ≤ 1`) in `catalog_service`, overlap detection
   in `sql_catalog_repository` under a route row lock (`GeozoneOverlapError` → HTTP 409).
+* **`ShootingMetricsDTO` is the unit of account at every level.** Assignment and route both read it;
+  nothing aggregates aggregates. A route summary therefore re-reads `tracks.csv` for every completed
+  shooting on the route — that is why `RoutePage` refetches its summary only when the completed count
+  changes, not on the 5 s assignment poll.
 * **Zones are stored as fractions, entered as percent.** The API only ever sees `[0,1]`; the ×100 is
   purely a UI affordance in `RouteGeozones.tsx`. Minutes were rejected on purpose — different drives
   have different durations, so "minute four" is a different place each time.

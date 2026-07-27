@@ -5,7 +5,11 @@ from datetime import datetime
 from pydantic import Field
 
 from application.common.dto.base import ApplicationDTO
-from application.common.dto.pipeline import CityRefDTO, RouteRefDTO
+from application.common.dto.pipeline import (
+    CityRefDTO,
+    RouteRefDTO,
+    RunAssignmentRefDTO,
+)
 from application.common.dto.users import UserDTO
 from domain.catalog import CatalogImportStatus
 
@@ -112,51 +116,77 @@ class ShootingBrandDTO(ApplicationDTO):
 class ShootingMetricsDTO(ApplicationDTO):
     """Сырые метрики одной съёмки — вход для любой свёртки.
 
-    Этот слой не зависит от того, как бизнес решит считать задание:
-    среднее, медиана, с отбраковкой коротких съёмок или без.
+    Единица учёта во всей аналитике: и задание, и маршрут считаются из списка
+    таких записей напрямую. Уровня «среднее из средних» нет — маршрут не
+    складывается из результатов заданий, он читает те же съёмки.
+
+    Этот слой не зависит от того, как бизнес решит считать свёртку: среднее,
+    медиана, с отбраковкой коротких съёмок или без.
     """
 
     run_id: str
     source_name: str
+    # Когда снимали, а не когда обрабатывали: ось времени в графиках маршрута.
+    shot_started_at: datetime | None = None
     duration_sec: float = 0.0
     objects_count: int = 0
     visibility_index: float = 0.0
     brands: list[ShootingBrandDTO] = Field(default_factory=list)
 
 
-class AssignmentStatDTO(ApplicationDTO):
+class RouteShootingMetricsDTO(ShootingMetricsDTO):
+    """То же плюс задание: на уровне маршрута его надо показать в списке.
+
+    Внутри задания такое поле было бы шумом — там задание и так одно.
+    """
+
+    assignment: RunAssignmentRefDTO
+
+
+class MetricStatDTO(ApplicationDTO):
     """Величина «на съёмку»: среднее и разброс между съёмками."""
 
     mean: float = 0.0
     std: float = 0.0
 
 
-class AssignmentBrandDTO(ApplicationDTO):
+class RollupBrandDTO(ApplicationDTO):
     brand: str
-    objects_per_shooting: AssignmentStatDTO = Field(default_factory=AssignmentStatDTO)
-    visibility_per_shooting: AssignmentStatDTO = Field(
-        default_factory=AssignmentStatDTO
-    )
-    # Доля от суммы средних по заданию.
+    objects_per_shooting: MetricStatDTO = Field(default_factory=MetricStatDTO)
+    visibility_per_shooting: MetricStatDTO = Field(default_factory=MetricStatDTO)
+    # Доля от суммы средних по всем брендам свёртки.
     visibility_share: float = 0.0
 
 
-class AssignmentTotalsDTO(ApplicationDTO):
+class RollupTotalsDTO(ApplicationDTO):
     shootings_total: int = 0
     shootings_completed: int = 0
     # Единственная величина, которую суммируем: это «сколько наснимали».
     duration_sec: float = 0.0
-    objects_per_shooting: AssignmentStatDTO = Field(default_factory=AssignmentStatDTO)
-    visibility_per_shooting: AssignmentStatDTO = Field(
-        default_factory=AssignmentStatDTO
-    )
+    objects_per_shooting: MetricStatDTO = Field(default_factory=MetricStatDTO)
+    visibility_per_shooting: MetricStatDTO = Field(default_factory=MetricStatDTO)
 
 
 class AssignmentSummaryDTO(ApplicationDTO):
     assignment: AssignmentDTO
-    totals: AssignmentTotalsDTO
-    brands: list[AssignmentBrandDTO] = Field(default_factory=list)
+    totals: RollupTotalsDTO
+    brands: list[RollupBrandDTO] = Field(default_factory=list)
     shootings: list[ShootingMetricsDTO] = Field(default_factory=list)
+
+
+class RouteSummaryDTO(ApplicationDTO):
+    """Свёртка маршрута: те же функции, что у задания, но список длиннее.
+
+    `assignments_total` — сколько заданий на маршруте вообще; съёмки в
+    `shootings` идут плоским списком по времени съёмки, задания служат
+    подписью, а не ступенькой усреднения.
+    """
+
+    route: RouteDTO
+    assignments_total: int = 0
+    totals: RollupTotalsDTO
+    brands: list[RollupBrandDTO] = Field(default_factory=list)
+    shootings: list[RouteShootingMetricsDTO] = Field(default_factory=list)
 
 
 # --- каталог рекламных конструкций ------------------------------------------

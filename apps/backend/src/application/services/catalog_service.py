@@ -12,6 +12,8 @@ from application.common.dto import (
     ShootingBrandDTO,
     PipelineRunDTO,
     AssignmentDTO,
+    RouteShootingMetricsDTO,
+    RouteSummaryDTO,
 )
 from application.exceptions import (
     CatalogNotFoundError,
@@ -19,7 +21,7 @@ from application.exceptions import (
     InvalidGeozoneError,
 )
 from application.interfaces import CatalogRepository
-from application.services.assignment_rollup import rollup_brands, rollup_totals
+from application.services.metrics_rollup import rollup_brands, rollup_totals
 from application.services.pipeline_run_service import PipelineRunService
 from domain.entities import PipelineRunStatus
 
@@ -235,7 +237,7 @@ class CatalogService:
         Суммы тут нет намеренно. Объекты в разных съёмках — это разные
         object_id, даже если щит один и тот же физически; сложить их значит
         посчитать один щит столько раз, сколько раз проехали. Меряем
-        «сколько видно за съёмку», поэтому усредняем (see assignment_rollup).
+        «сколько видно за съёмку», поэтому усредняем (see metrics_rollup).
         """
         assignment = self._repository.get_assignment(assignment_id)
         if assignment is None:
@@ -257,11 +259,51 @@ class CatalogService:
             shootings=shootings,
         )
 
+    def get_route_summary(self, city_slug: str, route_slug: str) -> RouteSummaryDTO:
+        """Метрики маршрута — из съёмок напрямую, не из результатов заданий.
+
+        Задание тут только подпись у съёмки: если усреднять по заданиям, кампания
+        из двух проездов весила бы столько же, сколько кампания из двадцати.
+        Поэтому единица учёта одна и та же на всех уровнях — одна съёмка.
+
+        Цена честности: читаем tracks.csv каждой завершённой съёмки маршрута.
+        На десятках терпимо, на сотнях понадобится кэш.
+        """
+        route = self._repository.get_route(city_slug, route_slug)
+        if route is None:
+            raise CatalogNotFoundError("Маршрут не найден.")
+        if self._run_service is None:
+            raise RuntimeError("CatalogService создан без run_service.")
+
+        runs = self._repository.list_route_runs(city_slug, route_slug)
+        if runs is None:
+            raise CatalogNotFoundError("Маршрут не найден.")
+
+        shootings = [
+            RouteShootingMetricsDTO(
+                **self._build_shooting(run).model_dump(),
+                assignment=run.assignment,
+            )
+            for run in runs
+            # Задание загружено запросом; None тут быть не может — съёмки без
+            # задания в выборку маршрута не попадают по самому join'у.
+            if run.status == PipelineRunStatus.COMPLETED and run.assignment is not None
+        ]
+
+        return RouteSummaryDTO(
+            route=route,
+            assignments_total=route.assignment_count,
+            totals=rollup_totals(shootings, shootings_total=len(runs)),
+            brands=rollup_brands(shootings),
+            shootings=shootings,
+        )
+
     def _build_shooting(self, run: PipelineRunDTO) -> ShootingMetricsDTO:
         summary = self._run_service.get_summary(run.run_id)
         return ShootingMetricsDTO(
             run_id=run.run_id,
             source_name=run.source_name,
+            shot_started_at=run.shot_started_at,
             duration_sec=run.duration_sec or 0.0,
             objects_count=summary.totals.total_objects,
             visibility_index=summary.totals.visibility_index,

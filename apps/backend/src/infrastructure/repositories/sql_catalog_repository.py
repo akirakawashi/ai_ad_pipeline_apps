@@ -440,6 +440,38 @@ class SqlCatalogRepository:
         ).all()
         return [_run_to_dto(run) for run in runs]
 
+    def list_route_runs(
+        self,
+        city_slug: str,
+        route_slug: str,
+    ) -> list[PipelineRunDTO] | None:
+        """Съёмки всех заданий маршрута. None — маршрута нет.
+
+        Задание загружаем (`with_refs`): на уровне маршрута надо показать, из
+        какой кампании съёмка. Порядок — по времени съёмки, а не обработки: это
+        ось графика. У съёмки без даты сортировка падает на created_at.
+        """
+        route = self._get_route_model(city_slug, route_slug)
+        if route is None:
+            return None
+
+        runs = self._session.exec(
+            select(PipelineRun)
+            .join(Assignment, Assignment.assignments_id == PipelineRun.assignments_id)
+            .where(Assignment.routes_id == route.routes_id)
+            .options(
+                selectinload(PipelineRun.artifacts),
+                selectinload(PipelineRun.assignment)
+                .selectinload(Assignment.route)
+                .selectinload(Route.city),
+                noload(PipelineRun.events),
+            )
+            .order_by(
+                func.coalesce(PipelineRun.shot_started_at, PipelineRun.created_at)
+            )
+        ).all()
+        return [_run_to_dto(run, with_refs=True) for run in runs]
+
     def lock_assignment(self, assignment_id: str) -> bool:
         """Блокирует строку задания. False, если задания нет."""
         assignment = self._session.exec(

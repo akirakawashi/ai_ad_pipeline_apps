@@ -12,7 +12,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import type { AssignmentBrand, ShootingMetrics } from '../types'
+import type { RollupBrand, ShootingMetrics } from '../types'
 import { formatDuration } from '../utils/formatters'
 
 const BRAND_COLORS: Record<string, string> = {
@@ -56,11 +56,11 @@ function orderBrands(brands: string[]) {
   })
 }
 
-export function AssignmentCharts({
+export function RollupCharts({
   brands,
   shootings,
 }: {
-  brands: AssignmentBrand[]
+  brands: RollupBrand[]
   shootings: ShootingMetrics[]
 }) {
   // Усы = разброс между съёмками. Это не украшение: широкий ус означает,

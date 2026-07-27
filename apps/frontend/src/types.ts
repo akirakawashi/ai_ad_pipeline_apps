@@ -124,7 +124,8 @@ export interface AssignmentsPage {
   total: number
 }
 
-export interface AssignmentStat {
+/** Величина «на съёмку»: среднее и разброс между съёмками. */
+export interface MetricStat {
   mean: number
   std: number
 }
@@ -135,37 +136,56 @@ export interface ShootingBrand {
   visibility_index: number
 }
 
-/** Сырые метрики одной съёмки — вход для сравнения съёмок. */
+/**
+ * Сырые метрики одной съёмки — единица учёта во всей аналитике. И задание, и
+ * маршрут считаются из списка таких записей напрямую, без промежуточных средних.
+ */
 export interface ShootingMetrics {
   run_id: string
   source_name: string
+  /** Когда снимали, а не когда обрабатывали. */
+  shot_started_at: string | null
   duration_sec: number
   objects_count: number
   visibility_index: number
   brands: ShootingBrand[]
 }
 
-export interface AssignmentBrand {
+/** То же плюс задание: на уровне маршрута его показываем в списке. */
+export interface RouteShootingMetrics extends ShootingMetrics {
+  assignment: RunAssignmentRef
+}
+
+export interface RollupBrand {
   brand: string
-  objects_per_shooting: AssignmentStat
-  visibility_per_shooting: AssignmentStat
+  objects_per_shooting: MetricStat
+  visibility_per_shooting: MetricStat
   visibility_share: number
 }
 
-export interface AssignmentTotals {
+export interface RollupTotals {
   shootings_total: number
   shootings_completed: number
   /** Сумма — «сколько наснимали». Остальное усредняется по съёмкам. */
   duration_sec: number
-  objects_per_shooting: AssignmentStat
-  visibility_per_shooting: AssignmentStat
+  objects_per_shooting: MetricStat
+  visibility_per_shooting: MetricStat
 }
 
 export interface AssignmentSummary {
   assignment: Assignment
-  totals: AssignmentTotals
-  brands: AssignmentBrand[]
+  totals: RollupTotals
+  brands: RollupBrand[]
   shootings: ShootingMetrics[]
+}
+
+/** Свёртка маршрута: та же форма, тот же код, но список съёмок длиннее. */
+export interface RouteSummary {
+  route: Route
+  assignments_total: number
+  totals: RollupTotals
+  brands: RollupBrand[]
+  shootings: RouteShootingMetrics[]
 }
 
 

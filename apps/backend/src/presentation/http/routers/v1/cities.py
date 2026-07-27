@@ -11,6 +11,7 @@ from presentation.http.dto.response import (
     CreateAssignmentRequest,
     OkResponse,
     PaginatedAssignmentsResponse,
+    RouteSummaryResponse,
 )
 
 router = APIRouter(prefix="/cities", tags=["Catalog"])
@@ -51,6 +52,19 @@ def list_route_assignments(
         page_size=page_size,
     )
     return OkResponse(data=PaginatedAssignmentsResponse.model_validate(result))
+
+
+@router.get(
+    "/{city_slug}/routes/{route_slug}/summary",
+    response_model=OkResponse[RouteSummaryResponse],
+)
+def get_route_summary(
+    city_slug: str = Path(description="Слаг города"),
+    route_slug: str = Path(description="Слаг маршрута в пределах города"),
+    service: CatalogService = Depends(get_catalog_service),
+) -> OkResponse[RouteSummaryResponse]:
+    result = service.get_route_summary(city_slug, route_slug)
+    return OkResponse(data=RouteSummaryResponse.model_validate(result))
 
 
 @router.post(
