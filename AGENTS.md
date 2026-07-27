@@ -1,0 +1,238 @@
+# AGENTS.md — working context for AI agents
+
+Read this file first. It is the map; the code is the territory. Companion document:
+[docs/pipeline-and-metrics.md](docs/pipeline-and-metrics.md) — the same system described in Russian
+for the human owner, with all formulas spelled out. **Both files must stay true after every change
+you make** (see §11).
+
+Language note: this file is English on purpose (dense, matches identifiers). The codebase itself has
+**Russian comments and Russian user-facing strings** — keep writing them that way.
+
+---
+
+## 1. What this project is
+
+Outdoor-advertising visibility measurement from dashcam video. A car drives a route, the video is
+uploaded, a CV pipeline finds billboards, identifies the brand, and computes **how well each
+billboard was seen**. Results are shown per shooting, per assignment and per route.
+
+Three target brands: `mts`, `plus7`, `miranda`. Everything else collapses to `other`.
+
+---
+
+## 2. Hard rules
+
+1. **Never commit, never push. The owner does that.** Leave your work in the working tree and say
+   what you changed — no `git commit`, no `git push`, no branches, no stashing, no reverting someone
+   else's work. Same for database migrations: generate the file if asked, but the owner applies it.
+   Do not ask for permission to commit either; just stop at "changed, not committed".
+2. **Clean slate, no compatibility layers.** When something is replaced, the old thing is deleted in
+   the same change — no dual fields, no feature flags, no "legacy" slots, no deprecation windows.
+   This is an explicit standing instruction from the owner.
+3. **The pipeline computes physics only.** ML side produces `attention_seconds` (S) and
+   `confidence_coef` (α). The significance coefficient β and the final value `V = S·α·β` are
+   computed **on the backend at request time** from route geozones. Never write β or V into pipeline
+   artifacts, never bake β into the CSV contract. Rationale: zones are drawn *after* processing and
+   change at will — there is no moment at which β is final.
+4. **Artifact/DTO shapes live in `pipeline_contracts/`.** That package is the single source of truth
+   shared by the ML pipeline and the backend. `ml/pipeline/scripts/artifacts.py`,
+   `ml/pipeline/scripts/domain.py` and `apps/backend/src/domain/entities/` are thin re-export
+   facades — do not add logic there.
+5. **Tunable numbers go into config dataclasses**, never into `if` branches:
+   [ml/pipeline/scripts/config.py](ml/pipeline/scripts/config.py) (`ScoringConfig` and friends).
+   Business tunes tables without touching code.
+6. **Do not run the full pipeline unless asked.** It needs a GPU, model weights
+   (`models/*/best.pt`, gitignored) and a real video. Prefer unit tests.
+7. **`docs/refactoring-backlog.md` is a backlog, not a task list.** Do not act on it unless the
+   owner explicitly asks.
+
+---
+
+## 3. Repo map
+
+| Path | What lives there |
+|---|---|
+| `pipeline_contracts/` | **Shared contracts**: CSV row models, overlay payload, enums (`PipelineRunStatus`, `PipelineRunStage`, `PipelineArtifactType`, `FinalStatus`, …), brand constants. Imported by both ML and backend. |
+| `ml/pipeline/run_pipeline.py` | CLI entry point (argparse → `PipelineConfig` → `run_pipeline`). |
+| `ml/pipeline/scripts/runner.py` | Stage orchestration. The one file that shows the whole ML flow. |
+| `ml/pipeline/scripts/scoring/` | The metric: `area`, `position`, `contrast`, `intensity`, `attention`, `confidence`, `geometry`, `interpolation`. Feature extraction is separate from assembly. |
+| `ml/pipeline/scripts/` (rest) | `detection`, `crops`, `quality`, `classification`, `tracking`, `track_groups`, `aggregation`, `io`, `schemas`, `config`, `visualization`. |
+| `ml/pipeline/scripts/reporting/` | CSV + charts + `report.html` (standalone pipeline reports, **not** the product UI). |
+| `ml/pipeline/scripts/viewer/` | `overlay.json` + `viewer.html` (standalone player with cards). |
+| `apps/backend/src/domain/` | Pure logic, no I/O. Today: `geozones.py` (`beta`, `overlaps`) + entity facades. |
+| `apps/backend/src/application/` | Services (`pipeline_run_service`, `catalog_service`, `assignment_rollup`, `user_service`), DTOs, repository interfaces. |
+| `apps/backend/src/infrastructure/` | SQLModel models, SQL repositories, MinIO storage. |
+| `apps/backend/src/presentation/http/` | FastAPI routers, request/response DTOs, DI, exception handlers. |
+| `apps/backend/src/worker/` | Queue worker that runs the ML pipeline out-of-process. |
+| `apps/backend/alembic/` | Migrations, including seed migrations for cities/routes. |
+| `apps/frontend/src/` | React 19 + Vite + Recharts. Hand-rolled router (`routing.ts`), no react-router. |
+| `tests/` | pytest. Needs a live Postgres; MinIO is faked. |
+| `README.md` | Setup/ops guide. Predates the metric rewrite; treat metric statements in it as stale. |
+
+---
+
+## 4. Runtime topology
+
+| Piece | How it runs | Where |
+|---|---|---|
+| Postgres | docker compose | `:5432` |
+| MinIO | docker compose | `:9000` API, `:9001` console |
+| Backend (FastAPI) | docker compose, `--reload` | `:8000`, prefix `/api/v1`, health at `/healthcheck` |
+| Worker | **local host process** (needs GPU), started by `scripts/dev.sh` | `.runtime/worker/<run_id>/` |
+| Frontend (Vite) | `pnpm dev` | `:5173` (in backend CORS allowlist) |
+
+Config: pydantic-settings, env from `apps/backend/.env` (gitignored). Pipeline knobs use the
+`PIPELINE_` prefix (`PIPELINE_FRAME_STRIDE`, default **1** for the worker; the CLI default is 10).
+
+---
+
+## 5. The metric — canonical definition
+
+```
+per detection (frame k):   I_k = A_k · P_k · C_k
+per object:                S   = Σ_k ( I_k · Δt_k )        "attention seconds"
+per object, backend only:  V   = S · α · β
+```
+
+* `A` area, `P` position + side of road, `C` contrast to background — each in 0…1, from
+  interpolated tier tables in `ScoringConfig`. Multiplied, not summed: one weak factor must sink the
+  moment.
+* `Δt = sample_delta_t_sec = frame_stride / fps`. **Time is the integration axis, never a separate
+  multiplier** — multiplying by duration again would double-count it.
+* `α = confidence_coef ∈ [0.5, 1.0]` from `final_brand_conf`. Floor 0.5: the billboard was seen even
+  if the brand is uncertain.
+* `β = significance` from route geozones, by **time fraction** of the video, computed on the backend.
+  Neutral 1.0 outside marked zones.
+
+Field placement:
+
+| Where | Fields |
+|---|---|
+| `DetectionRecord` / `detections.csv` | `area_coef`, `position_coef`, `contrast_coef`, `intensity` |
+| `TrackRecord` / `tracks.csv` | `attention_seconds` (S), `confidence_coef` (α) |
+| Backend, computed live | `significance_coef` (β), `visibility_value` (V) |
+
+⚠ **Name collision to keep straight:** in `ml/` the label `visibility_value` means **S·α** (derived
+in [reporting/writer.py](ml/pipeline/scripts/reporting/writer.py) and
+[viewer/payload.py](ml/pipeline/scripts/viewer/payload.py) for standalone reports and overlay cards).
+On the backend `visibility_value` means **S·α·β**. They are different numbers with the same name.
+
+---
+
+## 6. End-to-end flow
+
+1. `POST /api/v1/runs` → row in `pipeline_runs` (status `uploading`) + presigned PUT URL.
+   Optional `assignment_id`; the assignment row is locked and capped at
+   `MAX_ASSIGNMENT_SHOOTINGS = 20`.
+2. Browser PUTs the file straight to MinIO: `runs/{run_id}/source/{safe_name}`.
+3. `POST /runs/{run_id}/upload-complete` → registers the `source_video` artifact, status `queued`.
+4. Worker `claim_next` (`SELECT … FOR UPDATE SKIP LOCKED`) → status `processing`, downloads the
+   video, runs the pipeline, reporting progress into `pipeline_runs` + `pipeline_run_events`.
+5. Pipeline stages: detection → tracking → classification → final aggregation → business rules →
+   artifacts.
+6. Worker uploads everything under `runs/{run_id}/artifacts/…`. Crops are uploaded but **not**
+   registered as DB rows (`should_register_artifact`). `mark_completed` stores fps / frame_count /
+   frame_stride / width / height and **`duration_sec = frame_count / fps`** — β depends on this
+   value.
+7. Reads: `GET /runs/{id}/summary` and `/objects` parse **`tracks.csv`** from MinIO and apply β on
+   the fly; `/timeline` parses `detections.csv`; `/overlay` returns `overlay.json`.
+8. Assignment rollup calls `get_summary` per completed shooting → mean ± std across shootings.
+9. Frontend renders charts from `/summary`, `/objects`, `/timeline`, and the player from
+   `/overlay` + `/playback`.
+
+`brand_summary_by_tracks.csv`, `brand_summary_by_detections.csv`, `frame_summary.csv` are written and
+registered but **nothing downstream reads them** — the backend recomputes from `tracks.csv`. They
+only feed the pipeline's own `report.html`.
+
+---
+
+## 7. Change cookbook
+
+| I need to… | Touch |
+|---|---|
+| Retune area/position/contrast/confidence numbers | `ScoringConfig` in [config.py](ml/pipeline/scripts/config.py) only |
+| Change how a factor is computed | the one file in `ml/pipeline/scripts/scoring/`, plus its class in [tests/test_scoring.py](tests/test_scoring.py) |
+| Add/remove a CSV column | `pipeline_contracts/artifacts.py` (field list is derived from the model) → the dataclass in `ml/pipeline/scripts/schemas.py` → whoever reads it |
+| Change β semantics / zone model | `apps/backend/src/domain/geozones.py` + `_apply_beta` in `pipeline_run_service.py` + `RouteGeozone` model |
+| Add an endpoint | router in `presentation/http/routers/v1/` → response DTO in `presentation/http/dto/response.py` → service → repository interface → SQL repository |
+| Add a DB table/column | `infrastructure/database/models.py`, then **the owner writes the migration** (existing convention) |
+| Change how an assignment aggregates shootings | `application/services/assignment_rollup.py` — the only place that decides mean vs median vs filtering |
+| Change what the overlay card shows | `viewer/payload.py` + `OverlayObjectPayload` in `pipeline_contracts/artifacts.py` + `VideoOverlayPlayer.tsx` |
+
+---
+
+## 8. Commands
+
+```bash
+./scripts/dev.sh up          # postgres + minio + migrations + backend (docker) + worker (host)
+./scripts/dev.sh down|logs
+uv run pytest                # needs postgres up; creates/drops ad_pipeline_test
+uv run pytest tests/test_scoring.py     # pure unit tests, no DB
+uv run ruff check . && uv run mypy .
+cd apps/frontend && pnpm dev && pnpm build && pnpm lint
+./run_video_pipeline.sh path/to/video.mp4     # standalone ML run (GPU + weights required)
+```
+
+---
+
+## 9. Conventions
+
+* **Layering:** presentation → application (services/DTOs) → domain (pure) → infrastructure.
+  Services never import FastAPI; domain imports nothing project-specific.
+* **DTOs:** application DTOs in `application/common/dto/`, HTTP response models in
+  `presentation/http/dto/response.py`. Some application DTOs subclass contract models directly
+  (`RunObjectDTO(TrackCsvRow)`), which is intentional — the CSV *is* the contract.
+* **API envelope:** every success response is `{"data": …}` (`OkResponse[T]`). Errors are
+  `{"detail": "<Russian sentence>"}` produced by handlers in `presentation/http/exception_handlers.py`.
+  Domain errors are typed exceptions in `application/exceptions.py`, never raw `HTTPException`.
+* **PATCH semantics:** request models expose `changed_fields()` so only keys the client actually sent
+  are updated; validation re-checks the whole invariant against stored values.
+* **DB naming:** table `things`, PK `things_id`, FK `<table>_id`, timestamps `created_at`/`updated_at`
+  with server defaults. Soft delete via `is_active` where history matters.
+* **Repositories** own transactions but do not commit; services call `commit()`/`rollback()`.
+* **Comments** explain *why*, in Russian, and are dense in this codebase — match that density and
+  keep them truthful when you edit the code they describe.
+* **Frontend:** no state library, no router library; `fetch` wrapper in `api.ts`, types mirrored by
+  hand in `types.ts`. Keep them in sync with backend response DTOs manually.
+
+---
+
+## 10. Gaps and traps you must know about
+
+* Coefficient tables are **defaults, not calibrated numbers** — area, position, contrast and
+  confidence were set so work could proceed. Calibration against a real distribution is still open.
+* `run_video_pipeline.sh` appends `--brand-overrides` when `ml/pipeline/brand_overrides.csv` exists,
+  but `run_pipeline.py` has no such argument. The file is absent today, so the script works by luck.
+* α is derived from `final_brand_conf` only; the "brand stability across the track" input is a stub
+  parameter (`detections` is accepted and ignored in `scoring/confidence.py`).
+* An object that was never classified still gets α = 0.5 (the floor) and counts as `other`.
+* β needs `duration_sec`; it exists only after `mark_completed`. Shootings without an assignment have
+  no route → no zones → β = 1 everywhere.
+* Geozone validation is split: bounds (`0 ≤ start < end ≤ 1`) in `catalog_service`, overlap detection
+  in `sql_catalog_repository` under a route row lock (`GeozoneOverlapError` → HTTP 409).
+* Tests rely on cities/routes seeded **by migrations** (`simferopol/route-1`, sevastopol) and truncate
+  only mutable tables between tests.
+* `README.md` predates the metric rewrite; §"Как проходит обработка видео" is still accurate, metric
+  statements are not.
+* "Visibility percent" is presentation-only: share within one video, computed in `RunCharts.tsx`.
+  There is no absolute scale, and the unit of `V` (seconds × dimensionless coefficients) is not
+  interpreted anywhere.
+
+---
+
+## 11. Documentation protocol (do not skip)
+
+After any change that alters behaviour, update **both** documents in the same change:
+
+* this file — if you changed structure, flow, contracts, conventions, commands, or added a trap;
+* [docs/pipeline-and-metrics.md](docs/pipeline-and-metrics.md) — if you changed anything the owner
+  reads: formulas, coefficient tables, thresholds, storage layout, what a screen shows. Its
+  changelog section at the bottom gets a dated line.
+
+Triggers that always require a doc update: a formula or coefficient table changes; a CSV/overlay
+field is added, renamed or removed; a DB table or column changes; an endpoint appears or disappears;
+a pipeline stage is added, removed or reordered; a default threshold moves; a gap listed in §10 is
+closed or a new one appears.
+
+If a document turns out to be wrong, fix the document — do not add a second document describing the
+same thing. Two overlapping documents about one subject is how documentation rots.
