@@ -10,10 +10,12 @@ import {
 } from '../api'
 import { EmptyState, ErrorBanner } from '../components/common/Feedback'
 import { PageHeader } from '../components/common/PageHeader'
+import { Select } from '../components/common/Select'
 import { UserSelect } from '../components/common/UserSelect'
 import type { AdStructure, CatalogImport, CatalogImportReport, City } from '../types'
 
 const ACCEPTED = '.xlsx,.xls,.csv'
+const MAX_FILES = 20
 
 function errorMessage(reason: unknown): string {
   return reason instanceof Error ? reason.message : String(reason)
@@ -30,6 +32,24 @@ function formatMoment(value: string | null): string {
   })
 }
 
+function Metric({
+  label,
+  value,
+  note,
+}: {
+  label: string
+  value: string
+  note?: string
+}) {
+  return (
+    <div className="catalog-metric">
+      <span className="catalog-metric-label">{label}</span>
+      <strong>{value}</strong>
+      {note && <span className="catalog-metric-note">{note}</span>}
+    </div>
+  )
+}
+
 /**
  * Каталог рекламных конструкций города.
  *
@@ -40,17 +60,23 @@ function formatMoment(value: string | null): string {
  */
 export function CatalogPage() {
   const [cities, setCities] = useState<City[]>([])
-  const [citySlug, setCitySlug] = useState<string>('')
+  const [citySlug, setCitySlug] = useState('')
   const [structures, setStructures] = useState<AdStructure[]>([])
   const [total, setTotal] = useState(0)
   const [imports, setImports] = useState<CatalogImport[]>([])
   const [search, setSearch] = useState('')
   const [uploaderId, setUploaderId] = useState('')
+  const [files, setFiles] = useState<File[]>([])
   const [report, setReport] = useState<CatalogImportReport | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
+
+  // Счётчик перезагрузок: действия над ревизиями меняют данные на сервере, и
+  // экран должен перечитать их тем же путём, что и при смене города.
+  const [version, setVersion] = useState(0)
+  const reload = () => setVersion((current) => current + 1)
 
   useEffect(() => {
     getCities()
@@ -60,11 +86,6 @@ export function CatalogPage() {
       })
       .catch((reason) => setError(errorMessage(reason)))
   }, [])
-
-  // Счётчик перезагрузок: действия над ревизиями меняют данные на сервере, и
-  // экран должен перечитать их тем же путём, что и при смене города.
-  const [version, setVersion] = useState(0)
-  const reload = () => setVersion((current) => current + 1)
 
   useEffect(() => {
     if (!citySlug) return
@@ -91,8 +112,12 @@ export function CatalogPage() {
 
   const currentRevision = imports.find((item) => item.is_current)
 
+  const resetSelection = () => {
+    setFiles([])
+    if (fileInput.current) fileInput.current.value = ''
+  }
+
   const handleUpload = async () => {
-    const files = Array.from(fileInput.current?.files ?? [])
     if (!files.length || !uploaderId) return
     setBusy(true)
     setError(null)
@@ -119,7 +144,7 @@ export function CatalogPage() {
         setNotice('Загрузка отменена, каталог не изменился.')
       }
       setReport(null)
-      if (fileInput.current) fileInput.current.value = ''
+      resetSelection()
       reload()
     } catch (reason) {
       setError(errorMessage(reason))
@@ -164,73 +189,105 @@ export function CatalogPage() {
       />
 
       {error && <ErrorBanner text={error} />}
-      {notice && <p className="hint">{notice}</p>}
 
-      <section className="panel catalog-panel">
-        <div className="catalog-toolbar">
-          <label>
-            Город
-            <select
-              value={citySlug}
-              onChange={(event) => {
-                setCitySlug(event.target.value)
-                setReport(null)
-              }}
-            >
-              {cities.map((city) => (
-                <option key={city.id} value={city.slug}>
-                  {city.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <span className="hint">
-            {currentRevision
-              ? `Ревизия ${currentRevision.revision} · точек: ${total}`
-              : 'Каталог пуст'}
-          </span>
+      <section className="filter-bar">
+        <div className="field">
+          Город
+          <Select
+            ariaLabel="Город"
+            value={citySlug}
+            options={cities.map((city) => ({ value: city.slug, label: city.name }))}
+            onChange={(slug) => {
+              setCitySlug(slug)
+              setReport(null)
+              resetSelection()
+            }}
+          />
         </div>
+        <p className="catalog-state">
+          {currentRevision
+            ? `Ревизия ${currentRevision.revision} · точек: ${total}`
+            : 'Каталог пуст'}
+        </p>
       </section>
+
+      {notice && <p className="catalog-hint">{notice}</p>}
 
       <section className="panel catalog-panel">
         <h2>Загрузка пака</h2>
-        <p className="hint">
-          До 20 файлов формата xlsx, xls или csv — все по одному городу. Файлы
-          разбираются и не сохраняются: в базу уезжают только данные.
+        <p className="catalog-hint">
+          До {MAX_FILES} файлов формата xlsx, xls или csv — все по одному городу.
+          Файлы разбираются и не сохраняются: в базу уезжают только данные.
         </p>
-        <div className="catalog-toolbar">
-          <input ref={fileInput} type="file" accept={ACCEPTED} multiple />
+
+        <div className="catalog-row">
+          <div className="field">
+            Файлы
+            <label className="secondary file-button">
+              Выбрать файлы
+              <input
+                ref={fileInput}
+                type="file"
+                accept={ACCEPTED}
+                multiple
+                disabled={busy}
+                onChange={(event) =>
+                  setFiles(Array.from(event.target.files ?? []).slice(0, MAX_FILES))
+                }
+              />
+            </label>
+          </div>
           <UserSelect
             label="Кто загрузил"
             value={uploaderId}
             onChange={setUploaderId}
+            disabled={busy}
           />
           <button
-            className="primary"
-            disabled={busy || !citySlug || !uploaderId}
+            className="primary action-button"
+            disabled={busy || !files.length || !uploaderId}
             onClick={handleUpload}
           >
             Разобрать файлы
           </button>
         </div>
+
+        {files.length > 0 && (
+          <div className="catalog-files">
+            <span className="catalog-hint">
+              Выбрано файлов: {files.length} — {files.map((file) => file.name).join(', ')}
+            </span>
+            <button className="ghost-button" disabled={busy} onClick={resetSelection}>
+              Очистить
+            </button>
+          </div>
+        )}
       </section>
 
       {report && (
         <section className="panel catalog-panel">
           <h2>Что произойдёт</h2>
-          <ul className="report-list">
-            <li>
-              Точек было {report.points_before}, станет {report.points_after}
-            </li>
-            <li>
-              Появится {report.added}, исчезнет {report.removed}
-            </li>
-            <li>Строк схлопнуто в точки: {report.collapsed_rows}</li>
-            <li>Строк отброшено: {report.catalog_import.rows_rejected}</li>
-          </ul>
+          <div className="catalog-metrics">
+            <Metric
+              label="Точек станет"
+              value={`${report.points_after}`}
+              note={`было ${report.points_before}`}
+            />
+            <Metric label="Появится" value={`+${report.added}`} />
+            <Metric label="Исчезнет" value={`−${report.removed}`} />
+            <Metric
+              label="Строк схлопнуто"
+              value={`${report.collapsed_rows}`}
+              note={`прочитано ${report.catalog_import.rows_read}`}
+            />
+            <Metric
+              label="Строк отброшено"
+              value={`${report.catalog_import.rows_rejected}`}
+            />
+          </div>
 
           {report.rejected_files.length > 0 && (
-            <div className="report-block">
+            <div className="catalog-issues">
               <h3>Файлы отклонены целиком</h3>
               <ul>
                 {report.rejected_files.map((file) => (
@@ -243,14 +300,14 @@ export function CatalogPage() {
           )}
 
           {report.files_with_extra_sheets.length > 0 && (
-            <p className="hint">
-              Лишние листы (читаем только первый):{' '}
+            <p className="catalog-hint">
+              Лишние листы, читаем только первый:{' '}
               {report.files_with_extra_sheets.join(', ')}
             </p>
           )}
 
           {report.row_errors.length > 0 && (
-            <details className="report-block">
+            <details className="catalog-issues">
               <summary>Пропущенные строки: {report.row_errors.length}</summary>
               <ul>
                 {report.row_errors.slice(0, 50).map((row, index) => (
@@ -262,15 +319,19 @@ export function CatalogPage() {
             </details>
           )}
 
-          <div className="catalog-toolbar">
+          <div className="catalog-row">
             <button
-              className="primary"
+              className="primary action-button"
               disabled={busy}
               onClick={() => finishImport('apply')}
             >
               Применить
             </button>
-            <button disabled={busy} onClick={() => finishImport('cancel')}>
+            <button
+              className="secondary action-button"
+              disabled={busy}
+              onClick={() => finishImport('cancel')}
+            >
               Отменить
             </button>
           </div>
@@ -280,6 +341,7 @@ export function CatalogPage() {
       <section className="panel catalog-panel">
         <h2>Конструкции</h2>
         <input
+          className="text-input catalog-search"
           type="search"
           placeholder="Поиск по адресу"
           value={search}
@@ -288,26 +350,28 @@ export function CatalogPage() {
         {structures.length === 0 ? (
           <EmptyState text="Пока пусто. Загрузите пак файлов." />
         ) : (
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Адрес</th>
-                <th>Поверхностей</th>
-                <th>Координаты</th>
-              </tr>
-            </thead>
-            <tbody>
-              {structures.map((structure) => (
-                <tr key={structure.id}>
-                  <td>{structure.address}</td>
-                  <td>{structure.surfaces_count}</td>
-                  <td>
-                    {structure.latitude.toFixed(6)}, {structure.longitude.toFixed(6)}
-                  </td>
+          <div className="table-scroll">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Адрес</th>
+                  <th className="numeric">Поверхностей</th>
+                  <th className="numeric">Координаты</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {structures.map((structure) => (
+                  <tr key={structure.id}>
+                    <td>{structure.address}</td>
+                    <td className="numeric">{structure.surfaces_count}</td>
+                    <td className="numeric">
+                      {structure.latitude.toFixed(6)}, {structure.longitude.toFixed(6)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
 
@@ -316,45 +380,55 @@ export function CatalogPage() {
         {imports.length === 0 ? (
           <EmptyState text="Загрузок ещё не было." />
         ) : (
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Ревизия</th>
-                <th>Когда</th>
-                <th>Кто</th>
-                <th>Файлы</th>
-                <th>Точек</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {imports.map((item) => (
-                <tr key={item.id} className={item.is_current ? 'is-current' : ''}>
-                  <td>{item.revision ?? 'не применена'}</td>
-                  <td>{formatMoment(item.applied_at ?? item.created_at)}</td>
-                  <td>{item.uploaded_by?.full_name ?? '—'}</td>
-                  <td>{item.file_names.join(', ')}</td>
-                  <td>{item.points_total}</td>
-                  <td>
-                    {item.is_current ? (
-                      <span className="hint">показывается</span>
-                    ) : (
-                      <span className="row-actions">
-                        {item.revision !== null && (
-                          <button disabled={busy} onClick={() => handleRestore(item)}>
-                            Вернуть
-                          </button>
-                        )}
-                        <button disabled={busy} onClick={() => handleDelete(item)}>
-                          Удалить
-                        </button>
-                      </span>
-                    )}
-                  </td>
+          <div className="table-scroll">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Ревизия</th>
+                  <th>Когда</th>
+                  <th>Кто загрузил</th>
+                  <th>Файлы</th>
+                  <th className="numeric">Точек</th>
+                  <th />
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {imports.map((item) => (
+                  <tr key={item.id} className={item.is_current ? 'is-current' : ''}>
+                    <td>{item.revision ?? 'не применена'}</td>
+                    <td>{formatMoment(item.applied_at ?? item.created_at)}</td>
+                    <td>{item.uploaded_by?.full_name ?? '—'}</td>
+                    <td>{item.file_names.join(', ')}</td>
+                    <td className="numeric">{item.points_total}</td>
+                    <td>
+                      {item.is_current ? (
+                        <span className="catalog-badge">показывается</span>
+                      ) : (
+                        <span className="row-actions">
+                          {item.revision !== null && (
+                            <button
+                              className="ghost-button"
+                              disabled={busy}
+                              onClick={() => handleRestore(item)}
+                            >
+                              Вернуть
+                            </button>
+                          )}
+                          <button
+                            className="ghost-button"
+                            disabled={busy}
+                            onClick={() => handleDelete(item)}
+                          >
+                            Удалить
+                          </button>
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
     </div>

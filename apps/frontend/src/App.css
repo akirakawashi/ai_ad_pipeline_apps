@@ -3007,7 +3007,8 @@ button:disabled,
 }
 
 .destination-fields .field,
-.filter-bar .field {
+.filter-bar .field,
+.catalog-row .field {
   display: grid;
   gap: 6px;
   font-size: 12px;
@@ -3734,78 +3735,163 @@ button:disabled,
   border-color: var(--danger);
 }
 
-/* --- Каталог рекламных конструкций ------------------------------------- */
+/* Каталог рекламных конструкций (pages/CatalogPage.tsx) */
 
 .catalog-panel {
-  padding: 22px 26px;
   margin-bottom: 18px;
+  padding: 20px;
 }
 
 .catalog-panel h2 {
-  margin: 0 0 10px;
-  font-size: 17px;
+  margin: 0 0 8px;
+  font-size: 15px;
 }
 
 .catalog-panel h3 {
-  margin: 14px 0 6px;
-  font-size: 14px;
+  margin: 0 0 6px;
+  font-size: 13px;
 }
 
-.catalog-toolbar {
+.catalog-row {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-end;
+  align-items: end;
   gap: 14px;
 }
 
-.catalog-toolbar label {
+.catalog-row .action-button {
+  flex-shrink: 0;
+}
+
+.catalog-state {
+  margin: 0 0 2px;
+  align-self: end;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.catalog-hint {
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.catalog-files {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-size: 13px;
-  color: var(--muted);
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
 }
 
-.hint {
-  margin: 0 0 12px;
+.catalog-files .catalog-hint {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Плитки отчёта: «станет / появится / исчезнет» должны читаться с одного
+   взгляда — неполный файл виден именно по большому «исчезнет». */
+
+.catalog-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.catalog-metric {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(21, 21, 21, 0.6);
+}
+
+.catalog-metric strong {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.catalog-metric-label {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.catalog-metric-note {
+  color: var(--muted-2);
+  font-size: 12px;
+}
+
+.catalog-issues {
+  margin: 0 0 14px;
   color: var(--muted);
   font-size: 13px;
 }
 
-.report-list,
-.report-block ul {
-  margin: 0 0 12px;
+.catalog-issues summary {
+  cursor: pointer;
+}
+
+.catalog-issues ul {
+  margin: 8px 0 0;
   padding-left: 18px;
   line-height: 1.7;
 }
 
-.report-block {
-  margin: 12px 0;
-  font-size: 13px;
-  color: var(--muted);
+.catalog-search {
+  width: min(360px, 100%);
+  margin-bottom: 6px;
 }
 
-.report-block summary {
-  cursor: pointer;
+.catalog-badge {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* Таблицы каталога и истории ревизий */
+
+.table-scroll {
+  overflow-x: auto;
+  margin-top: 12px;
 }
 
 .data-table {
   width: 100%;
-  margin-top: 12px;
   border-collapse: collapse;
   font-size: 13px;
+  white-space: nowrap;
 }
 
 .data-table th,
 .data-table td {
-  padding: 8px 10px;
+  padding: 9px 12px;
   border-bottom: 1px solid var(--line);
   text-align: left;
 }
 
 .data-table th {
   color: var(--muted);
-  font-weight: 500;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.data-table th.numeric,
+.data-table td.numeric {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.data-table tbody tr:hover td {
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .data-table tr.is-current td {
@@ -3815,6 +3901,12 @@ button:disabled,
 .row-actions {
   display: inline-flex;
   gap: 8px;
+}
+
+.row-actions .ghost-button {
+  min-height: 30px;
+  padding: 5px 12px;
+  font-size: 12px;
 }
 
 /* Точки каталога поверх дорог: размер кружка растёт от числа поверхностей. */
