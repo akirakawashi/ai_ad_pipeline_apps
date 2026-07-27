@@ -2,7 +2,7 @@
 name = "volna"
 version = "0.1.0"
 description = "Add your description here"
-readme = "ml/ad_detection/README.md"
+readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "alembic>=1.16.0",
