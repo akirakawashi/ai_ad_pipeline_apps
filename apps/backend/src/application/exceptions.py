@@ -35,3 +35,15 @@ class InvalidGeozoneError(ValueError):
 
 class GeozoneOverlapError(ValueError):
     """Участок пересекается с уже размеченным на этом маршруте."""
+
+
+class InvalidCatalogFileError(ValueError):
+    """Пак не годится: файлов слишком много, они велики или из них нечего взять."""
+
+
+class CatalogImportStateError(ValueError):
+    """Над ревизией нельзя выполнить действие в её нынешнем состоянии.
+
+    Например: применить уже применённую, откатиться на текущую или удалить ту,
+    что сейчас показывается.
+    """

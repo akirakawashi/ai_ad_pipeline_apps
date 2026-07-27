@@ -1,4 +1,7 @@
 from application.common.dto.catalog import (
+    AdStructureDTO,
+    CatalogImportDTO,
+    CatalogImportReportDTO,
     CityDetailDTO,
     CityDTO,
     AssignmentBrandDTO,
@@ -8,7 +11,10 @@ from application.common.dto.catalog import (
     AssignmentSummaryDTO,
     AssignmentTotalsDTO,
     GeozoneDTO,
+    PaginatedAdStructuresDTO,
     PaginatedAssignmentsDTO,
+    RejectedFileDTO,
+    RowErrorDTO,
     ShootingBrandDTO,
     RouteDTO,
     AssignmentDTO,
@@ -42,9 +48,15 @@ from application.common.dto.pipeline import (
 from application.common.dto.users import UserDTO
 
 __all__ = [
+    "AdStructureDTO",
     "ApplicationDTO",
     "ArtifactUrlDTO",
     "AssignmentBrandDTO",
+    "CatalogImportDTO",
+    "CatalogImportReportDTO",
+    "PaginatedAdStructuresDTO",
+    "RejectedFileDTO",
+    "RowErrorDTO",
     "ShootingMetricsDTO",
     "AssignmentStatDTO",
     "AssignmentStatusCountsDTO",

@@ -1,11 +1,11 @@
 import { useEffect, useState, type CSSProperties } from 'react'
-import { getCity } from '../api'
+import { getAdStructures, getCity } from '../api'
 import { RouteMap, type GeoFeatureCollection } from '../components/RouteMap'
 import { EmptyState, ErrorBanner } from '../components/common/Feedback'
 import { PageHeader } from '../components/common/PageHeader'
 import { RouteMapSkeleton } from '../components/common/Skeletons'
 import { navigate } from '../routing'
-import type { CityDetail } from '../types'
+import type { AdStructure, CityDetail } from '../types'
 import { pluralAssignments } from '../utils/formatters'
 
 const FALLBACK_COLOR = '#8a8f98'
@@ -14,6 +14,7 @@ export function CityPage({ citySlug }: { citySlug: string }) {
   const [city, setCity] = useState<CityDetail | null>(null)
   const [roads, setRoads] = useState<GeoFeatureCollection | null>(null)
   const [routes, setRoutes] = useState<GeoFeatureCollection[] | null>(null)
+  const [structures, setStructures] = useState<AdStructure[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [notFound, setNotFound] = useState(false)
@@ -54,6 +55,13 @@ export function CityPage({ citySlug }: { citySlug: string }) {
       .finally(() => {
         if (!disposed) setLoading(false)
       })
+
+    // Каталог грузим отдельно: его может не быть, и это не повод ломать карту.
+    getAdStructures(citySlug)
+      .then((page) => {
+        if (!disposed) setStructures(page.items)
+      })
+      .catch(() => undefined)
 
     return () => {
       disposed = true
@@ -115,6 +123,7 @@ export function CityPage({ citySlug }: { citySlug: string }) {
             <RouteMap
               roads={roads}
               routes={routes}
+              structures={structures}
               colors={routeColors}
               routeNames={routesMeta.map((route) => route.name)}
               hoveredIndex={hoveredIndex}

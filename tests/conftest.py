@@ -41,6 +41,8 @@ MUTABLE_TABLES = (
     "pipeline_artifacts",
     "pipeline_runs",
     "route_geozones",
+    "ad_structures",
+    "catalog_imports",
     "assignments",
     "users",
 )

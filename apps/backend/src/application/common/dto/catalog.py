@@ -7,6 +7,7 @@ from pydantic import Field
 from application.common.dto.base import ApplicationDTO
 from application.common.dto.pipeline import CityRefDTO, RouteRefDTO
 from application.common.dto.users import UserDTO
+from domain.catalog import CatalogImportStatus
 
 
 class RouteDTO(ApplicationDTO):
@@ -155,3 +156,84 @@ class AssignmentSummaryDTO(ApplicationDTO):
     totals: AssignmentTotalsDTO
     brands: list[AssignmentBrandDTO] = Field(default_factory=list)
     shootings: list[ShootingMetricsDTO] = Field(default_factory=list)
+
+
+# --- каталог рекламных конструкций ------------------------------------------
+
+
+class AdStructureDTO(ApplicationDTO):
+    """Конструкция каталога: точка на карте.
+
+    Не путать с находкой на видео: та живёт внутри одной съёмки. Здесь —
+    физический щит. Названия в источнике нет, им служит адрес.
+    """
+
+    id: str
+    city_id: str
+    address: str
+    latitude: float
+    longitude: float
+    # Сколько строк файла схлопнулось в эту точку: щиты стоят треугольником.
+    surfaces_count: int = 1
+
+
+class PaginatedAdStructuresDTO(ApplicationDTO):
+    items: list[AdStructureDTO]
+    page: int
+    page_size: int
+    total: int
+
+
+class CatalogImportDTO(ApplicationDTO):
+    """Ревизия каталога города. `revision` пуст, пока пак не применён."""
+
+    id: str
+    city_id: str
+    revision: int | None = None
+    status: CatalogImportStatus
+    is_current: bool = False
+    file_names: list[str] = Field(default_factory=list)
+    rows_read: int = 0
+    rows_rejected: int = 0
+    points_total: int = 0
+    files_rejected: int = 0
+    uploaded_by: UserDTO | None = None
+    applied_at: datetime | None = None
+    created_at: datetime | None = None
+
+
+class RejectedFileDTO(ApplicationDTO):
+    """Файл, отклонённый целиком, и почему."""
+
+    file_name: str
+    reason: str
+
+
+class RowErrorDTO(ApplicationDTO):
+    """Строка, которую не взяли: где она и почему."""
+
+    file_name: str
+    row_number: int
+    reason: str
+
+
+class CatalogImportReportDTO(ApplicationDTO):
+    """Что произойдёт, если применить пак. Показывается до подтверждения.
+
+    Сравнение с текущей ревизией — по близости координат, поэтому «исчезло» и
+    «появилось» приблизительны и годятся только для глаз. Строка «−180 точек»
+    здесь важнее всех остальных: неполный файл выглядит именно так.
+    """
+
+    catalog_import: CatalogImportDTO
+    points_before: int
+    points_after: int
+    added: int
+    removed: int
+    # Сколько строк схлопнулось: прочитано минус получившиеся точки.
+    collapsed_rows: int
+    rejected_files: list[RejectedFileDTO] = Field(default_factory=list)
+    row_errors: list[RowErrorDTO] = Field(default_factory=list)
+    # Файлы, где нашлись лишние листы: читаем только первый, остальное могло
+    # быть черновиком — пусть человек знает.
+    files_with_extra_sheets: list[str] = Field(default_factory=list)

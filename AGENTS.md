@@ -45,6 +45,10 @@ Three target brands: `mts`, `plus7`, `miranda`. Everything else collapses to `ot
    (`models/*/best.pt`, gitignored) and a real video. Prefer unit tests.
 7. **`docs/refactoring-backlog.md` is a backlog, not a task list.** Do not act on it unless the
    owner explicitly asks.
+8. **The ad catalogue must not touch the visibility metric.** `ad_structures` is a directory of
+   billboards standing in a city; the pipeline's `object_id` is a per-video cluster of detections.
+   Different things — see the naming trap in §10. Wiring catalogue coefficients into β is a separate,
+   unstarted step.
 
 ---
 
@@ -59,14 +63,15 @@ Three target brands: `mts`, `plus7`, `miranda`. Everything else collapses to `ot
 | `ml/pipeline/scripts/` (rest) | `detection`, `crops`, `quality`, `classification`, `tracking`, `track_groups`, `aggregation`, `io`, `schemas`, `config`, `visualization`. |
 | `ml/pipeline/scripts/reporting/` | CSV + charts + `report.html` (standalone pipeline reports, **not** the product UI). |
 | `ml/pipeline/scripts/viewer/` | `overlay.json` + `viewer.html` (standalone player with cards). |
-| `apps/backend/src/domain/` | Pure logic, no I/O. Today: `geozones.py` (`beta`, `overlaps`) + entity facades. |
+| `apps/backend/src/domain/` | Pure logic, no I/O: `geozones.py` (`beta`, `overlaps`), `catalog.py` (point collapsing, revision diff, city bounds) + entity facades. |
 | `apps/backend/src/application/` | Services (`pipeline_run_service`, `catalog_service`, `assignment_rollup`, `user_service`), DTOs, repository interfaces. |
-| `apps/backend/src/infrastructure/` | SQLModel models, SQL repositories, MinIO storage. |
+| `apps/backend/src/infrastructure/` | SQLModel models, SQL repositories, MinIO storage, `catalog/parser.py` (xlsx/xls/csv). |
 | `apps/backend/src/presentation/http/` | FastAPI routers, request/response DTOs, DI, exception handlers. |
 | `apps/backend/src/worker/` | Queue worker that runs the ML pipeline out-of-process. |
 | `apps/backend/alembic/` | Migrations, including seed migrations for cities/routes. |
 | `apps/frontend/src/` | React 19 + Vite + Recharts. Hand-rolled router (`routing.ts`), no react-router. |
 | `tests/` | pytest. Needs a live Postgres; MinIO is faked. |
+| `docs/plan.md` + `docs/plan-NN-*.md` | **Intent, not state**: accepted decisions with reasons, open decisions that block work, and the step list. Per-step detail files are deleted once the step lands and its content moves into `pipeline-and-metrics.md`. Never describe working behaviour here. |
 | `README.md` | Setup/ops guide. Predates the metric rewrite; treat metric statements in it as stale. |
 
 ---
@@ -157,6 +162,8 @@ only feed the pipeline's own `report.html`.
 | Add an endpoint | router in `presentation/http/routers/v1/` → response DTO in `presentation/http/dto/response.py` → service → repository interface → SQL repository |
 | Add a DB table/column | `infrastructure/database/models.py`, then **the owner writes the migration** (existing convention) |
 | Change how an assignment aggregates shootings | `application/services/assignment_rollup.py` — the only place that decides mean vs median vs filtering |
+| Change catalogue parsing (new column, new format) | `infrastructure/catalog/parser.py` only; the row/point types live in `domain/catalog.py` |
+| Retune catalogue distance thresholds | `MERGE_DISTANCE_M` / `DIFF_DISTANCE_M` / `CITY_BOUNDS_MARGIN_M` in `domain/catalog.py` |
 | Change what the overlay card shows | `viewer/payload.py` + `OverlayObjectPayload` in `pipeline_contracts/artifacts.py` + `VideoOverlayPlayer.tsx` |
 
 ---
@@ -199,6 +206,15 @@ cd apps/frontend && pnpm dev && pnpm build && pnpm lint
 
 ## 10. Gaps and traps you must know about
 
+* **Two meanings of "object".** In the pipeline `object_id` is a cluster of detections inside one
+  video — the next drive-by gives the same billboard a different number. In the catalogue an
+  `ad_structure` is the physical billboard. Russian docs and UI say «находка» for the first and
+  «конструкция» for the second; keep that split.
+* **The catalogue's identity is the coordinate, not the address.** Source addresses are free-form
+  («у д. 4Б по Крепостному ш.»), and rows repeat: 8–10 rows per coordinate are separate surfaces at
+  one spot. They collapse into one row with `surfaces_count`; never dedupe by address.
+* **Catalogue revisions**: `catalog_imports.is_current` is the single source of truth for visibility —
+  `ad_structures` has no flag of its own. Rollback flips two rows and must never rewrite structures.
 * Coefficient tables are **defaults, not calibrated numbers** — area, position, contrast and
   confidence were set so work could proceed. Calibration against a real distribution is still open.
 * `run_video_pipeline.sh` appends `--brand-overrides` when `ml/pipeline/brand_overrides.csv` exists,

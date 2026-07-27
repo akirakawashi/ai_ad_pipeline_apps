@@ -344,3 +344,61 @@ export interface OverlayPayload {
   }
   frames: OverlayFrame[]
 }
+
+export interface AdStructure {
+  id: string
+  city_id: string
+  address: string
+  latitude: number
+  longitude: number
+  /** Сколько щитов в одной точке: стоят треугольником, друг над другом. */
+  surfaces_count: number
+}
+
+export interface PaginatedAdStructures {
+  items: AdStructure[]
+  page: number
+  page_size: number
+  total: number
+}
+
+export interface CatalogImport {
+  id: string
+  city_id: string
+  /** Пусто, пока пак не применён: отменённые не тратят номера. */
+  revision: number | null
+  status: 'parsed' | 'applied' | 'cancelled'
+  is_current: boolean
+  file_names: string[]
+  rows_read: number
+  rows_rejected: number
+  points_total: number
+  files_rejected: number
+  uploaded_by: User | null
+  applied_at: string | null
+  created_at: string | null
+}
+
+export interface RejectedFile {
+  file_name: string
+  reason: string
+}
+
+export interface CatalogRowError {
+  file_name: string
+  row_number: number
+  reason: string
+}
+
+/** Что произойдёт, если применить пак. Показывается до подтверждения. */
+export interface CatalogImportReport {
+  catalog_import: CatalogImport
+  points_before: number
+  points_after: number
+  added: number
+  removed: number
+  collapsed_rows: number
+  rejected_files: RejectedFile[]
+  row_errors: CatalogRowError[]
+  files_with_extra_sheets: string[]
+}

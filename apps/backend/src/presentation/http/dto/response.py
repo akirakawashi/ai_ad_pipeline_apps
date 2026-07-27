@@ -6,8 +6,11 @@ from typing import Generic, TypeVar
 from pydantic import AliasChoices, AwareDatetime, BaseModel, ConfigDict, Field
 
 from application.common.dto import (
+    AdStructureDTO,
     ArtifactUrlDTO,
     BrandSummaryDTO,
+    CatalogImportDTO,
+    CatalogImportReportDTO,
     CityDetailDTO,
     CityDTO,
     CityRefDTO,
@@ -17,6 +20,7 @@ from application.common.dto import (
     AssignmentTotalsDTO,
     GeozoneDTO,
     OverlayPayloadDTO,
+    PaginatedAdStructuresDTO,
     PlaybackDTO,
     RouteDTO,
     AssignmentDTO,
@@ -152,6 +156,22 @@ class UpdateGeozoneRequest(ApiModel):
 
     def changed_fields(self) -> dict[str, object]:
         return {name: getattr(self, name) for name in self.model_fields_set}
+
+
+class AdStructureResponse(AdStructureDTO):
+    pass
+
+
+class PaginatedAdStructuresResponse(PaginatedAdStructuresDTO):
+    pass
+
+
+class CatalogImportResponse(CatalogImportDTO):
+    pass
+
+
+class CatalogImportReportResponse(CatalogImportReportDTO):
+    """Отчёт по разобранному паку: что произойдёт, если его применить."""
 
 
 class CityResponse(CityDTO):

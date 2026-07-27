@@ -3,11 +3,14 @@ import type {
   AssignmentsPage,
   AssignmentSummary,
   City,
+  CatalogImport,
+  CatalogImportReport,
   CityDetail,
   CreateGeozonePayload,
   CreateRunResult,
   Geozone,
   OverlayPayload,
+  PaginatedAdStructures,
   PipelineRun,
   Playback,
   Assignment,
@@ -260,4 +263,60 @@ export function getRunPlayback(runId: string): Promise<Playback> {
 
 export function getRunOverlay(runId: string): Promise<OverlayPayload> {
   return apiFetch(`/runs/${runId}/overlay`)
+}
+
+export function getAdStructures(
+  citySlug: string,
+  params: { search?: string; page?: number; pageSize?: number } = {},
+): Promise<PaginatedAdStructures> {
+  const query = new URLSearchParams()
+  if (params.search) query.set('search', params.search)
+  query.set('page', String(params.page ?? 1))
+  query.set('page_size', String(params.pageSize ?? 500))
+  return apiFetch(`/cities/${citySlug}/ad-structures?${query}`)
+}
+
+export function getCatalogImports(citySlug: string): Promise<CatalogImport[]> {
+  return apiFetch(`/cities/${citySlug}/catalog/imports`)
+}
+
+export async function uploadCatalogImport(
+  citySlug: string,
+  files: File[],
+  uploadedByUserId: string,
+): Promise<CatalogImportReport> {
+  // Форма, а не JSON: файлы идут прямо в бэкенд и там же разбираются.
+  // Content-Type не ставим руками — браузер сам допишет boundary.
+  const form = new FormData()
+  files.forEach((file) => form.append('files', file))
+  form.append('uploaded_by_user_id', uploadedByUserId)
+
+  const response = await fetch(`${API_BASE}/cities/${citySlug}/catalog/imports`, {
+    method: 'POST',
+    body: form,
+  })
+  const body = await response.json().catch(() => null)
+  if (!response.ok) {
+    throw new Error(body?.detail ?? `HTTP ${response.status}`)
+  }
+  return body.data as CatalogImportReport
+}
+
+export function applyCatalogImport(importId: string): Promise<CatalogImport> {
+  return apiFetch(`/catalog/imports/${importId}/apply`, { method: 'POST' })
+}
+
+export function restoreCatalogImport(importId: string): Promise<CatalogImport> {
+  return apiFetch(`/catalog/imports/${importId}/restore`, { method: 'POST' })
+}
+
+export async function deleteCatalogImport(importId: string): Promise<void> {
+  // DELETE отдаёт 204 без тела — apiFetch ждёт конверт, поэтому отдельно.
+  const response = await fetch(`${API_BASE}/catalog/imports/${importId}`, {
+    method: 'DELETE',
+  })
+  if (!response.ok) {
+    const body = await response.json().catch(() => null)
+    throw new Error(body?.detail ?? `HTTP ${response.status}`)
+  }
 }

@@ -3733,3 +3733,94 @@ button:disabled,
 .geozone-delete:hover {
   border-color: var(--danger);
 }
+
+/* --- Каталог рекламных конструкций ------------------------------------- */
+
+.catalog-panel {
+  padding: 22px 26px;
+  margin-bottom: 18px;
+}
+
+.catalog-panel h2 {
+  margin: 0 0 10px;
+  font-size: 17px;
+}
+
+.catalog-panel h3 {
+  margin: 14px 0 6px;
+  font-size: 14px;
+}
+
+.catalog-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 14px;
+}
+
+.catalog-toolbar label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.hint {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.report-list,
+.report-block ul {
+  margin: 0 0 12px;
+  padding-left: 18px;
+  line-height: 1.7;
+}
+
+.report-block {
+  margin: 12px 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.report-block summary {
+  cursor: pointer;
+}
+
+.data-table {
+  width: 100%;
+  margin-top: 12px;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.data-table th,
+.data-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+
+.data-table th {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.data-table tr.is-current td {
+  color: var(--accent);
+}
+
+.row-actions {
+  display: inline-flex;
+  gap: 8px;
+}
+
+/* Точки каталога поверх дорог: размер кружка растёт от числа поверхностей. */
+.structure-layer circle {
+  fill: var(--accent);
+  fill-opacity: 0.75;
+  stroke: rgba(0, 0, 0, 0.55);
+  stroke-width: 1;
+}

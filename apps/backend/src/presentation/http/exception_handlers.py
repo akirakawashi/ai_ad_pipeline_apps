@@ -7,9 +7,11 @@ from sqlalchemy.exc import IntegrityError
 
 from application.exceptions import (
     AssignmentFullError,
+    CatalogImportStateError,
     CatalogNotFoundError,
     GeozoneOverlapError,
     InvalidAssignmentError,
+    InvalidCatalogFileError,
     InvalidGeozoneError,
     InvalidUserError,
     InvalidVideoError,
@@ -107,6 +109,26 @@ def setup_exception_handlers(app: FastAPI) -> None:
     async def geozone_overlap_handler(
         _: Request,
         exc: GeozoneOverlapError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=409,
+            content={"detail": str(exc)},
+        )
+
+    @app.exception_handler(InvalidCatalogFileError)
+    async def invalid_catalog_file_handler(
+        _: Request,
+        exc: InvalidCatalogFileError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=400,
+            content={"detail": str(exc)},
+        )
+
+    @app.exception_handler(CatalogImportStateError)
+    async def catalog_import_state_handler(
+        _: Request,
+        exc: CatalogImportStateError,
     ) -> JSONResponse:
         return JSONResponse(
             status_code=409,

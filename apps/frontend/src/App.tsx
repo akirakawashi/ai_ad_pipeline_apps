@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import logoUrl from './assets/aisigroup-logo.png'
 import markUrl from './assets/aisigroup-mark.png'
 import { AssignmentPage } from './pages/AssignmentPage'
+import { CatalogPage } from './pages/CatalogPage'
 import { CitiesPage } from './pages/CitiesPage'
 import { CityPage } from './pages/CityPage'
 import { LandingPage } from './pages/LandingPage'
@@ -75,6 +76,13 @@ function App() {
             Города
           </button>
           <button
+            className={route.page === 'catalog' ? 'active' : ''}
+            onClick={() => navigate('/catalog')}
+          >
+            <span>▦</span>
+            Каталог
+          </button>
+          <button
             className={route.page === 'videos' || route.page === 'run' ? 'active' : ''}
             onClick={() => navigate('/videos')}
           >
@@ -118,6 +126,7 @@ function App() {
           )}
           {route.page === 'home' && <LandingPage />}
           {route.page === 'archive' && <CitiesPage />}
+          {route.page === 'catalog' && <CatalogPage />}
           {route.page === 'city' && (
             <CityPage key={route.citySlug} citySlug={route.citySlug} />
           )}
