@@ -50,6 +50,12 @@ def write_pipeline_outputs(
 
     detections_df = pd.DataFrame(detection_rows)
     tracks_df = pd.DataFrame(track_rows)
+    # Автономные отчёты пайплайна оперируют базовой заметностью S·α (β нет —
+    # он на бэкенде). Колонку не пишем в tracks.csv, а выводим для отчётов.
+    if not tracks_df.empty:
+        tracks_df["visibility_value"] = (
+            tracks_df["attention_seconds"] * tracks_df["confidence_coef"]
+        )
     write_summaries(output_dir, detections_df, tracks_df)
     write_charts(output_dir / "charts", detections_df, tracks_df)
     write_html_report(output_dir / "report.html", metadata, detections_df, tracks_df)

@@ -132,9 +132,18 @@ interface RouteVar extends CSSProperties {
   '--route-color'?: string
 }
 
+/** Точка каталога на карте: щит и сколько поверхностей в этом месте. */
+export interface MapStructure {
+  latitude: number
+  longitude: number
+  address: string
+  surfaces_count: number
+}
+
 export interface RouteMapProps {
   roads: GeoFeatureCollection
   routes: GeoFeatureCollection[]
+  structures?: MapStructure[]
   colors: string[]
   routeNames: string[]
   hoveredIndex: number | null
@@ -146,6 +155,7 @@ export interface RouteMapProps {
 export function RouteMap({
   roads,
   routes,
+  structures = [],
   colors,
   routeNames,
   hoveredIndex,
@@ -169,6 +179,26 @@ export function RouteMap({
   const routeSegments = useMemo(
     () => routes.map((route) => orderRouteSegments(route.features, project)),
     [routes, project],
+  )
+
+  // Точки каталога рисуем той же проекцией, что и дороги: библиотека карт не
+  // нужна. Радиус растёт от числа поверхностей — иначе десять щитов в одной
+  // точке визуально не отличить от одного.
+  const structurePoints = useMemo(
+    () =>
+      structures.map((structure) => {
+        const [x, y] = project([structure.longitude, structure.latitude])
+        return {
+          x,
+          y,
+          radius: 3 + Math.min(4, Math.sqrt(Math.max(1, structure.surfaces_count)) - 1),
+          title:
+            structure.surfaces_count > 1
+              ? `${structure.address} — поверхностей: ${structure.surfaces_count}`
+              : structure.address,
+        }
+      }),
+    [structures, project],
   )
 
   const introSegmentRefs = useRef<SVGPathElement[][]>([])
@@ -234,6 +264,16 @@ export function RouteMap({
           ))}
         </g>
 
+        {structurePoints.length > 0 && (
+          <g className="structure-layer">
+            {structurePoints.map((point, index) => (
+              <circle key={index} cx={point.x} cy={point.y} r={point.radius}>
+                <title>{point.title}</title>
+              </circle>
+            ))}
+          </g>
+        )}
+
         <g>
           {routeSegments.map((segments, routeIndex) => {
             const isFocused = focusedIndex === routeIndex
@@ -249,6 +289,16 @@ export function RouteMap({
             )
           })}
         </g>
+
+        {structurePoints.length > 0 && (
+          <g className="structure-layer">
+            {structurePoints.map((point, index) => (
+              <circle key={index} cx={point.x} cy={point.y} r={point.radius}>
+                <title>{point.title}</title>
+              </circle>
+            ))}
+          </g>
+        )}
 
         <g>
           {routeSegments.map((segments, routeIndex) => {
@@ -277,6 +327,16 @@ export function RouteMap({
             )
           })}
         </g>
+
+        {structurePoints.length > 0 && (
+          <g className="structure-layer">
+            {structurePoints.map((point, index) => (
+              <circle key={index} cx={point.x} cy={point.y} r={point.radius}>
+                <title>{point.title}</title>
+              </circle>
+            ))}
+          </g>
+        )}
 
         <g>
           {routeSegments.map((segments, routeIndex) => {

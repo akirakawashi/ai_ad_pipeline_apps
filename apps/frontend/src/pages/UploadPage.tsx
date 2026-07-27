@@ -1,124 +1,344 @@
-import { useState } from 'react'
-import { completeUpload, createRun, uploadVideo } from '../api'
-import { ErrorBanner } from '../components/common/Feedback'
+import { useEffect, useState } from 'react'
+import { getAssignment, getCities, getCity, getRouteAssignments } from '../api'
 import { FileCard } from '../components/common/FileCard'
-import { InfinityLoader } from '../components/common/LoadingIndicators'
+import { ErrorBanner, InfoBanner } from '../components/common/Feedback'
 import { PageHeader } from '../components/common/PageHeader'
 import { ProgressBar } from '../components/common/ProgressBar'
+import { Select } from '../components/common/Select'
+import { UserSelect } from '../components/common/UserSelect'
+import { useVideoUpload } from '../hooks/useVideoUpload'
 import { navigate } from '../routing'
+import type { Assignment, City, CityDetail } from '../types'
 
-export function UploadPage() {
-  const [file, setFile] = useState<File | null>(null)
-  const [progress, setProgress] = useState(0)
-  const [busy, setBusy] = useState(false)
-  const [dragActive, setDragActive] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+const MAX_FILES = 20
 
-  const selectFile = (nextFile: File | null) => {
-    if (busy) return
-    setFile(nextFile)
-    setProgress(0)
-    setError(null)
-  }
+const STATUS_CLASS: Record<string, string> = {
+  queued: 'queued',
+  uploading: 'processing',
+  done: 'completed',
+  error: 'processing_failed',
+}
 
-  const startUpload = async () => {
-    if (!file) return
-    setBusy(true)
-    setProgress(0)
-    setError(null)
-    try {
-      const run = await createRun(file)
-      await uploadVideo(run.upload, file, setProgress)
-      await completeUpload(run.run_id)
-      navigate(`/runs/${run.run_id}`)
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason))
-      setBusy(false)
+const STATUS_TEXT: Record<string, string> = {
+  queued: 'В очереди',
+  done: 'Загружено',
+  error: 'Ошибка',
+}
+
+interface UploadPageProps {
+  citySlug?: string
+  routeSlug?: string
+  /** Догрузка в конкретное задание: назначение зафиксировано. */
+  assignmentId?: string
+}
+
+export function UploadPage({ citySlug, routeSlug, assignmentId }: UploadPageProps) {
+  const [cities, setCities] = useState<City[]>([])
+  const [detail, setDetail] = useState<CityDetail | null>(null)
+  const [assignments, setAssignments] = useState<Assignment[]>([])
+  const [pinnedAssignment, setPinnedAssignment] = useState<Assignment | null>(null)
+  const [selectedCity, setSelectedCity] = useState(citySlug ?? '')
+  const [selectedRoute, setSelectedRoute] = useState(routeSlug ?? '')
+  const [selectedAssignment, setSelectedAssignment] = useState('')
+  const [operatorId, setOperatorId] = useState('')
+  const [noAssignment, setNoAssignment] = useState(!citySlug && !assignmentId)
+  const [catalogError, setCatalogError] = useState<string | null>(null)
+
+  const pinned = Boolean(assignmentId)
+
+  useEffect(() => {
+    if (!assignmentId) return
+    getAssignment(assignmentId)
+      .then(setPinnedAssignment)
+      .catch((reason) => setCatalogError(String(reason)))
+  }, [assignmentId])
+
+  useEffect(() => {
+    if (pinned) return
+    getCities()
+      .then(setCities)
+      .catch((reason) => setCatalogError(String(reason)))
+  }, [pinned])
+
+  useEffect(() => {
+    if (pinned || !selectedCity) return
+    let disposed = false
+    getCity(selectedCity)
+      .then((result) => {
+        if (disposed) return
+        setDetail(result)
+        setSelectedRoute((current) =>
+          result.routes.some((route) => route.slug === current)
+            ? current
+            : (result.routes[0]?.slug ?? ''),
+        )
+      })
+      .catch((reason) => {
+        if (!disposed) setCatalogError(String(reason))
+      })
+    return () => {
+      disposed = true
     }
-  }
+  }, [pinned, selectedCity])
+
+  useEffect(() => {
+    if (pinned || !selectedCity || !selectedRoute) {
+      setAssignments([])
+      return
+    }
+    let disposed = false
+    getRouteAssignments(selectedCity, selectedRoute)
+      .then((page) => {
+        if (disposed) return
+        setAssignments(page.items)
+        // Список идёт от свежих: обычно грузят в последнее заведённое задание.
+        setSelectedAssignment(page.items[0]?.id ?? '')
+      })
+      .catch((reason) => {
+        if (!disposed) setCatalogError(String(reason))
+      })
+    return () => {
+      disposed = true
+    }
+  }, [pinned, selectedCity, selectedRoute])
+
+  // Выводим, а не сбрасываем в эффекте: пока грузится новый город, старый
+  // список маршрутов не должен показываться как его.
+  const activeDetail = detail && detail.slug === selectedCity ? detail : null
+
+  const targetAssignmentId = pinned
+    ? (assignmentId ?? null)
+    : noAssignment
+      ? null
+      : selectedAssignment || null
+
+  const destinationReady = pinned || noAssignment || Boolean(selectedAssignment)
+  const routeChosen = Boolean(selectedCity && selectedRoute)
+
+  const upload = useVideoUpload({
+    maxFiles: MAX_FILES,
+    assignmentId: targetAssignmentId,
+    operatorUserId: operatorId || null,
+    onFinish: ({ runIds, failed }) => {
+      // При частичном сбое остаёмся на странице: «Повторить» дольёт туда же.
+      if (failed > 0) return
+      if (targetAssignmentId) {
+        navigate(`/assignments/${targetAssignmentId}`)
+      } else if (runIds.length === 1) {
+        navigate(`/videos/${runIds[0]}`)
+      } else if (runIds.length > 0) {
+        navigate('/videos')
+      }
+    },
+  })
+
+  const eyebrow = pinned
+    ? (pinnedAssignment?.title ?? 'Догрузка в задание')
+    : noAssignment
+      ? 'Без задания'
+      : activeDetail && selectedRoute
+        ? `${activeDetail.name} · ${
+            activeDetail.routes.find((route) => route.slug === selectedRoute)?.name ?? ''
+          }`
+        : 'Загрузка'
 
   return (
     <div className="page narrow-page">
       <PageHeader
-        eyebrow="Загрузка"
-        title="Добавьте видео маршрута"
-        description="Выберите файл или перетащите его в окно. Мы загрузим видео и сразу запустим анализ."
-        actions={
-          <button className="secondary" onClick={() => navigate('/runs')}>
-            В архив
-          </button>
+        eyebrow={eyebrow}
+        title="Загрузка съёмок"
+        description={
+          noAssignment
+            ? 'Разовая загрузка — видео уйдёт в обработку вне города и маршрута.'
+            : `Съёмки попадут в выбранное задание. До ${MAX_FILES} штук.`
         }
       />
+
+      {catalogError && <ErrorBanner text={catalogError} />}
+
+      <section className="panel destination-panel">
+        <h2>Куда загрузить?</h2>
+
+        {!pinned && (
+          <>
+            <div className="destination-fields">
+              <div className="field">
+                Город
+                <Select
+                  ariaLabel="Город"
+                  value={selectedCity}
+                  disabled={noAssignment || upload.busy}
+                  placeholder="Выберите город"
+                  options={cities.map((city) => ({
+                    value: city.slug,
+                    label: city.name,
+                  }))}
+                  onChange={setSelectedCity}
+                />
+              </div>
+              <div className="field">
+                Маршрут
+                <Select
+                  ariaLabel="Маршрут"
+                  value={selectedRoute}
+                  disabled={noAssignment || !activeDetail || upload.busy}
+                  placeholder={
+                    activeDetail ? 'Выберите маршрут' : 'Сначала выберите город'
+                  }
+                  options={
+                    activeDetail?.routes.map((route) => ({
+                      value: route.slug,
+                      label: route.name,
+                    })) ?? []
+                  }
+                  onChange={setSelectedRoute}
+                />
+              </div>
+              <div className="field">
+                Задание
+                <Select
+                  ariaLabel="Задание"
+                  value={selectedAssignment}
+                  disabled={noAssignment || !assignments.length || upload.busy}
+                  placeholder={
+                    routeChosen ? 'Заданий пока нет' : 'Сначала выберите маршрут'
+                  }
+                  options={assignments.map((assignment) => ({
+                    value: assignment.id,
+                    label: assignment.title,
+                  }))}
+                  onChange={setSelectedAssignment}
+                />
+              </div>
+            </div>
+
+            {!noAssignment && routeChosen && !assignments.length && (
+              <InfoBanner text="На этом маршруте нет заданий. Заведите задание на странице маршрута: съёмки загружаются в готовое задание." />
+            )}
+
+            <label className="destination-toggle">
+              <input
+                type="checkbox"
+                className="checkbox"
+                checked={noAssignment}
+                disabled={upload.busy}
+                onChange={(event) => setNoAssignment(event.target.checked)}
+              />
+              Без задания (разовая загрузка)
+            </label>
+          </>
+        )}
+
+        <div className="destination-fields">
+          <UserSelect
+            label="Оператор"
+            value={operatorId}
+            disabled={upload.busy}
+            placeholder="Кто снимал"
+            onChange={setOperatorId}
+          />
+        </div>
+        <p className="destination-hint">
+          Время съёмки подставится из метаданных каждого файла — поправить его
+          можно на странице съёмки.
+        </p>
+      </section>
+
       <section
-        className={`upload-panel${dragActive ? ' drag-active' : ''}${
-          busy ? ' busy' : ''
+        className={`upload-panel${upload.busy ? ' busy' : ''}${
+          upload.dragActive ? ' drag-active' : ''
         }`}
-        onDragEnter={(event) => {
-          event.preventDefault()
-          setDragActive(true)
-        }}
-        onDragOver={(event) => {
-          event.preventDefault()
-          setDragActive(true)
-        }}
-        onDragLeave={(event) => {
-          event.preventDefault()
-          setDragActive(false)
-        }}
-        onDrop={(event) => {
-          event.preventDefault()
-          setDragActive(false)
-          selectFile(event.dataTransfer.files[0] ?? null)
-        }}
+        {...upload.dragHandlers}
       >
         <div className="upload-icon">↑</div>
-        <h2>{file ? 'Файл выбран' : 'Перетащите видео сюда'}</h2>
+        <h2>
+          {upload.items.length
+            ? `Выбрано видео: ${upload.items.length} из ${MAX_FILES}`
+            : 'Перетащите видео сюда'}
+        </h2>
         <p>
-          {file
-            ? 'Если всё верно, можно начинать анализ.'
+          {upload.items.length
+            ? 'Можно добавить ещё или начать загрузку.'
             : 'Подойдут MP4, MOV, MKV и WebM'}
         </p>
 
-        {file && <FileCard file={file} />}
-
         <div className="upload-actions">
           <label className="secondary file-button">
-            {file ? 'Выбрать другое' : 'Выбрать видео'}
+            Выбрать файлы
             <input
               type="file"
               accept="video/*,.mkv"
-              disabled={busy}
-              onChange={(event) => selectFile(event.target.files?.[0] ?? null)}
+              multiple
+              disabled={upload.busy || upload.items.length >= MAX_FILES}
+              onChange={(event) => {
+                upload.addFiles(event.target.files)
+                event.target.value = ''
+              }}
             />
           </label>
-          {file && !busy && (
-            <button className="ghost-button" onClick={() => selectFile(null)}>
-              Убрать файл
-            </button>
-          )}
         </div>
 
-        {busy && (
-          <div className="upload-progress-card">
-            <InfinityLoader compact />
-            <div>
-              <h3>Загружаем видео</h3>
-              <p>
-                Сохраняем исходный файл. Если ролик большой, это может занять
-                пару минут.
-              </p>
-            </div>
-            <ProgressBar progress={progress} label="Файл загружается" animated />
+        {upload.limitNotice && <InfoBanner text={upload.limitNotice} />}
+        {upload.error && <ErrorBanner text={upload.error} />}
+
+        {upload.items.length > 0 && (
+          <div className="upload-file-list">
+            {upload.items.map((item) => (
+              <FileCard
+                key={item.key}
+                file={item.file}
+                status={
+                  <div className={`status status-${STATUS_CLASS[item.status]}`}>
+                    {item.status === 'uploading'
+                      ? `${item.progress}%`
+                      : STATUS_TEXT[item.status]}
+                  </div>
+                }
+                actions={
+                  !upload.busy && item.status !== 'done' ? (
+                    <button
+                      className="ghost-button"
+                      onClick={() => upload.removeItem(item.key)}
+                    >
+                      Убрать
+                    </button>
+                  ) : undefined
+                }
+              >
+                {item.status === 'uploading' && (
+                  <ProgressBar progress={item.progress} label="Загружается" animated />
+                )}
+                {item.status === 'error' && (
+                  <span className="upload-file-error">{item.error}</span>
+                )}
+              </FileCard>
+            ))}
           </div>
         )}
-        {error && <ErrorBanner text={error} />}
+
+        {upload.items.length > 0 && (
+          <p className="upload-file-summary">
+            Загружено {upload.doneCount} из {upload.items.length}
+          </p>
+        )}
+
+        {upload.failedCount > 0 && !upload.busy && (
+          <button className="secondary action-button" onClick={upload.retryFailed}>
+            Повторить ({upload.failedCount})
+          </button>
+        )}
+
         <button
           className="primary action-button"
-          disabled={!file || busy}
-          onClick={() => void startUpload()}
+          disabled={!upload.canStart || !destinationReady}
+          onClick={upload.start}
         >
-          {busy ? 'Загружаем…' : 'Начать анализ'}
+          {upload.busy ? 'Загружаем…' : 'Начать загрузку'}
         </button>
+
+        {!destinationReady && upload.items.length > 0 && (
+          <InfoBanner text="Выберите задание или отметьте «Без задания»." />
+        )}
       </section>
     </div>
   )

@@ -2,9 +2,6 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
-
-from domain.entities import PipelineArtifactType, PipelineRunStage, PipelineRunStatus
 from pipeline_contracts.artifacts import (
     BrandTrackSummaryRow,
     OverlayDisplayPayload,
@@ -14,19 +11,40 @@ from pipeline_contracts.artifacts import (
     OverlayVideoPayload,
     TrackCsvRow,
 )
+from pydantic import Field
 
-
-class ApplicationDTO(BaseModel):
-    model_config = ConfigDict(
-        from_attributes=True,
-        populate_by_name=True,
-    )
+from application.common.dto.base import ApplicationDTO
+from application.common.dto.users import UserDTO
+from domain.entities import PipelineArtifactType, PipelineRunStage, PipelineRunStatus
 
 
 class UploadTargetDTO(ApplicationDTO):
     method: str
     url: str
     headers: dict[str, str]
+
+
+# Ref-DTO живут здесь, а не в catalog.py: PipelineRunDTO ссылается на задание,
+# а catalog.py импортирует ApplicationDTO отсюда — иначе получился бы цикл.
+class CityRefDTO(ApplicationDTO):
+    id: str
+    slug: str
+    name: str
+
+
+class RouteRefDTO(ApplicationDTO):
+    id: str
+    slug: str
+    name: str
+    color_hex: str | None = None
+
+
+class RunAssignmentRefDTO(ApplicationDTO):
+    assignment_id: str
+    sequence_number: int
+    title: str
+    route: RouteRefDTO
+    city: CityRefDTO
 
 
 class PipelineArtifactDTO(ApplicationDTO):
@@ -71,6 +89,15 @@ class PipelineRunDTO(ApplicationDTO):
     started_at: datetime | None
     completed_at: datetime | None
     updated_at: datetime | None
+    # --- реквизиты съёмки ---------------------------------------------------
+    # Не путать со started_at / completed_at выше: те про обработку видео.
+    shot_started_at: datetime | None = None
+    # Не хранится: shot_started_at + duration_sec. None, пока нет одного из двух.
+    shot_finished_at: datetime | None = None
+    # Заполняются только там, где связи загружены явно (_run_to_dto(with_refs=...)).
+    # None означает «Без задания» либо «связь не запрашивали».
+    assignment: RunAssignmentRefDTO | None = None
+    operator: UserDTO | None = None
     artifacts: list[PipelineArtifactDTO] = Field(default_factory=list)
     events: list[PipelineRunEventDTO] = Field(default_factory=list)
 
@@ -114,6 +141,10 @@ class RunSummaryDTO(ApplicationDTO):
 
 
 class RunObjectDTO(TrackCsvRow):
+    # β и итог V = S·α·β считает бэкенд из геозон — в CSV-контракте их больше
+    # нет. Объект отдаётся уже посчитанным (see PipelineRunService._apply_beta).
+    significance_coef: float = 0.0
+    visibility_value: float = 0.0
     crop_url: str | None = None
 
 
@@ -126,7 +157,7 @@ class RunTimelinePointDTO(ApplicationDTO):
     bucket_start_sec: float
     business_brand: str | None
     detection_count: int
-    visibility_score: float
+    intensity_sum: float
 
 
 class RunTimelineDTO(ApplicationDTO):

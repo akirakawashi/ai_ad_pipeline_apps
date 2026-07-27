@@ -94,7 +94,7 @@ export function RunCharts({
     () =>
       brands.reduce(
         (total, brand) =>
-          total + Number(brand.video_visibility_weighted_seconds ?? 0),
+          total + Number(brand.sum_visibility_value ?? 0),
         0,
       ),
     [brands],
@@ -118,7 +118,7 @@ export function RunCharts({
       buildTimelineRows(
         timeline,
         hiddenBrands,
-        (point) => point.visibility_score,
+        (point) => point.intensity_sum,
       ),
     [hiddenBrands, timeline],
   )
@@ -140,7 +140,7 @@ export function RunCharts({
             object.best_timestamp_sec,
           )}`,
           visibility_index: Number(
-            object.video_visibility_weighted_seconds ?? 0,
+            object.visibility_value ?? 0,
           ),
         }))
         .filter((object) => !hiddenBrands.has(object.brand_key))
@@ -222,7 +222,7 @@ export function RunCharts({
 
         <section className="panel chart-card">
           <header>
-            <h3>Доля заметности</h3>
+            <h3>Заметность по брендам</h3>
             <p>Доля бренда в суммарной заметности видео</p>
           </header>
           <ResponsiveContainer width="100%" height={300}>
@@ -259,7 +259,7 @@ export function RunCharts({
 
         <section className="panel chart-card">
           <header>
-            <h3>Доля заметности</h3>
+            <h3>Распределение заметности</h3>
             <p>Как распределилась заметность между брендами</p>
           </header>
           <ResponsiveContainer width="100%" height={300}>
@@ -459,7 +459,6 @@ export function RunCharts({
             </BarChart>
           </ResponsiveContainer>
         </section>
-
       </div>
     </>
   )
@@ -470,7 +469,7 @@ function toBrandChartRow(
   totalVisibility: number,
 ): BrandChartRow {
   const brandKey = normalizeBrand(brand.brand)
-  const visibilityIndex = Number(brand.video_visibility_weighted_seconds ?? 0)
+  const visibilityIndex = Number(brand.sum_visibility_value ?? 0)
   return {
     brand_key: brandKey,
     brand_label: formatBrandLabel(brandKey),

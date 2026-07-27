@@ -19,9 +19,6 @@ class PipelineSettings(BaseSettings):
     classifier_model_path: Path = Field(
         default=Path("models/classification/best.pt"),
     )
-    brand_overrides_path: Path | None = Field(
-        default=Path("ml/pipeline/brand_overrides.csv"),
-    )
     frame_stride: int = Field(default=1, ge=1)
     device: str | None = "0"
     worker_poll_interval_sec: float = Field(default=2.0, gt=0)

@@ -12,7 +12,6 @@ from presentation.http.routers.healthcheck import healthcheck_router
 from presentation.http.routers.v1.router import api_v1_router
 from settings.factory import get_settings
 
-
 config = get_settings()
 
 

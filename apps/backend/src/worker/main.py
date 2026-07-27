@@ -3,7 +3,6 @@ from __future__ import annotations
 # The worker is also supported as a direct script. The path bootstrap must
 # happen before importing the backend package and the repository-level ML code.
 # ruff: noqa: E402
-
 import logging
 import sys
 from pathlib import Path

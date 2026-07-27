@@ -15,6 +15,160 @@ export interface RunEvent {
   created_at: string
 }
 
+/** Человек из справочника: постановщик задания или оператор съёмки. */
+export interface User {
+  id: string
+  full_name: string
+  is_active: boolean
+  created_at: string | null
+}
+
+export interface CityRef {
+  id: string
+  slug: string
+  name: string
+}
+
+export interface RouteRef {
+  id: string
+  slug: string
+  name: string
+  color_hex: string | null
+}
+
+/** Ссылка на задание с карточки видео. null — «Без задания». */
+export interface RunAssignmentRef {
+  assignment_id: string
+  sequence_number: number
+  title: string
+  route: RouteRef
+  city: CityRef
+}
+
+export interface Route {
+  id: string
+  slug: string
+  name: string
+  color_label: string | null
+  color_hex: string | null
+  description: string | null
+  /** Путь относительно public/, без ведущего слэша: 'routes/simferopol/route_1.geojson'. */
+  geojson_path: string
+  display_order: number
+  assignment_count: number
+  video_count: number
+}
+
+export interface City {
+  id: string
+  slug: string
+  name: string
+  region: string | null
+  /** Путь относительно public/, без ведущего слэша. */
+  roads_geojson_path: string | null
+  display_order: number
+  route_count: number
+  assignment_count: number
+  video_count: number
+}
+
+export interface CityDetail extends City {
+  routes: Route[]
+}
+
+export interface AssignmentStatusCounts {
+  uploading: number
+  upload_failed: number
+  queued: number
+  processing: number
+  completed: number
+  processing_failed: number
+}
+
+export interface Assignment {
+  id: string
+  sequence_number: number
+  /** Отображаемое имя: своё название либо «Задание №N · дата». */
+  title: string
+  /** Хранимое название, null — своего нет. Форма правит именно его. */
+  custom_title: string | null
+  description: string | null
+  route: RouteRef
+  city: CityRef
+  /** Постановщик задания. */
+  author: User | null
+  /** Плановое окно — его задаёт постановщик. */
+  planned_start_at: string | null
+  planned_end_at: string | null
+  /** Фактическое окно из времён съёмок. Не хранится, считается сервером. */
+  actual_start_at: string | null
+  actual_end_at: string | null
+  video_count: number
+  status_counts: AssignmentStatusCounts
+  created_at: string
+}
+
+/** Тело POST/PATCH задания. Отсутствующий ключ в PATCH = «не менять». */
+export interface AssignmentPayload {
+  title?: string | null
+  description?: string | null
+  planned_start_at?: string | null
+  planned_end_at?: string | null
+  author_user_id?: string | null
+}
+
+export interface AssignmentsPage {
+  items: Assignment[]
+  page: number
+  page_size: number
+  total: number
+}
+
+export interface AssignmentStat {
+  mean: number
+  std: number
+}
+
+export interface ShootingBrand {
+  brand: string
+  objects_count: number
+  visibility_index: number
+}
+
+/** Сырые метрики одной съёмки — вход для сравнения съёмок. */
+export interface ShootingMetrics {
+  run_id: string
+  source_name: string
+  duration_sec: number
+  objects_count: number
+  visibility_index: number
+  brands: ShootingBrand[]
+}
+
+export interface AssignmentBrand {
+  brand: string
+  objects_per_shooting: AssignmentStat
+  visibility_per_shooting: AssignmentStat
+  visibility_share: number
+}
+
+export interface AssignmentTotals {
+  shootings_total: number
+  shootings_completed: number
+  /** Сумма — «сколько наснимали». Остальное усредняется по съёмкам. */
+  duration_sec: number
+  objects_per_shooting: AssignmentStat
+  visibility_per_shooting: AssignmentStat
+}
+
+export interface AssignmentSummary {
+  assignment: Assignment
+  totals: AssignmentTotals
+  brands: AssignmentBrand[]
+  shootings: ShootingMetrics[]
+}
+
+
 export interface PipelineRun {
   run_id: string
   source_name: string
@@ -37,8 +191,21 @@ export interface PipelineRun {
   started_at: string | null
   completed_at: string | null
   updated_at: string
+  /** Когда снимали. Не путать со started_at выше — там начало обработки. */
+  shot_started_at: string | null
+  /** Считает сервер: shot_started_at + duration_sec. Не хранится. */
+  shot_finished_at: string | null
+  /** null — «Без задания» либо связь не запрашивали. */
+  assignment: RunAssignmentRef | null
+  operator: User | null
   artifacts: Artifact[]
   events: RunEvent[]
+}
+
+/** Тело PATCH съёмки. Ход обработки этим не меняется. */
+export interface ShootingPayload {
+  shot_started_at?: string | null
+  operator_user_id?: string | null
 }
 
 export interface RunsPage {
@@ -63,7 +230,7 @@ export interface CreateRunResult {
 export interface BrandSummary {
   brand: string
   object_count?: number
-  video_visibility_weighted_seconds?: number
+  sum_visibility_value?: number
   visibility_share?: number
   mean_final_brand_conf?: number
 }
@@ -86,7 +253,7 @@ export interface RunObject {
   visible_duration_sec: number
   detections_count: number
   final_brand_conf: number
-  video_visibility_weighted_seconds: number
+  visibility_value: number
   best_timestamp_sec: number
   crop_url?: string | null
 }
@@ -100,7 +267,7 @@ export interface TimelinePoint {
   bucket_start_sec: number
   business_brand: string
   detection_count: number
-  visibility_score: number
+  intensity_sum: number
 }
 
 export interface RunTimeline {
@@ -114,6 +281,34 @@ export interface Playback {
   annotated_url: string | null
 }
 
+/** Участок значимости маршрута: доля [start, end) времени видео и множитель β. */
+export interface Geozone {
+  id: string
+  route_id: string
+  name: string
+  start_fraction: number
+  end_fraction: number
+  coefficient: number
+  created_at: string | null
+  updated_at: string | null
+}
+
+/** Тело POST участка: границы — доли [0,1] от длительности видео. */
+export interface CreateGeozonePayload {
+  name: string
+  start_fraction: number
+  end_fraction: number
+  coefficient: number
+}
+
+/** Тело PATCH участка: отсутствующий ключ = «не менять». */
+export interface UpdateGeozonePayload {
+  name?: string
+  start_fraction?: number
+  end_fraction?: number
+  coefficient?: number
+}
+
 export interface OverlayObject {
   object_id: number | null
   track_id: number | null
@@ -124,8 +319,8 @@ export interface OverlayObject {
   det_conf: number
   brand_conf: number
   area_ratio: number
-  visibility_score: number
-  overall_score: number
+  intensity: number
+  visibility_value: number
   card_priority?: number
 }
 
@@ -148,4 +343,62 @@ export interface OverlayPayload {
     fields?: string[]
   }
   frames: OverlayFrame[]
+}
+
+export interface AdStructure {
+  id: string
+  city_id: string
+  address: string
+  latitude: number
+  longitude: number
+  /** Сколько щитов в одной точке: стоят треугольником, друг над другом. */
+  surfaces_count: number
+}
+
+export interface PaginatedAdStructures {
+  items: AdStructure[]
+  page: number
+  page_size: number
+  total: number
+}
+
+export interface CatalogImport {
+  id: string
+  city_id: string
+  /** Пусто, пока пак не применён: отменённые не тратят номера. */
+  revision: number | null
+  status: 'parsed' | 'applied' | 'cancelled'
+  is_current: boolean
+  file_names: string[]
+  rows_read: number
+  rows_rejected: number
+  points_total: number
+  files_rejected: number
+  uploaded_by: User | null
+  applied_at: string | null
+  created_at: string | null
+}
+
+export interface RejectedFile {
+  file_name: string
+  reason: string
+}
+
+export interface CatalogRowError {
+  file_name: string
+  row_number: number
+  reason: string
+}
+
+/** Что произойдёт, если применить пак. Показывается до подтверждения. */
+export interface CatalogImportReport {
+  catalog_import: CatalogImport
+  points_before: number
+  points_after: number
+  added: number
+  removed: number
+  collapsed_rows: number
+  rejected_files: RejectedFile[]
+  row_errors: CatalogRowError[]
+  files_with_extra_sheets: string[]
 }

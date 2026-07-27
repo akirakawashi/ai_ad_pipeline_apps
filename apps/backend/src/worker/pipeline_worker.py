@@ -9,6 +9,13 @@ import time
 import traceback
 from pathlib import Path
 
+from ml.pipeline.scripts.config import PipelineConfig
+from ml.pipeline.scripts.runner import (
+    PipelineModels,
+    load_pipeline_models,
+    run_pipeline,
+)
+
 from application.interfaces import PipelineRunRepository, WorkerObjectStorage
 from domain.entities import (
     PipelineRunStage,
@@ -20,15 +27,8 @@ from infrastructure.repositories.sql_pipeline_run_repository import (
     SqlPipelineRunRepository,
 )
 from infrastructure.storage.minio_storage import MinioStorage
-from ml.pipeline.scripts.config import PipelineConfig
-from ml.pipeline.scripts.runner import (
-    PipelineModels,
-    load_pipeline_models,
-    run_pipeline,
-)
 from settings.factory import get_settings
 from worker.progress import DatabaseProgressReporter
-
 
 logger = logging.getLogger("pipeline-worker")
 
@@ -87,7 +87,6 @@ class PipelineWorker:
                     output_dir=output_path,
                     detector_model_path=self._config.pipeline.detector_model_path,
                     classifier_model_path=(self._config.pipeline.classifier_model_path),
-                    brand_overrides_path=self._config.pipeline.brand_overrides_path,
                     run_id=run.run_id,
                     frame_stride=self._config.pipeline.frame_stride,
                     device=self._config.pipeline.device,

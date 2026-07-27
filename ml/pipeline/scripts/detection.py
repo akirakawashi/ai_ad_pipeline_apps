@@ -8,7 +8,7 @@ from ultralytics import YOLO
 
 from .config import PipelineConfig
 from .schemas import DetectionRecord, FrameRecord, InputMetadata
-from .visibility import fill_geometry_fields
+from .scoring import fill_detection_scoring
 
 
 def load_detector(config: PipelineConfig) -> YOLO:
@@ -83,10 +83,8 @@ def run_detection(
                     center_y=0.0,
                     center_x_norm=0.0,
                     center_y_norm=0.0,
-                    position_label="",
-                    position_weight=0.0,
                 )
-                fill_geometry_fields(detection, frame, config)
+                fill_detection_scoring(detection, frame, config)
                 detections.append(detection)
                 frame_det_index += 1
 

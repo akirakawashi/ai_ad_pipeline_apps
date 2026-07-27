@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-
 healthcheck_router = APIRouter(tags=["Service"])
 
 

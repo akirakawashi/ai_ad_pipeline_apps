@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 from pipeline_contracts.domain import (
-    IGNORE_BRAND,
     OTHER_BRAND,
     TARGET_BRANDS,
-    VALID_OVERRIDE_BRANDS,
     BrandStatus,
     ClassificationInputStatus,
     CropQualityStatus,
@@ -15,10 +13,8 @@ from pipeline_contracts.domain import (
 )
 
 __all__ = [
-    "IGNORE_BRAND",
     "OTHER_BRAND",
     "TARGET_BRANDS",
-    "VALID_OVERRIDE_BRANDS",
     "BrandStatus",
     "ClassificationInputStatus",
     "CropQualityStatus",

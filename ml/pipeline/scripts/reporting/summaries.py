@@ -41,7 +41,7 @@ def write_summaries(
                 max_brand_conf=("brand_conf", "max"),
                 first_timestamp_sec=("timestamp_sec", "min"),
                 last_timestamp_sec=("timestamp_sec", "max"),
-                sum_video_visibility_score=("video_visibility_score", "sum"),
+                sum_intensity=("intensity", "sum"),
             )
             .reset_index()
             .rename(columns={"business_brand": "brand"})
@@ -60,7 +60,7 @@ def write_summaries(
                 plus7_count=("business_brand", lambda s: int((s == "plus7").sum())),
                 miranda_count=("business_brand", lambda s: int((s == "miranda").sum())),
                 other_count=("business_brand", lambda s: int((s == "other").sum())),
-                sum_video_visibility_score=("video_visibility_score", "sum"),
+                sum_intensity=("intensity", "sum"),
             )
             .reset_index()
         )
@@ -78,13 +78,8 @@ def write_summaries(
         visible_tracks_df.groupby(["object_id", "business_brand"], dropna=False)
         .agg(
             track_fragment_count=("track_id", "count"),
-            mean_track_final_score=("track_final_score", "mean"),
-            mean_video_visibility_score=("mean_video_visibility_score", "mean"),
-            sum_video_visibility_score=("sum_video_visibility_score", "sum"),
-            video_visibility_weighted_seconds=(
-                "video_visibility_weighted_seconds",
-                "sum",
-            ),
+            sum_visibility_value=("visibility_value", "sum"),
+            sum_attention_seconds=("attention_seconds", "sum"),
             mean_final_brand_conf=("final_brand_conf", "mean"),
             max_final_brand_conf=("final_brand_conf", "max"),
             first_timestamp_sec=("first_timestamp_sec", "min"),
@@ -97,13 +92,8 @@ def write_summaries(
         .agg(
             object_count=("object_id", "count"),
             track_fragment_count=("track_fragment_count", "sum"),
-            mean_track_final_score=("mean_track_final_score", "mean"),
-            mean_video_visibility_score=("mean_video_visibility_score", "mean"),
-            sum_video_visibility_score=("sum_video_visibility_score", "sum"),
-            video_visibility_weighted_seconds=(
-                "video_visibility_weighted_seconds",
-                "sum",
-            ),
+            sum_visibility_value=("sum_visibility_value", "sum"),
+            sum_attention_seconds=("sum_attention_seconds", "sum"),
             mean_final_brand_conf=("mean_final_brand_conf", "mean"),
             max_final_brand_conf=("max_final_brand_conf", "max"),
             first_timestamp_sec=("first_timestamp_sec", "min"),

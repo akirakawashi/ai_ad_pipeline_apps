@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Path, Query
 
-from domain.entities import PipelineRunStatus
 from application.services.pipeline_run_service import PipelineRunService
+from domain.entities import PipelineRunStatus
 from presentation.http.dependencies import get_run_service
 from presentation.http.dto.response import (
     ArtifactUrlResponse,
@@ -18,8 +18,8 @@ from presentation.http.dto.response import (
     RunObjectsResponse,
     RunSummaryResponse,
     RunTimelineResponse,
+    UpdateShootingRequest,
 )
-
 
 router = APIRouter(prefix="/runs", tags=["Pipeline Runs"])
 
@@ -33,8 +33,21 @@ def create_run(
         file_name=request.file_name,
         content_type=request.content_type,
         size_bytes=request.size_bytes,
+        assignment_id=request.assignment_id,
+        shot_started_at=request.shot_started_at,
+        operator_user_id=request.operator_user_id,
     )
     return OkResponse(data=CreateRunResponse.model_validate(result))
+
+
+@router.patch("/{run_id}", response_model=OkResponse[PipelineRunResponse])
+def update_shooting(
+    payload: UpdateShootingRequest,
+    run_id: str = Path(description="Идентификатор съёмки"),
+    service: PipelineRunService = Depends(get_run_service),
+) -> OkResponse[PipelineRunResponse]:
+    result = service.update_shooting(run_id, fields=payload.changed_fields())
+    return OkResponse(data=PipelineRunResponse.model_validate(result))
 
 
 @router.post(
@@ -54,12 +67,23 @@ def list_runs(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     status: PipelineRunStatus | None = Query(default=None),
+    city_id: str | None = Query(default=None),
+    route_id: str | None = Query(default=None),
+    assignment_id: str | None = Query(default=None),
+    assigned: bool | None = Query(
+        default=None,
+        description="false — только видео без маршрута",
+    ),
     service: PipelineRunService = Depends(get_run_service),
 ) -> OkResponse[PaginatedRunsResponse]:
     result = service.list_runs(
         page=page,
         page_size=page_size,
         status=status,
+        city_id=city_id,
+        route_id=route_id,
+        assignment_id=assignment_id,
+        assigned=assigned,
     )
     return OkResponse(data=PaginatedRunsResponse.model_validate(result))
 

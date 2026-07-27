@@ -597,13 +597,13 @@ function OverlayCard({
     },
     {
       icon: 'visibility',
-      label: 'Индекс видимости',
-      value: formatScore(object.visibility_score),
+      label: 'Интенсивность',
+      value: formatScore(object.intensity),
     },
     {
       icon: 'score',
       label: 'Итоговый балл',
-      value: formatScore(object.overall_score),
+      value: formatScore(object.visibility_value),
     },
   ]
 

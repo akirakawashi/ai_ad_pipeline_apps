@@ -8,16 +8,10 @@ from statistics import mean
 from .config import PipelineConfig
 from .domain import FinalStatus, TARGET_BRANDS
 from .schemas import DetectionRecord, TrackRecord
-
-
-def aggregate_tracks(
-    detections: list[DetectionRecord],
-    config: PipelineConfig,
-) -> list[TrackRecord]:
-    """Compatibility wrapper that builds tracks and propagates their results."""
-    tracks = build_tracks(detections, config)
-    apply_track_results(tracks, detections)
-    return tracks
+from .scoring import (
+    attention_seconds,
+    confidence_coefficient,
+)
 
 
 def build_tracks(
@@ -54,7 +48,6 @@ def apply_track_results(
         detection.final_status = track.final_status
         detection.business_brand = track.business_brand
         detection.status_reason = track.final_status_reason
-        detection.overall_score = compute_detection_overall_score(detection)
 
 
 def _aggregate_one(
@@ -88,19 +81,8 @@ def _aggregate_one(
     if visible_duration_sec < 0:
         visible_duration_sec = 0.0
 
-    mean_det_conf = mean(detection.det_conf for detection in detections)
-    best_crop_quality_score = max(
-        detection.crop_quality_score for detection in detections
-    )
-    mean_video_visibility_score = mean(
-        detection.video_visibility_score for detection in detections
-    )
-    track_final_score = (
-        0.30 * mean_det_conf
-        + 0.25 * best_crop_quality_score
-        + 0.25 * final_conf
-        + 0.20 * mean_video_visibility_score
-    )
+    object_attention_seconds = attention_seconds(detections)
+    object_confidence_coef = confidence_coefficient(detections, final_conf, config)
 
     return TrackRecord(
         run_id=detections[0].run_id,
@@ -113,37 +95,17 @@ def _aggregate_one(
         last_timestamp_sec=detections[-1].timestamp_sec,
         visible_duration_sec=visible_duration_sec,
         detections_count=len(detections),
-        classified_crops_count=len(classified),
         best_crop_path=best_detection.crop_path,
-        best_frame_index=best_detection.frame_index,
         best_timestamp_sec=best_detection.timestamp_sec,
-        mean_det_conf=mean_det_conf,
-        max_det_conf=max(detection.det_conf for detection in detections),
-        mean_crop_quality_score=mean(
-            detection.crop_quality_score for detection in detections
-        ),
-        best_crop_quality_score=best_crop_quality_score,
-        max_area_ratio=max(detection.area_ratio for detection in detections),
-        mean_area_ratio=mean(detection.area_ratio for detection in detections),
-        sum_area_ratio=sum(detection.area_ratio for detection in detections),
-        mean_position_weight=mean(
-            detection.position_weight for detection in detections
-        ),
-        mean_video_visibility_score=mean_video_visibility_score,
-        sum_video_visibility_score=sum(
-            detection.video_visibility_score for detection in detections
-        ),
-        video_visibility_weighted_seconds=sum(
-            detection.video_visibility_weighted_seconds for detection in detections
-        ),
+        attention_seconds=object_attention_seconds,
+        confidence_coef=object_confidence_coef,
         final_brand=final_brand,
         final_brand_conf=final_conf,
         final_status=final_status,
-        business_brand=_business_brand(final_brand, final_status, final_reason),
+        business_brand=_business_brand(final_brand, final_status),
         business_visible=False,
         final_status_reason=final_reason,
         track_confirmed=track_confirmed,
-        track_final_score=track_final_score,
         manual_review_required=final_status == FinalStatus.MANUAL_REVIEW,
     )
 
@@ -210,17 +172,13 @@ def _aggregate_brand(
     return "", top_conf, FinalStatus.UNKNOWN, "brand_conf_low"
 
 
-def _business_brand(
-    final_brand: str,
-    final_status: FinalStatus,
-    final_reason: str,
-) -> str:
-    if final_reason.startswith("manual_override:"):
-        return (
-            final_brand
-            if final_brand in TARGET_BRANDS or final_brand == "other"
-            else "other"
-        )
+def _business_brand(final_brand: str, final_status: FinalStatus) -> str:
+    """Наружу отдаём только «наш бренд» либо «other».
+
+    Всё, в чём модель не уверена (UNKNOWN, MANUAL_REVIEW, NOT_CLASSIFIED),
+    схлопывается в other намеренно: пользователю нужен ответ «телеком или нет»,
+    а не градации уверенности.
+    """
     if final_status == FinalStatus.DETECTED_BRAND and final_brand in TARGET_BRANDS:
         return final_brand
     if final_status == FinalStatus.OTHER and final_brand == "other":
@@ -260,21 +218,6 @@ def _is_track_confirmed(
     return (
         len(detections) >= config.tracking.min_detections
         and frame_span >= config.tracking.min_frame_span
-    )
-
-
-def compute_detection_overall_score(detection: DetectionRecord) -> float:
-    if detection.classification_attempted:
-        return (
-            0.30 * detection.det_conf
-            + 0.30 * detection.crop_quality_score
-            + 0.25 * detection.brand_conf
-            + 0.15 * detection.video_visibility_score
-        )
-    return (
-        0.40 * detection.det_conf
-        + 0.40 * detection.crop_quality_score
-        + 0.20 * detection.video_visibility_score
     )
 
 

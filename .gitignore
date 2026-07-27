@@ -32,16 +32,8 @@ wheels/
 input_video/
 output_video/
 outputs/
-ml/runs/
 reports/metrics/
-ml/data/classification/
 ml/data/pipeline/input/
-ml/data/detection/videos/
-ml/data/detection/yolo/
-data/prelabel/
-data/cvat_exports/
-data/yolo/
-cvat_import/
 
 .env
 .runtime/

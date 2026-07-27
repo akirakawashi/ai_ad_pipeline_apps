@@ -20,10 +20,10 @@ export function ProcessingPage({ run }: { run: PipelineRun }) {
         description={run.status_message ?? 'Ждём первый статус от обработчика'}
         actions={
           <div className="page-actions">
-            <button className="secondary" onClick={() => navigate('/runs')}>
-              В архив
+            <button className="secondary" onClick={() => navigate('/videos')}>
+              Все видео
             </button>
-            <button className="primary" onClick={() => navigate('/runs/new')}>
+            <button className="primary" onClick={() => navigate('/upload')}>
               Добавить видео
             </button>
           </div>

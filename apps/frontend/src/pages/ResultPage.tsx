@@ -6,7 +6,9 @@ import {
   getRunSummary,
   getRunTimeline,
 } from '../api'
+import { GeozoneMarker } from '../components/GeozoneMarker'
 import { RunCharts } from '../components/RunCharts'
+import { ShootingFacts } from '../components/ShootingFacts'
 import { VideoOverlayPlayer } from '../components/VideoOverlayPlayer'
 import { EmptyState, ErrorBanner } from '../components/common/Feedback'
 import { Metric } from '../components/common/Metric'
@@ -28,13 +30,22 @@ import type {
 } from '../types'
 import { formatDuration, formatNumber } from '../utils/formatters'
 
-export function ResultPage({ run }: { run: PipelineRun }) {
+export function ResultPage({
+  run,
+  initialSeek,
+  onRunUpdated,
+}: {
+  run: PipelineRun
+  /** Приходит из ?t= — переход с топа объектов задания на нужный кадр. */
+  initialSeek?: number
+  onRunUpdated: (run: PipelineRun) => void
+}) {
   const [summary, setSummary] = useState<RunSummary | null>(null)
   const [objects, setObjects] = useState<RunObjects | null>(null)
   const [timeline, setTimeline] = useState<RunTimeline | null>(null)
   const [playback, setPlayback] = useState<Playback | null>(null)
   const [overlay, setOverlay] = useState<OverlayPayload | null>(null)
-  const [seek, setSeek] = useState<number | null>(null)
+  const [seek, setSeek] = useState<number | null>(initialSeek ?? null)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
 
@@ -81,23 +92,37 @@ export function ResultPage({ run }: { run: PipelineRun }) {
   return (
     <div className="page">
       <PageHeader
-        eyebrow="Результат анализа"
+        eyebrow={
+          run.assignment
+            ? `${run.assignment.city.name} · ${run.assignment.route.name} · ${run.assignment.title}`
+            : 'Результат анализа'
+        }
         title={run.source_name}
         description={`${formatDuration(run.duration_sec)} · ${run.width ?? 0}×${run.height ?? 0}`}
         actions={
           <div className="page-actions">
-            <button className="secondary" onClick={() => navigate('/runs')}>
-              В архив
+            {run.assignment && (
+              <button
+                className="secondary"
+                onClick={() => navigate(`/assignments/${run.assignment!.assignment_id}`)}
+              >
+                К заданию
+              </button>
+            )}
+            <button className="secondary" onClick={() => navigate('/videos')}>
+              Все видео
             </button>
             <button className="secondary" onClick={() => void copyResultLink()}>
               {copied ? 'Скопировано' : 'Копировать ссылку'}
             </button>
-            <button className="primary" onClick={() => navigate('/runs/new')}>
+            <button className="primary" onClick={() => navigate('/upload')}>
               Добавить видео
             </button>
           </div>
         }
       />
+
+      <ShootingFacts run={run} onUpdated={onRunUpdated} />
 
       {summary ? (
         <div className="summary-grid">
@@ -125,6 +150,15 @@ export function ResultPage({ run }: { run: PipelineRun }) {
         </section>
       ) : (
         <PlayerSkeleton />
+      )}
+
+      {run.assignment && playback?.source_url && (
+        <GeozoneMarker
+          citySlug={run.assignment.city.slug}
+          routeSlug={run.assignment.route.slug}
+          routeName={run.assignment.route.name}
+          sourceUrl={playback.source_url}
+        />
       )}
 
       {summary && timeline && (

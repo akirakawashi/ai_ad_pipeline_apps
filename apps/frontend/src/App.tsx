@@ -1,29 +1,37 @@
 import { useEffect, useState } from 'react'
 import logoUrl from './assets/aisigroup-logo.png'
 import markUrl from './assets/aisigroup-mark.png'
+import { AssignmentPage } from './pages/AssignmentPage'
+import { CatalogPage } from './pages/CatalogPage'
 import { CitiesPage } from './pages/CitiesPage'
+import { CityPage } from './pages/CityPage'
 import { LandingPage } from './pages/LandingPage'
-import { RouteUploadPage } from './pages/RouteUploadPage'
-import { RoutesPage } from './pages/RoutesPage'
+import { RoutePage } from './pages/RoutePage'
 import { RunPage } from './pages/RunPage'
-import { RunsPage } from './pages/RunsPage'
 import { UploadPage } from './pages/UploadPage'
+import { VideosPage } from './pages/VideosPage'
 import {
   currentRoute,
   navigate,
+  uploadPath,
   type Route,
 } from './routing'
 import './App.css'
 
 function backlink(route: Route): { label: string; to: string } | null {
-  if (route.page === 'new' || route.page === 'run') {
-    return { label: '← Назад к архиву', to: '/runs' }
+  if (route.page === 'run') {
+    return { label: '← Назад к видео', to: '/videos' }
   }
-  if (route.page === 'routes') {
-    return { label: '← Назад к городам', to: '/routes' }
+  if (route.page === 'upload') {
+    return route.citySlug
+      ? { label: '← Назад к маршруту', to: `/archive/${route.citySlug}` }
+      : { label: '← Назад к видео', to: '/videos' }
   }
-  if (route.page === 'route-upload') {
-    return { label: '← Назад к маршруту', to: `/routes/${route.cityId}` }
+  if (route.page === 'city') {
+    return { label: '← Назад к городам', to: '/archive' }
+  }
+  if (route.page === 'route') {
+    return { label: '← Назад к городу', to: `/archive/${route.citySlug}` }
   }
   return null
 }
@@ -36,6 +44,13 @@ function App() {
     window.addEventListener('popstate', update)
     return () => window.removeEventListener('popstate', update)
   }, [])
+
+  const back = backlink(route)
+  const archiveActive =
+    route.page === 'archive' ||
+    route.page === 'city' ||
+    route.page === 'route' ||
+    route.page === 'assignment'
 
   return (
     <div className="app-shell">
@@ -54,29 +69,25 @@ function App() {
             Продукт
           </button>
           <button
-            className={route.page === 'runs' ? 'active' : ''}
-            onClick={() => navigate('/runs')}
-          >
-            <span>▦</span>
-            Архив
-          </button>
-          <button
-            className={
-              route.page === 'cities' || route.page === 'routes' || route.page === 'route-upload'
-                ? 'active'
-                : ''
-            }
-            onClick={() => navigate('/routes')}
+            className={archiveActive ? 'active' : ''}
+            onClick={() => navigate('/archive')}
           >
             <span>⚑</span>
-            Маршруты
+            Города
           </button>
           <button
-            className={route.page === 'new' ? 'active' : ''}
-            onClick={() => navigate('/runs/new')}
+            className={route.page === 'catalog' ? 'active' : ''}
+            onClick={() => navigate('/catalog')}
           >
-            <span>↑</span>
-            Новое видео
+            <span>▦</span>
+            Каталог
+          </button>
+          <button
+            className={route.page === 'videos' || route.page === 'run' ? 'active' : ''}
+            onClick={() => navigate('/videos')}
+          >
+            <span>▦</span>
+            Все видео
           </button>
         </nav>
       </aside>
@@ -92,36 +103,57 @@ function App() {
                 <img src={logoUrl} alt="АИСИ ГРУПП" />
               </button>
             </div>
-            <div className="topbar-status">
-              <span />
-              Сервис активен
+            <div className="topbar-right">
+              <button
+                className="primary topbar-upload"
+                onClick={() => navigate(uploadPath())}
+              >
+                ↑ Загрузить видео
+              </button>
             </div>
           </div>
         </header>
         <main className="workspace-main">
-          {backlink(route) && (
+          {back && (
             <div className="workspace-backline">
               <button
                 className="workspace-backlink"
-                onClick={() => navigate(backlink(route)!.to)}
+                onClick={() => navigate(back.to)}
               >
-                {backlink(route)!.label}
+                {back.label}
               </button>
             </div>
           )}
           {route.page === 'home' && <LandingPage />}
-          {route.page === 'runs' && <RunsPage />}
-          {route.page === 'cities' && <CitiesPage />}
-          {route.page === 'routes' && <RoutesPage key={route.cityId} cityId={route.cityId} />}
-          {route.page === 'route-upload' && (
-            <RouteUploadPage
-              key={`${route.cityId}/${route.routeId}`}
-              cityId={route.cityId}
-              routeId={route.routeId}
+          {route.page === 'archive' && <CitiesPage />}
+          {route.page === 'catalog' && <CatalogPage />}
+          {route.page === 'city' && (
+            <CityPage key={route.citySlug} citySlug={route.citySlug} />
+          )}
+          {route.page === 'route' && (
+            <RoutePage
+              key={`${route.citySlug}/${route.routeSlug}`}
+              citySlug={route.citySlug}
+              routeSlug={route.routeSlug}
             />
           )}
-          {route.page === 'new' && <UploadPage />}
-          {route.page === 'run' && <RunPage runId={route.runId} />}
+          {route.page === 'assignment' && (
+            <AssignmentPage key={route.assignmentId} assignmentId={route.assignmentId} />
+          )}
+          {route.page === 'videos' && (
+            <VideosPage filters={route.filters} />
+          )}
+          {route.page === 'upload' && (
+            <UploadPage
+              key={`${route.citySlug ?? ''}/${route.routeSlug ?? ''}/${route.assignmentId ?? ''}`}
+              citySlug={route.citySlug}
+              routeSlug={route.routeSlug}
+              assignmentId={route.assignmentId}
+            />
+          )}
+          {route.page === 'run' && (
+            <RunPage key={route.runId} runId={route.runId} seek={route.seek} />
+          )}
         </main>
       </div>
     </div>

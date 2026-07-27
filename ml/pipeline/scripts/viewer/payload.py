@@ -67,8 +67,8 @@ def build_overlay_payload(
                 "det_conf",
                 "brand_conf",
                 "area_ratio",
-                "visibility_score",
-                "overall_score",
+                "intensity",
+                "visibility_value",
             ],
         ),
         frames=frames,
@@ -82,7 +82,13 @@ def detection_to_overlay_object(
     brand = (track.business_brand if track else detection.business_brand) or "other"
     style = BRAND_STYLES.get(brand, BRAND_STYLES["other"])
     brand_conf = track.final_brand_conf if track else detection.brand_conf
-    overall_score = track.track_final_score if track else detection.overall_score
+    # Карточка оверлея — физика S·α, без β: значимость места живёт на бэкенде,
+    # а карточка показывает, сколько внимания щит забрал сам по себе.
+    object_value = (
+        track.attention_seconds * track.confidence_coef
+        if track
+        else detection.intensity
+    )
 
     return OverlayObjectPayload(
         object_id=detection.object_id,
@@ -99,15 +105,15 @@ def detection_to_overlay_object(
         det_conf=round(detection.det_conf, 4),
         brand_conf=round(brand_conf, 4),
         area_ratio=round(detection.area_ratio, 6),
-        visibility_score=round(detection.video_visibility_score, 4),
-        overall_score=round(overall_score, 4),
-        card_priority=card_priority(brand, detection.area_ratio, overall_score),
+        intensity=round(detection.intensity, 4),
+        visibility_value=round(object_value, 4),
+        card_priority=card_priority(brand, detection.area_ratio, object_value),
     )
 
 
-def card_priority(brand: str, area_ratio: float, overall_score: float) -> float:
+def card_priority(brand: str, area_ratio: float, value: float) -> float:
     brand_weight = 1000.0 if brand in TARGET_BRANDS else 0.0
-    return brand_weight + 100.0 * area_ratio + overall_score
+    return brand_weight + 100.0 * area_ratio + value
 
 
 def frame_timestamp(frame_index: int, metadata: InputMetadata) -> float:
