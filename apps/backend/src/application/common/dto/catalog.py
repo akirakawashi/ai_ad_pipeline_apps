@@ -30,6 +30,8 @@ class RouteDTO(ApplicationDTO):
     description: str | None = None
     has_geometry: bool = False
     display_order: int
+    # Скрытый маршрут пропадает из выбора, его задания и съёмки остаются.
+    is_active: bool = True
     assignment_count: int = 0
     video_count: int = 0
 
@@ -59,6 +61,9 @@ class CityDTO(ApplicationDTO):
     region: str | None
     has_roads_geometry: bool = False
     display_order: int
+    # Скрытый город не виден никому, кроме справочников: там его показывают
+    # приглушённым, чтобы было чем вернуть. Удаления города нет вовсе.
+    is_active: bool = True
     route_count: int = 0
     assignment_count: int = 0
     video_count: int = 0
@@ -162,18 +167,32 @@ class RouteShootingMetricsDTO(ShootingMetricsDTO):
 
 
 class MetricStatDTO(ApplicationDTO):
-    """Величина «на съёмку»: среднее и разброс между съёмками."""
+    """Величина «на съёмку»: две оценки центра и разброс между съёмками.
+
+    Среднее и медиана считаются сразу обе, потому что выбор между ними — вопрос
+    показа, а не пересчёта: список съёмок один и тот же, разница только в способе
+    его свернуть. Ходить на сервер ради переключения тумблера незачем.
+
+    Разброс общий для обеих: σ описывает саму выборку съёмок — насколько
+    разошлись проезды, — а не ту оценку центра, которую сейчас смотрят.
+    """
 
     mean: float = 0.0
+    median: float = 0.0
     std: float = 0.0
 
 
 class RollupBrandDTO(ApplicationDTO):
+    """Бренд в свёртке. Доли здесь нет намеренно.
+
+    Доля бренда зависит от того, среднее сейчас смотрят или медиану, а этот
+    выбор живёт в интерфейсе. Считать её на сервере значило бы отдавать две
+    доли и надеяться, что фронт возьмёт ту же, что и для плиток.
+    """
+
     brand: str
     objects_per_shooting: MetricStatDTO = Field(default_factory=MetricStatDTO)
     visibility_per_shooting: MetricStatDTO = Field(default_factory=MetricStatDTO)
-    # Доля от суммы средних по всем брендам свёртки.
-    visibility_share: float = 0.0
 
 
 class RollupTotalsDTO(ApplicationDTO):

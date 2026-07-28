@@ -55,6 +55,8 @@ export interface Route {
   /** Есть ли залитая линия. Сама геометрия — отдельным запросом: она тяжёлая. */
   has_geometry: boolean
   display_order: number
+  /** false — маршрут скрыт: пропал из выбора, его задания и съёмки на месте. */
+  is_active: boolean
   assignment_count: number
   video_count: number
 }
@@ -67,6 +69,8 @@ export interface City {
   /** Есть ли залитый дорожный слой. Сам слой — до полутора мегабайт, отдельно. */
   has_roads_geometry: boolean
   display_order: number
+  /** false — город скрыт: виден только в справочниках, чтобы было чем вернуть. */
+  is_active: boolean
   route_count: number
   assignment_count: number
   video_count: number
@@ -89,6 +93,8 @@ export interface CityUpdatePayload {
   name?: string
   region?: string | null
   display_order?: number
+  /** Скрыть/показать. Удаления города нет — снос утащил бы задания и съёмки. */
+  is_active?: boolean
 }
 
 export interface RoutePayload {
@@ -106,6 +112,8 @@ export interface RouteUpdatePayload {
   color_hex?: string | null
   description?: string | null
   display_order?: number
+  /** Скрыть/показать. Удаления маршрута нет. */
+  is_active?: boolean
 }
 
 export interface AssignmentStatusCounts {
@@ -156,9 +164,17 @@ export interface AssignmentsPage {
   total: number
 }
 
-/** Величина «на съёмку»: среднее и разброс между съёмками. */
+/** Что считаем «типичной» съёмкой. Выбор живёт только на фронте. */
+export type Aggregate = 'mean' | 'median'
+
+/**
+ * Величина «на съёмку»: две оценки центра и разброс между съёмками. Сервер
+ * отдаёт обе сразу — переключение это показ, а не пересчёт. Разброс общий:
+ * он про то, как разошлись проезды, а не про выбранную оценку.
+ */
 export interface MetricStat {
   mean: number
+  median: number
   std: number
 }
 
@@ -188,11 +204,11 @@ export interface RouteShootingMetrics extends ShootingMetrics {
   assignment: RunAssignmentRef
 }
 
+/** Доли здесь нет: она зависит от выбранной оценки и считается на месте показа. */
 export interface RollupBrand {
   brand: string
   objects_per_shooting: MetricStat
   visibility_per_shooting: MetricStat
-  visibility_share: number
 }
 
 export interface RollupTotals {

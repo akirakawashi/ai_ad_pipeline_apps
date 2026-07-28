@@ -145,6 +145,50 @@ def test_mean_is_flat_over_shootings(client, summary_url, two_assignments):
     assert totals["duration_sec"] == pytest.approx(160.0)
 
 
+def test_median_ships_alongside_mean(client, summary_url, two_assignments):
+    """Обе оценки центра приходят одним ответом — переключатель ничего не грузит.
+
+    Те же четыре съёмки: 100, 100, 100 и 20. Среднее тянется к выбившемуся
+    проезду, медиана его не замечает; ради этой разницы выбор и сделали.
+    """
+    stat = payload(client.get(summary_url))["totals"]["visibility_per_shooting"]
+    assert stat["mean"] == pytest.approx(80.0)
+    assert stat["median"] == pytest.approx(100.0)
+    # Разброс общий для обеих оценок: он про сами съёмки, а не про способ свёртки.
+    assert stat["std"] == pytest.approx(40.0)
+
+
+def test_brand_median_ignores_the_single_lucky_pass(
+    client, storage, summary_url, assignments_url
+):
+    """Бренд, попавшийся в одну съёмку из трёх: среднее его видит, медиана — нет.
+
+    Оба ответа верные, но отвечают на разные вопросы: «20 в среднем за проезд» и
+    «в типичном проезде его не видно». Заодно проверяем, что доли в ответе нет:
+    она зависит от выбранной оценки и считается там, где живёт выбор.
+    """
+    assignment_id = payload(client.post(assignments_url, json={}))["id"]
+    for index, brands_visibility in enumerate(
+        ({"mts": 100.0, "plus7": 60.0}, {"mts": 100.0}, {"mts": 100.0}),
+        start=1,
+    ):
+        _seed_shooting(
+            storage,
+            run_id=f"run-luck-{index}",
+            assignment_id=assignment_id,
+            shot_started_at=f"2026-05-0{index}T09:00:00+00:00",
+            brands_visibility=brands_visibility,
+        )
+    plus7 = next(
+        row
+        for row in payload(client.get(summary_url))["brands"]
+        if row["brand"] == "plus7"
+    )
+    assert plus7["visibility_per_shooting"]["mean"] == pytest.approx(20.0)
+    assert plus7["visibility_per_shooting"]["median"] == pytest.approx(0.0)
+    assert "visibility_share" not in plus7
+
+
 def test_lists_every_shooting_with_its_assignment(client, summary_url, two_assignments):
     data = payload(client.get(summary_url))
     shootings = data["shootings"]

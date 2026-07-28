@@ -36,6 +36,51 @@ interface ApiEnvelope<T> {
   data: T
 }
 
+/**
+ * Пароль справочников. Проверяет его бэкенд — здесь только хранение на время
+ * вкладки и подстановка заголовка. sessionStorage, а не localStorage: закрыл
+ * вкладку — вошёл заново, на общем компьютере это важнее удобства.
+ *
+ * Настоящая защита в том, что админские эндпоинты отвечают 401 сами. Эта форма
+ * лишь избавляет от системного окна браузера.
+ */
+const ADMIN_STORAGE_KEY = 'admin-basic-auth'
+
+let adminToken: string | null = sessionStorage.getItem(ADMIN_STORAGE_KEY)
+
+function basicToken(login: string, password: string): string {
+  // btoa не умеет ничего за пределами latin1, поэтому кодируем сами.
+  const bytes = new TextEncoder().encode(`${login}:${password}`)
+  return btoa(Array.from(bytes, (byte) => String.fromCharCode(byte)).join(''))
+}
+
+function adminHeaders(): Record<string, string> {
+  return adminToken ? { Authorization: `Basic ${adminToken}` } : {}
+}
+
+export function hasAdminSession(): boolean {
+  return adminToken !== null
+}
+
+export function forgetAdminSession(): void {
+  adminToken = null
+  sessionStorage.removeItem(ADMIN_STORAGE_KEY)
+}
+
+/** Проверяет пару на бэкенде и запоминает её только если он ответил 204. */
+export async function signInAdmin(login: string, password: string): Promise<void> {
+  const token = basicToken(login, password)
+  const response = await fetch(`${API_BASE}/admin/session`, {
+    headers: { Authorization: `Basic ${token}` },
+  })
+  if (!response.ok) {
+    const body = await response.json().catch(() => null)
+    throw new Error(body?.detail ?? 'Не удалось войти в справочники.')
+  }
+  adminToken = token
+  sessionStorage.setItem(ADMIN_STORAGE_KEY, token)
+}
+
 async function apiFetch<T>(
   path: string,
   options?: RequestInit,
@@ -44,10 +89,13 @@ async function apiFetch<T>(
     ...options,
     headers: {
       'Content-Type': 'application/json',
+      ...adminHeaders(),
       ...options?.headers,
     },
   })
   if (!response.ok) {
+    // Пароль сменили или сессию не приняли — форма входа должна вернуться.
+    if (response.status === 401) forgetAdminSession()
     const payload = await response.json().catch(() => null)
     throw new Error(payload?.detail ?? `HTTP ${response.status}`)
   }
@@ -160,12 +208,19 @@ export function createUser(fullName: string): Promise<User> {
   })
 }
 
-export function getCities(): Promise<City[]> {
-  return apiFetch('/cities')
+/**
+ * Список городов. `includeInactive` включают только справочники на /admin:
+ * скрытый город обычному пользователю не виден нигде, но вернуть его надо
+ * откуда-то — удаления города нет.
+ */
+export function getCities(includeInactive = false): Promise<City[]> {
+  return apiFetch(`/cities${includeInactive ? '?include_inactive=true' : ''}`)
 }
 
-export function getCity(citySlug: string): Promise<CityDetail> {
-  return apiFetch(`/cities/${citySlug}`)
+/** `includeInactive` здесь про маршруты города — сам город отдаётся и скрытым. */
+export function getCity(citySlug: string, includeInactive = false): Promise<CityDetail> {
+  const query = includeInactive ? '?include_inactive=true' : ''
+  return apiFetch(`/cities/${citySlug}${query}`)
 }
 
 // --- справочники городов и маршрутов --------------------------------------
@@ -182,10 +237,6 @@ export function updateCity(
     method: 'PATCH',
     body: JSON.stringify(payload),
   })
-}
-
-export function deactivateCity(citySlug: string): Promise<void> {
-  return apiDelete(`/cities/${citySlug}`)
 }
 
 export function createRoute(
@@ -207,10 +258,6 @@ export function updateRoute(
     method: 'PATCH',
     body: JSON.stringify(payload),
   })
-}
-
-export function deactivateRoute(citySlug: string, routeSlug: string): Promise<void> {
-  return apiDelete(`/cities/${citySlug}/routes/${routeSlug}`)
 }
 
 /**
@@ -248,12 +295,20 @@ async function uploadGeometry<T>(path: string, file: File): Promise<T> {
   // Content-Type не ставим руками — браузер сам допишет boundary.
   const form = new FormData()
   form.append('file', file)
-  const response = await fetch(`${API_BASE}${path}`, { method: 'PUT', body: form })
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: 'PUT',
+    body: form,
+    headers: adminHeaders(),
+  })
   const body = await response.json().catch(() => null)
-  if (!response.ok) throw new Error(body?.detail ?? `HTTP ${response.status}`)
+  if (!response.ok) {
+    if (response.status === 401) forgetAdminSession()
+    throw new Error(body?.detail ?? `HTTP ${response.status}`)
+  }
   return (body as ApiEnvelope<T>).data
 }
 
+/** DELETE отдаёт 204 без тела — apiFetch ждёт конверт, поэтому отдельная обёртка. */
 async function apiDelete(path: string): Promise<void> {
   const response = await fetch(`${API_BASE}${path}`, { method: 'DELETE' })
   if (!response.ok) {
@@ -337,15 +392,8 @@ export function updateGeozone(
   })
 }
 
-export async function deleteGeozone(geozoneId: string): Promise<void> {
-  // DELETE отдаёт 204 без тела — apiFetch ждёт конверт, поэтому отдельно.
-  const response = await fetch(`${API_BASE}/geozones/${geozoneId}`, {
-    method: 'DELETE',
-  })
-  if (!response.ok) {
-    const payload = await response.json().catch(() => null)
-    throw new Error(payload?.detail ?? `HTTP ${response.status}`)
-  }
+export function deleteGeozone(geozoneId: string): Promise<void> {
+  return apiDelete(`/geozones/${geozoneId}`)
 }
 
 export function getRun(runId: string): Promise<PipelineRun> {
@@ -417,13 +465,6 @@ export function restoreCatalogImport(importId: string): Promise<CatalogImport> {
   return apiFetch(`/catalog/imports/${importId}/restore`, { method: 'POST' })
 }
 
-export async function deleteCatalogImport(importId: string): Promise<void> {
-  // DELETE отдаёт 204 без тела — apiFetch ждёт конверт, поэтому отдельно.
-  const response = await fetch(`${API_BASE}/catalog/imports/${importId}`, {
-    method: 'DELETE',
-  })
-  if (!response.ok) {
-    const body = await response.json().catch(() => null)
-    throw new Error(body?.detail ?? `HTTP ${response.status}`)
-  }
+export function deleteCatalogImport(importId: string): Promise<void> {
+  return apiDelete(`/catalog/imports/${importId}`)
 }

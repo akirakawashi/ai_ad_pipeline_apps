@@ -1,23 +1,19 @@
+import { useState } from 'react'
 import { Metric } from './common/Metric'
+import { AggregateToggle } from './common/AggregateToggle'
 import { EmptyState } from './common/Feedback'
 import { RollupCharts } from './RollupCharts'
 import { RouteShootingsChart } from './RouteShootingsChart'
 import { navigate } from '../routing'
-import type { MetricStat, RouteSummary } from '../types'
+import type { Aggregate, RouteSummary } from '../types'
 import {
   formatDateTime,
   formatDuration,
   formatNumber,
+  formatStat,
   pluralAssignments,
   pluralShootings,
 } from '../utils/formatters'
-
-function stat(value: MetricStat, digits = 1): string {
-  if (!value.mean) return '—'
-  const mean = formatNumber(Number(value.mean.toFixed(digits)))
-  if (!value.std) return mean
-  return `${mean} ± ${value.std.toFixed(digits)}`
-}
 
 /**
  * Метрики маршрута. Считаются из съёмок напрямую, поэтому и показываем съёмки:
@@ -27,6 +23,9 @@ function stat(value: MetricStat, digits = 1): string {
 export function RouteSummaryPanel({ summary }: { summary: RouteSummary }) {
   const { totals, brands, shootings, assignments_total } = summary
   const waiting = totals.shootings_total - totals.shootings_completed
+  // Среднее по умолчанию: оно слышит каждый проезд. Медиана — чтобы посмотреть
+  // на те же съёмки без влияния выбившегося проезда.
+  const [aggregate, setAggregate] = useState<Aggregate>('mean')
 
   if (totals.shootings_completed === 0) {
     return (
@@ -42,12 +41,20 @@ export function RouteSummaryPanel({ summary }: { summary: RouteSummary }) {
 
   return (
     <>
+      <section className="charts-toolbar" aria-label="Как считать показатели">
+        <span>Показатели за съёмку</span>
+        <AggregateToggle value={aggregate} onChange={setAggregate} />
+      </section>
+
       <div className="summary-grid">
         <Metric
           label="Заметность за съёмку"
-          value={stat(totals.visibility_per_shooting)}
+          value={formatStat(totals.visibility_per_shooting, aggregate)}
         />
-        <Metric label="Объектов за съёмку" value={stat(totals.objects_per_shooting)} />
+        <Metric
+          label="Объектов за съёмку"
+          value={formatStat(totals.objects_per_shooting, aggregate)}
+        />
         <Metric
           label="Собрано из"
           value={`${pluralAssignments(assignments_total)} · ${pluralShootings(
@@ -108,7 +115,7 @@ export function RouteSummaryPanel({ summary }: { summary: RouteSummary }) {
         </div>
       </section>
 
-      <RollupCharts brands={brands} shootings={shootings} />
+      <RollupCharts brands={brands} shootings={shootings} aggregate={aggregate} />
     </>
   )
 }

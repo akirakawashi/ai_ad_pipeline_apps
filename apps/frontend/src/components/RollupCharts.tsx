@@ -12,8 +12,8 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import type { RollupBrand, ShootingMetrics } from '../types'
-import { formatDuration } from '../utils/formatters'
+import type { Aggregate, RollupBrand, ShootingMetrics } from '../types'
+import { formatDuration, statValue } from '../utils/formatters'
 
 const BRAND_COLORS: Record<string, string> = {
   mts: '#ff4d4d',
@@ -59,20 +59,33 @@ function orderBrands(brands: string[]) {
 export function RollupCharts({
   brands,
   shootings,
+  aggregate,
 }: {
   brands: RollupBrand[]
   shootings: ShootingMetrics[]
+  aggregate: Aggregate
 }) {
+  // Доля считается здесь, а не на сервере: она зависит от выбранной оценки, а
+  // выбор живёт на этой странице.
+  const totalVisibility = brands.reduce(
+    (sum, item) => sum + statValue(item.visibility_per_shooting, aggregate),
+    0,
+  )
+
   // Усы = разброс между съёмками. Это не украшение: широкий ус означает,
-  // что съёмки разошлись и среднему верить рано.
-  const brandRows = brands.map((item) => ({
-    brand_key: item.brand,
-    brand_label: brandLabel(item.brand),
-    objects: Number(item.objects_per_shooting.mean.toFixed(2)),
-    objects_std: Number(item.objects_per_shooting.std.toFixed(2)),
-    visibility: Number(item.visibility_per_shooting.mean.toFixed(1)),
-    share: Number((item.visibility_share * 100).toFixed(1)),
-  }))
+  // что съёмки разошлись и цифре верить рано.
+  const brandRows = brands.map((item) => {
+    const visibility = statValue(item.visibility_per_shooting, aggregate)
+    return {
+      brand_key: item.brand,
+      brand_label: brandLabel(item.brand),
+      objects: Number(statValue(item.objects_per_shooting, aggregate).toFixed(2)),
+      objects_std: Number(item.objects_per_shooting.std.toFixed(2)),
+      share: Number(
+        (totalVisibility > 0 ? (visibility / totalVisibility) * 100 : 0).toFixed(1),
+      ),
+    }
+  })
 
   const passBrands = orderBrands([
     ...new Set(shootings.flatMap((item) => item.brands.map((b) => b.brand))),
@@ -97,7 +110,10 @@ export function RollupCharts({
       <section className="panel chart-card">
         <header>
           <h3>Объектов за съёмку</h3>
-          <p>Среднее по съёмкам. Усы — разброс между ними.</p>
+          <p>
+            {aggregate === 'median' ? 'Медиана' : 'Среднее'} по съёмкам. Усы —
+            разброс между ними.
+          </p>
         </header>
         <ResponsiveContainer width="100%" height={280}>
           <BarChart data={brandRows}>
@@ -123,7 +139,12 @@ export function RollupCharts({
       <section className="panel chart-card">
         <header>
           <h3>Доля заметности</h3>
-          <p>Сколько внимания забирает каждый бренд за съёмку.</p>
+          <p>
+            Сколько внимания забирает каждый бренд за съёмку.
+            {aggregate === 'median' &&
+              ' Под медианой доли не сходятся в 100 %: медиана суммы не равна' +
+                ' сумме медиан.'}
+          </p>
         </header>
         <ResponsiveContainer width="100%" height={280}>
           <PieChart>

@@ -9,14 +9,19 @@
 съёмок напрямую, а не из результатов заданий**, иначе задание из двух проездов
 весило бы столько же, сколько задание из двадцати.
 
-Сейчас: среднее по всем готовым съёмкам плюс разброс между ними.
+Сейчас: по всем готовым съёмкам считаются обе оценки центра — среднее и медиана,
+— плюс разброс между съёмками. Какую из двух показать, решает интерфейс: список
+съёмок для них один и тот же, и ходить на сервер ради переключения незачем.
 Разброс не украшение — он показывает, можно ли верить цифре.
+
+Отбраковки нет: все обработанные съёмки идут в свёртку как есть. Держится это на
+допущении, что видео покрывает проезд целиком от А до Б.
 """
 
 from __future__ import annotations
 
 from collections import defaultdict
-from statistics import fmean, stdev
+from statistics import fmean, median, stdev
 
 from application.common.dto import (
     MetricStatDTO,
@@ -32,6 +37,7 @@ def _stat(values: list[float]) -> MetricStatDTO:
     # stdev требует минимум двух точек; на одной съёмке разброса просто нет.
     return MetricStatDTO(
         mean=fmean(values),
+        median=median(values),
         std=stdev(values) if len(values) > 1 else 0.0,
     )
 
@@ -76,10 +82,7 @@ def rollup_brands(shootings: list[ShootingMetricsDTO]) -> list[RollupBrandDTO]:
         for brand in brands
     ]
 
-    total_visibility = sum(row.visibility_per_shooting.mean for row in rows)
-    if total_visibility > 0:
-        for row in rows:
-            row.visibility_share = row.visibility_per_shooting.mean / total_visibility
-
+    # Порядок по среднему, а не по выбранной оценке: он закрепляет за брендом
+    # место на графике, и столбцы не прыгают при переключении тумблера.
     rows.sort(key=lambda row: row.visibility_per_shooting.mean, reverse=True)
     return rows

@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, File, Path, Query, Request, Response, Up
 
 from application.services.catalog_service import CatalogService
 from presentation.http.dependencies import get_catalog_service
+from presentation.http.security import allow_hidden, require_admin
 from presentation.http.dto.response import (
     AssignmentResponse,
     CityDetailResponse,
@@ -48,22 +49,29 @@ def _geometry_response(
 
 @router.get("", response_model=OkResponse[list[CityResponse]])
 def list_cities(
+    include_inactive: bool = Depends(allow_hidden),
     service: CatalogService = Depends(get_catalog_service),
 ) -> OkResponse[list[CityResponse]]:
-    result = service.list_cities()
+    result = service.list_cities(include_inactive=include_inactive)
     return OkResponse(data=[CityResponse.model_validate(city) for city in result])
 
 
 @router.get("/{city_slug}", response_model=OkResponse[CityDetailResponse])
 def get_city(
     city_slug: str = Path(description="Слаг города, например simferopol"),
+    include_inactive: bool = Depends(allow_hidden),
     service: CatalogService = Depends(get_catalog_service),
 ) -> OkResponse[CityDetailResponse]:
-    result = service.get_city(city_slug)
+    result = service.get_city(city_slug, include_inactive=include_inactive)
     return OkResponse(data=CityDetailResponse.model_validate(result))
 
 
-@router.post("", response_model=OkResponse[CityResponse], status_code=201)
+@router.post(
+    "",
+    response_model=OkResponse[CityResponse],
+    status_code=201,
+    dependencies=[Depends(require_admin)],
+)
 def create_city(
     payload: CreateCityRequest,
     service: CatalogService = Depends(get_catalog_service),
@@ -77,7 +85,11 @@ def create_city(
     return OkResponse(data=CityResponse.model_validate(result))
 
 
-@router.patch("/{city_slug}", response_model=OkResponse[CityDetailResponse])
+@router.patch(
+    "/{city_slug}",
+    response_model=OkResponse[CityDetailResponse],
+    dependencies=[Depends(require_admin)],
+)
 def update_city(
     payload: UpdateCityRequest,
     city_slug: str = Path(description="Слаг города"),
@@ -87,18 +99,10 @@ def update_city(
     return OkResponse(data=CityDetailResponse.model_validate(result))
 
 
-@router.delete("/{city_slug}", status_code=204)
-def deactivate_city(
-    city_slug: str = Path(description="Слаг города"),
-    service: CatalogService = Depends(get_catalog_service),
-) -> None:
-    """Деактивация, а не удаление: у заданий каскад на маршруты города."""
-    service.deactivate_city(city_slug)
-
-
 @router.put(
     "/{city_slug}/roads-geometry",
     response_model=OkResponse[CityDetailResponse],
+    dependencies=[Depends(require_admin)],
 )
 def set_city_roads_geometry(
     city_slug: str = Path(description="Слаг города"),
@@ -129,6 +133,7 @@ def get_city_roads_geometry(
     "/{city_slug}/routes",
     response_model=OkResponse[RouteResponse],
     status_code=201,
+    dependencies=[Depends(require_admin)],
 )
 def create_route(
     payload: CreateRouteRequest,
@@ -150,6 +155,7 @@ def create_route(
 @router.patch(
     "/{city_slug}/routes/{route_slug}",
     response_model=OkResponse[RouteResponse],
+    dependencies=[Depends(require_admin)],
 )
 def update_route(
     payload: UpdateRouteRequest,
@@ -165,19 +171,10 @@ def update_route(
     return OkResponse(data=RouteResponse.model_validate(result))
 
 
-@router.delete("/{city_slug}/routes/{route_slug}", status_code=204)
-def deactivate_route(
-    city_slug: str = Path(description="Слаг города"),
-    route_slug: str = Path(description="Слаг маршрута в пределах города"),
-    service: CatalogService = Depends(get_catalog_service),
-) -> None:
-    """Маршрут пропадает из выбора, его задания и съёмки остаются."""
-    service.deactivate_route(city_slug, route_slug)
-
-
 @router.put(
     "/{city_slug}/routes/{route_slug}/geometry",
     response_model=OkResponse[RouteResponse],
+    dependencies=[Depends(require_admin)],
 )
 def set_route_geometry(
     city_slug: str = Path(description="Слаг города"),

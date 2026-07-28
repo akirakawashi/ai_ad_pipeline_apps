@@ -125,12 +125,43 @@ def test_slug_cannot_be_changed(client, city):
     assert client.get(f"{CITIES}/kerch-2").status_code == 404
 
 
-def test_deactivated_city_disappears_from_list(client, city):
-    assert client.delete(f"{CITIES}/{city}").status_code == 204
+def test_hidden_city_disappears_from_list_but_stays_for_admin(client, city):
+    """Скрытый город не виден пользователю и виден справочнику.
+
+    Второе — не удобство, а условие обратимости: удаления города нет, и если бы
+    справочник прятал скрытое наравне с остальными экранами, вернуть город было
+    бы нечем. Ровно так один раз и потерялись все города разом.
+    """
+    assert client.patch(f"{CITIES}/{city}", json={"is_active": False}).status_code == 200
+
     slugs = [item["slug"] for item in payload(client.get(CITIES))]
     assert city not in slugs
-    # Сама строка жива: карточка по слагу открывается, история не рвётся.
-    assert client.get(f"{CITIES}/{city}").status_code == 200
+
+    admin_slugs = [
+        item["slug"]
+        for item in payload(client.get(f"{CITIES}?include_inactive=true"))
+    ]
+    assert city in admin_slugs
+
+    # Прямая ссылка тоже закрыта: иначе «скрыт» значило бы лишь «убран из
+    # списков», а сохранённая вкладка обходила бы это молча.
+    assert client.get(f"{CITIES}/{city}").status_code == 404
+    # Строка жива, справочник её видит — история не рвётся.
+    detail = payload(client.get(f"{CITIES}/{city}?include_inactive=true"))
+    assert detail["is_active"] is False
+
+
+def test_hidden_city_comes_back(client, city):
+    client.patch(f"{CITIES}/{city}", json={"is_active": False})
+    assert client.patch(f"{CITIES}/{city}", json={"is_active": True}).status_code == 200
+    assert city in [item["slug"] for item in payload(client.get(CITIES))]
+
+
+def test_hidden_city_keeps_its_slug_taken(client, city):
+    """Слаг скрытого города занят: он в адресе и не может достаться другому."""
+    client.patch(f"{CITIES}/{city}", json={"is_active": False})
+    response = client.post(CITIES, json={"slug": city, "name": "Другой город"})
+    assert response.status_code == 409
 
 
 # --- маршруты --------------------------------------------------------------
@@ -164,27 +195,50 @@ def test_bad_color_is_422(client, city):
     ).status_code == 422
 
 
-def test_deactivated_route_keeps_its_assignments(client, city):
+def test_hidden_route_keeps_its_assignments_and_comes_back(client, city):
     client.post(f"{CITIES}/{city}/routes", json={"slug": "route-1", "name": "Кольцо"})
     assignment = payload(
         client.post(f"{CITIES}/{city}/routes/route-1/assignments", json={})
     )
-    assert client.delete(f"{CITIES}/{city}/routes/route-1").status_code == 204
+    hidden = payload(
+        client.patch(
+            f"{CITIES}/{city}/routes/route-1",
+            json={"is_active": False},
+        )
+    )
+    assert hidden["is_active"] is False
 
-    detail = payload(client.get(f"{CITIES}/{city}"))
-    assert detail["routes"] == []
-    # Задание на месте: деактивация прячет маршрут, а не рушит историю.
+    assert payload(client.get(f"{CITIES}/{city}"))["routes"] == []
+    # И по прямой ссылке скрытый маршрут не открывается.
+    assert client.get(f"{CITIES}/{city}/routes/route-1/assignments").status_code == 404
+    # Справочник маршрут видит — иначе его нечем было бы вернуть.
+    admin_routes = payload(client.get(f"{CITIES}/{city}?include_inactive=true"))["routes"]
+    assert [route["slug"] for route in admin_routes] == ["route-1"]
+
+    # Задание на месте: скрытие прячет маршрут, а не рушит историю.
     assert client.get(f"/api/v1/assignments/{assignment['id']}").status_code == 200
+
+    client.patch(f"{CITIES}/{city}/routes/route-1", json={"is_active": True})
+    assert len(payload(client.get(f"{CITIES}/{city}"))["routes"]) == 1
 
 
 def test_missing_targets_are_404(client, city):
     assert client.patch(f"{CITIES}/atlantis", json={"name": "X"}).status_code == 404
-    assert client.delete(f"{CITIES}/atlantis").status_code == 404
     assert (
         client.patch(f"{CITIES}/{city}/routes/nope", json={"name": "X"}).status_code
         == 404
     )
-    assert client.delete(f"{CITIES}/{city}/routes/nope").status_code == 404
+
+
+def test_delete_is_gone_for_cities_and_routes(client, city):
+    """Удаления города и маршрута нет вовсе — только скрыть и показать.
+
+    Раньше DELETE существовал и на самом деле скрывал: глагол врал о том, что
+    делает, и это стоило владельцу всех городов сразу.
+    """
+    client.post(f"{CITIES}/{city}/routes", json={"slug": "route-1", "name": "Кольцо"})
+    assert client.delete(f"{CITIES}/{city}").status_code == 405
+    assert client.delete(f"{CITIES}/{city}/routes/route-1").status_code == 405
 
 
 # --- геометрия -------------------------------------------------------------

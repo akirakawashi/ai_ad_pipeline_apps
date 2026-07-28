@@ -22,6 +22,14 @@ TEST_DB = os.environ.get("POSTGRES_TEST_DB", "ad_pipeline_test")
 ADMIN_DB = "postgres"
 os.environ["POSTGRES_DB"] = TEST_DB
 
+# Пароль справочников фиксируем здесь, а не берём из .env: иначе смена пароля
+# у владельца молча роняла бы половину набора. Настройки кэшируются на первом
+# обращении, поэтому переменные ставим до импорта приложения.
+ADMIN_LOGIN = "admin"
+ADMIN_PASSWORD = "admin"
+os.environ["ADMIN_USERNAME"] = ADMIN_LOGIN
+os.environ["ADMIN_PASSWORD"] = ADMIN_PASSWORD
+
 import psycopg  # noqa: E402
 import pytest  # noqa: E402
 from alembic import command  # noqa: E402
@@ -148,7 +156,22 @@ def storage() -> FakeObjectStorage:
 
 @pytest.fixture
 def client(storage: FakeObjectStorage) -> TestClient:
-    """Клиент без запуска lifespan: подключение к MinIO тестам не нужно."""
+    """Клиент без запуска lifespan: подключение к MinIO тестам не нужно.
+
+    Ходит с паролем справочников: правка городов и маршрутов закрыта, а
+    проверяют её сценарии из test_admin_auth.py — остальным тестам интересна
+    бизнес-логика, а не пароль. Кто должен видеть 401, берёт `anonymous_client`.
+    """
+    app.dependency_overrides[get_object_storage] = lambda: storage
+    test_client = TestClient(app)
+    test_client.auth = (ADMIN_LOGIN, ADMIN_PASSWORD)
+    yield test_client
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def anonymous_client(storage: FakeObjectStorage) -> TestClient:
+    """Тот же клиент, но без пароля — им проверяется, что закрыто именно то."""
     app.dependency_overrides[get_object_storage] = lambda: storage
     yield TestClient(app)
     app.dependency_overrides.clear()

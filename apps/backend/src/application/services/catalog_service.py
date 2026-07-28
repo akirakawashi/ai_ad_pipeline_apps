@@ -104,11 +104,22 @@ class CatalogService:
         self._repository = repository
         self._run_service = run_service
 
-    def list_cities(self) -> list[CityDTO]:
-        return self._repository.list_cities()
+    def list_cities(self, *, include_inactive: bool = False) -> list[CityDTO]:
+        """`include_inactive` включают только справочники на `/admin`.
 
-    def get_city(self, city_slug: str) -> CityDetailDTO:
-        city = self._repository.get_city(city_slug)
+        Скрытый город обычному пользователю не виден нигде. Показать его надо
+        ровно в одном месте — там, где его можно вернуть: удаления города нет,
+        и без этого списка скрытый город стал бы недостижимым навсегда.
+        """
+        return self._repository.list_cities(include_inactive=include_inactive)
+
+    def get_city(
+        self,
+        city_slug: str,
+        *,
+        include_inactive: bool = False,
+    ) -> CityDetailDTO:
+        city = self._repository.get_city(city_slug, include_inactive=include_inactive)
         if city is None:
             raise CatalogNotFoundError("Город не найден.")
         return city
@@ -145,14 +156,10 @@ class CatalogService:
             self._repository.rollback()
             raise CatalogNotFoundError("Город не найден.")
         self._repository.commit()
-        return self.get_city(city_slug)
-
-    def deactivate_city(self, city_slug: str) -> None:
-        """Не удаляем: у заданий и съёмок каскад на маршруты, они бы исчезли."""
-        if not self._repository.set_city_active(city_slug, is_active=False):
-            self._repository.rollback()
-            raise CatalogNotFoundError("Город не найден.")
-        self._repository.commit()
+        # Правка города приходит только из справочника, поэтому и ответ полный:
+        # скрытые маршруты в нём видны, иначе после скрытия одного из них
+        # страница мигала бы исчезнувшей строкой.
+        return self.get_city(city_slug, include_inactive=True)
 
     # --- справочники: маршруты ----------------------------------------------
 
@@ -198,23 +205,30 @@ class CatalogService:
             self._repository.rollback()
             raise CatalogNotFoundError("Маршрут не найден.")
         self._repository.commit()
-        return self.get_route(city_slug, route_slug)
+        # Правка приходит из справочника, и ею же маршрут скрывают: ответ должен
+        # вернуться и про скрытый, иначе скрытие выглядело бы как ошибка.
+        return self.get_route(city_slug, route_slug, include_inactive=True)
 
-    def get_route(self, city_slug: str, route_slug: str) -> RouteDTO:
-        route = self._repository.get_route(city_slug, route_slug)
+    def get_route(
+        self,
+        city_slug: str,
+        route_slug: str,
+        *,
+        include_inactive: bool = False,
+    ) -> RouteDTO:
+        """Скрытый маршрут для продукта не существует — как и скрытый город.
+
+        `include_inactive` поднимают только справочники: им нужно вернуть ответ
+        о маршруте, который сами же только что и скрыли.
+        """
+        route = self._repository.get_route(
+            city_slug,
+            route_slug,
+            include_inactive=include_inactive,
+        )
         if route is None:
             raise CatalogNotFoundError("Маршрут не найден.")
         return route
-
-    def deactivate_route(self, city_slug: str, route_slug: str) -> None:
-        if not self._repository.set_route_active(
-            city_slug,
-            route_slug,
-            is_active=False,
-        ):
-            self._repository.rollback()
-            raise CatalogNotFoundError("Маршрут не найден.")
-        self._repository.commit()
 
     # --- справочники: геометрия ---------------------------------------------
 
@@ -257,7 +271,7 @@ class CatalogService:
             self._repository.rollback()
             raise CatalogNotFoundError("Маршрут не найден.")
         self._repository.commit()
-        return self.get_route(city_slug, route_slug)
+        return self.get_route(city_slug, route_slug, include_inactive=True)
 
     def get_route_geometry(self, city_slug: str, route_slug: str) -> GeometryDTO:
         geometry = self._repository.get_route_geometry(city_slug, route_slug)

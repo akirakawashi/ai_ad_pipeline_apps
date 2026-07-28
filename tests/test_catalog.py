@@ -25,9 +25,10 @@ def test_route_reports_geometry_by_flag_not_content(client):
     """
     city = payload(client.get("/api/v1/cities/simferopol"))
     route = city["routes"][0]
-    assert route["has_geometry"] is False
+    # У сидов геометрия есть — тем и ценно: признак True, а содержимого нет.
+    assert route["has_geometry"] is True
     assert "geometry" not in route
-    assert "has_roads_geometry" in city
+    assert city["has_roads_geometry"] is True
     assert "roads_geometry" not in city
     assert "description" in route
 

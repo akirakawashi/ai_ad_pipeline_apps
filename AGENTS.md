@@ -66,11 +66,11 @@ Three target brands: `mts`, `plus7`, `miranda`. Everything else collapses to `ot
 | `apps/backend/src/domain/` | Pure logic, no I/O: `geozones.py` (`beta`, `overlaps`), `catalog.py` (point collapsing, revision diff, city bounds), `geometry.py` (geojson validation, bbox) + entity facades. |
 | `apps/backend/src/application/` | Services (`pipeline_run_service`, `catalog_service`, `metrics_rollup`, `user_service`), DTOs, repository interfaces. |
 | `apps/backend/src/infrastructure/` | SQLModel models, SQL repositories, MinIO storage, `catalog/parser.py` (xlsx/xls/csv). |
-| `apps/backend/src/presentation/http/` | FastAPI routers, request/response DTOs, DI, exception handlers. |
+| `apps/backend/src/presentation/http/` | FastAPI routers, request/response DTOs, DI, exception handlers, `security.py` (the admin password). |
 | `apps/backend/src/worker/` | Queue worker that runs the ML pipeline out-of-process. |
-| `apps/backend/alembic/` | Migrations, including seed migrations for cities/routes. |
+| `apps/backend/alembic/` | Migrations. Exactly two since the 28.07.2026 squash: `0001_schema` (all ten tables) and `0002_seed` (two cities, seven routes **with their geometry** — tests depend on these). `seed_data/geometry/` holds the nine geojson files the seed reads; they are migration assets, not leftovers — delete them and a from-scratch database comes up with an empty map. While there is no production database the chain is squashed rather than extended; the day real data exists, that stops and history is append-only. |
 | `apps/frontend/src/` | React 19 + Vite + Recharts. Hand-rolled router (`routing.ts`), no react-router. |
-| `scripts/` | `dev.sh` (whole stack) and `import_geometry.py` — a one-off that pushes the nine geojson files from `apps/frontend/public/routes/` into the DB through the API. Delete it once the geometry is loaded and verified. |
+| `scripts/` | `dev.sh` — brings up the whole stack. |
 | `tests/` | pytest. Needs a live Postgres; MinIO is faked. |
 | `docs/plan.md` + `docs/plan-NN-*.md` | **Intent, not state**: accepted decisions with reasons, open decisions that block work, and the step list. Per-step detail files are deleted once the step lands and its content moves into `pipeline-and-metrics.md`. Never describe working behaviour here. |
 | `README.md` | Setup/ops guide. Predates the metric rewrite; treat metric statements in it as stale. |
@@ -142,15 +142,19 @@ On the backend `visibility_value` means **S·α·β**. They are different number
    value.
 7. Reads: `GET /runs/{id}/summary` and `/objects` parse **`tracks.csv`** from MinIO and apply β on
    the fly; `/timeline` parses `detections.csv`; `/overlay` returns `overlay.json`.
-8. Rollup calls `get_summary` per completed shooting → mean ± std across shootings. Two entry points,
-   one code path: `/assignments/{id}/summary` (shootings of one assignment) and
+8. Rollup calls `get_summary` per completed shooting → **mean and median, plus std** across
+   shootings, all three in one response (`MetricStat`); the UI toggle picks which centre to show.
+   Two entry points, one code path: `/assignments/{id}/summary` (shootings of one assignment) and
    `/cities/{c}/routes/{r}/summary` (all shootings of the route). **The route averages shootings
    directly — there is no mean-of-means step**, so a two-drive campaign cannot outweigh a
-   twenty-drive one; the route response also carries every shooting with its assignment.
+   twenty-drive one; the route response also carries every shooting with its assignment. No
+   shooting is ever filtered out of a rollup.
 9. Route/city geometry lives in the DB (`routes.geometry`, `cities.roads_geometry`) and is served by
-   `/cities/{c}/roads-geometry` and `/cities/{c}/routes/{r}/geometry` with weak `ETag`s. Nothing reads
-   `apps/frontend/public/routes/` any more; the folder still exists only as the source for the one-off
-   `scripts/import_geometry.py`, and the owner deletes it once the load is verified.
+   `/cities/{c}/roads-geometry` and `/cities/{c}/routes/{r}/geometry` with weak `ETag`s. **The seeded
+   cities and routes get their geometry from `0002_seed`**, which reads the nine geojson files in
+   `apps/backend/alembic/seed_data/geometry/` and computes each city's bounds from its roads layer —
+   so an empty database comes up with a working map and no manual step. New geometry arrives through
+   `/admin` (upload recomputes the bounds in the same operation).
 10. Frontend renders charts from `/summary`, `/objects`, `/timeline`, and the player from
    `/overlay` + `/playback`.
 
@@ -171,8 +175,10 @@ only feed the pipeline's own `report.html`.
 | Change how zones are entered or edited | `apps/frontend/src/components/RouteGeozones.tsx` — one panel for both mounts (city page without video, shooting card with it); percent↔fraction lives in `toFraction`/`percentText` there |
 | Add an endpoint | router in `presentation/http/routers/v1/` → response DTO in `presentation/http/dto/response.py` → service → repository interface → SQL repository |
 | Add a DB table/column | `infrastructure/database/models.py`, then **the owner writes the migration** (existing convention) |
-| Change how an assignment **or a route** aggregates shootings | `application/services/metrics_rollup.py` — the only place that decides mean vs median vs filtering, shared by both levels |
+| Change how an assignment **or a route** aggregates shootings | `application/services/metrics_rollup.py` — the only place that decides how shootings collapse (today: mean + median + std, no filtering), shared by both levels |
+| Change which centre estimate the UI shows, or add a third one | `MetricStatDTO` → `_stat()` in `metrics_rollup.py` → `MetricStat` in `types.ts` → `statValue`/`formatStat` in `utils/formatters.ts` → `AggregateToggle.tsx`. The choice itself never reaches the backend |
 | Add a city/route field, change geometry handling | `domain/geometry.py` (validation only) → `models.py` → `sql_catalog_repository` → `catalog_service` → `cities.py` router → `AdminPage.tsx`. Geometry must stay out of list responses |
+| Change who can see hidden cities/routes | `include_inactive` threads through `list_cities` / `get_city` (repository → service → router → `api.ts`). Only `AdminPage.tsx` passes `true` |
 | Change catalogue parsing (new column, new format) | `infrastructure/catalog/parser.py` only; the row/point types live in `domain/catalog.py` |
 | Retune catalogue distance thresholds | `MERGE_DISTANCE_M` / `DIFF_DISTANCE_M` / `CITY_BOUNDS_MARGIN_M` in `domain/catalog.py` |
 | Change what the overlay card shows | `viewer/payload.py` + `OverlayObjectPayload` in `pipeline_contracts/artifacts.py` + `VideoOverlayPlayer.tsx` |
@@ -200,13 +206,22 @@ cd apps/frontend && pnpm dev && pnpm build && pnpm lint
 * **DTOs:** application DTOs in `application/common/dto/`, HTTP response models in
   `presentation/http/dto/response.py`. Some application DTOs subclass contract models directly
   (`RunObjectDTO(TrackCsvRow)`), which is intentional — the CSV *is* the contract.
+* **Admin password:** one login/password pair from settings (`ADMIN_USERNAME` / `ADMIN_PASSWORD`,
+  default `admin`/`admin`), checked by `presentation/http/security.py` over HTTP Basic. `require_admin`
+  guards every write on cities and routes; `allow_hidden` guards `include_inactive` on the two reads.
+  It is **not** authorization and there are no roles — it fences the admin panel off from
+  colleagues who have no business there, inside a corporate network. The login form in the UI is
+  convenience only; the guarantee is that the endpoints answer 401 on their own.
 * **API envelope:** every success response is `{"data": …}` (`OkResponse[T]`). Errors are
   `{"detail": "<Russian sentence>"}` produced by handlers in `presentation/http/exception_handlers.py`.
   Domain errors are typed exceptions in `application/exceptions.py`, never raw `HTTPException`.
 * **PATCH semantics:** request models expose `changed_fields()` so only keys the client actually sent
   are updated; validation re-checks the whole invariant against stored values.
 * **DB naming:** table `things`, PK `things_id`, FK `<table>_id`, timestamps `created_at`/`updated_at`
-  with server defaults. Soft delete via `is_active` where history matters.
+  with server defaults. Soft delete via `is_active` where history matters. **Cities and routes have
+  no delete at all** — `is_active` is an ordinary `PATCH` field meaning hide/show, and there is no
+  `DELETE` verb on either. Anything that hides must also be un-hideable from somewhere, or it is a
+  one-way door (see §10).
 * **Repositories** own transactions but do not commit; services call `commit()`/`rollback()`.
 * **Comments** explain *why*, in Russian, and are dense in this codebase — match that density and
   keep them truthful when you edit the code they describe.
@@ -251,6 +266,33 @@ cd apps/frontend && pnpm dev && pnpm build && pnpm lint
   nothing aggregates aggregates. A route summary therefore re-reads `tracks.csv` for every completed
   shooting on the route — that is why `RoutePage` refetches its summary only when the completed count
   changes, not on the 5 s assignment poll.
+* **Hiding without a way back is a one-way door — the bug that cost every city at once.** Before
+  28.07.2026 `DELETE /cities/{slug}` set `is_active = false`, the list filtered it out, the slug
+  stayed taken and no endpoint could flip it back: the owner "deleted" three cities and could
+  neither see nor recreate them. Now `is_active` is a plain `PATCH` field and the admin page — and
+  only it — passes `include_inactive=true`. **Any future soft-hide must ship its un-hide in the same
+  change, and the screen that can hide must be able to show.**
+* **Hidden means gone everywhere, including direct URLs.** `get_city` and `get_route` return `None`
+  for inactive rows unless `include_inactive` is set, so a bookmarked `/archive/kerch` gives 404.
+  The two admin write paths (`update_route`, `set_route_geometry`) pass `include_inactive=True` on
+  purpose — they answer about the very row they just hid, and a 404 there would read as a failure.
+* **Both centre estimates ship in every rollup response; the choice is presentation-only.**
+  `MetricStat` carries `mean`, `median` and `std` together — switching is a re-render, never a
+  request, and the backend never learns which one is on screen. Consequence for the future DWH step:
+  a snapshot must store **both**, or the toggle stops working for past periods.
+* **Under median the brand shares do not add up to 100 %.** Median is not linear — the median of a
+  sum is not the sum of medians. This is a property of the estimate, not a bug; the pie chart's copy
+  says so out loud under median. It is also why `visibility_share` no longer exists in the API: the
+  share depends on the selected estimate, so it is computed in `RollupCharts.tsx` where the selection
+  lives. Do not put it back on the server.
+* **σ is shown for both estimates on purpose.** It describes the sample of shootings — how far the
+  drives spread apart — not the centre estimate, and "can I trust this number" is the same question
+  either way.
+* **No shooting is ever filtered out of a rollup, and that rests on an unchecked assumption**: the
+  video covers the whole drive from A to B. A truncated upload is invisible to the system — the zones
+  simply shift, because β is a fraction of *this* video's duration, and the numbers go quietly wrong.
+  Rejected deliberately (owner: every drive is uploaded whole); if the assumption ever breaks,
+  filtering belongs in `metrics_rollup.py` and nowhere else.
 * **Zones are stored as fractions, entered as percent.** The API only ever sees `[0,1]`; the ×100 is
   purely a UI affordance in `RouteGeozones.tsx`. Minutes were rejected on purpose — different drives
   have different durations, so "minute four" is a different place each time.

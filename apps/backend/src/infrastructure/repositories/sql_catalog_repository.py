@@ -69,6 +69,7 @@ def _route_to_dto(
         description=route.description,
         has_geometry=has_geometry,
         display_order=route.display_order,
+        is_active=route.is_active,
         assignment_count=assignment_count,
         video_count=video_count,
     )
@@ -219,24 +220,33 @@ class SqlCatalogRepository:
         ).all()
         return {routes_id: bool(flag) for routes_id, flag in rows}
 
-    def list_cities(self) -> list[CityDTO]:
+    def list_cities(self, *, include_inactive: bool = False) -> list[CityDTO]:
+        """Список городов. `include_inactive` — только для справочников.
+
+        Скрытый город не виден обычному пользователю нигде: ни в архиве, ни при
+        загрузке видео, ни в каталоге. Показывают его лишь справочники на
+        `/admin`, потому что иначе вернуть город было бы нечем — удаления нет.
+        Флаг заодно распространяется на счётчики: справочник показывает всё
+        как есть, пользователь — только видимое.
+        """
         # defer на дорожном слое обязателен: без него список городов тянет по
         # полтора мегабайта на город. Флаг наличия берём выражением в том же
         # запросе — IS NOT NULL содержимое не читает.
+        city_query = select(City, City.roads_geometry.is_not(None))
+        if not include_inactive:
+            city_query = city_query.where(City.is_active.is_(True))
         rows = self._session.exec(
-            select(City, City.roads_geometry.is_not(None))
-            .where(City.is_active.is_(True))
-            .options(noload(City.routes), defer(City.roads_geometry))
-            .order_by(City.display_order, City.name)
+            city_query.options(
+                noload(City.routes), defer(City.roads_geometry)
+            ).order_by(City.display_order, City.name)
         ).all()
         cities = [city for city, _ in rows]
         roads_flags = {city.cities_id: bool(flag) for city, flag in rows}
 
-        route_rows = self._session.exec(
-            select(Route.cities_id, func.count(Route.routes_id))
-            .where(Route.is_active.is_(True))
-            .group_by(Route.cities_id)
-        ).all()
+        route_query = select(Route.cities_id, func.count(Route.routes_id))
+        if not include_inactive:
+            route_query = route_query.where(Route.is_active.is_(True))
+        route_rows = self._session.exec(route_query.group_by(Route.cities_id)).all()
         route_counts = {cities_id: int(count) for cities_id, count in route_rows}
 
         assignment_rows = self._session.exec(
@@ -265,6 +275,7 @@ class SqlCatalogRepository:
                 region=city.region,
                 has_roads_geometry=roads_flags.get(city.cities_id, False),
                 display_order=city.display_order,
+                is_active=city.is_active,
                 route_count=route_counts.get(city.cities_id, 0),
                 assignment_count=assignment_counts.get(city.cities_id, 0),
                 video_count=video_counts.get(city.cities_id, 0),
@@ -272,7 +283,17 @@ class SqlCatalogRepository:
             for city in cities
         ]
 
-    def get_city(self, city_slug: str) -> CityDetailDTO | None:
+    def get_city(
+        self,
+        city_slug: str,
+        *,
+        include_inactive: bool = False,
+    ) -> CityDetailDTO | None:
+        """Карточка города. Сам город отдаётся и скрытым — до него надо знать слаг.
+
+        `include_inactive` управляет только его маршрутами: пользователю скрытые
+        не нужны, справочнику нужны, иначе вернуть скрытый маршрут нечем.
+        """
         row = self._session.exec(
             select(City, City.roads_geometry.is_not(None))
             .where(City.slug == city_slug)
@@ -284,11 +305,18 @@ class SqlCatalogRepository:
         if row is None:
             return None
         city, has_roads = row
+        # Скрытый город не должен открываться и по прямой ссылке: иначе «скрыт»
+        # означало бы лишь «убран из списков», а сохранённая вкладка обходила бы
+        # это молча.
+        if not include_inactive and not city.is_active:
+            return None
 
         assignment_counts = self._assignment_counts_by_route()
         video_counts = self._video_counts_by_route()
         geometry_flags = self._route_geometry_flags(city.cities_id)
-        routes = [route for route in city.routes if route.is_active]
+        routes = [
+            route for route in city.routes if include_inactive or route.is_active
+        ]
 
         return CityDetailDTO(
             id=city.cities_id,
@@ -297,6 +325,7 @@ class SqlCatalogRepository:
             region=city.region,
             has_roads_geometry=bool(has_roads),
             display_order=city.display_order,
+            is_active=city.is_active,
             route_count=len(routes),
             assignment_count=sum(assignment_counts.get(r.routes_id, 0) for r in routes),
             video_count=sum(video_counts.get(r.routes_id, 0) for r in routes),
@@ -320,9 +349,15 @@ class SqlCatalogRepository:
             .options(defer(Route.geometry))
         ).first()
 
-    def get_route(self, city_slug: str, route_slug: str) -> RouteDTO | None:
+    def get_route(
+        self,
+        city_slug: str,
+        route_slug: str,
+        *,
+        include_inactive: bool = False,
+    ) -> RouteDTO | None:
         route = self._get_route_model(city_slug, route_slug)
-        if route is None:
+        if route is None or (not include_inactive and not route.is_active):
             return None
         return _route_to_dto(
             route,
@@ -374,9 +409,6 @@ class SqlCatalogRepository:
         self._session.add(city)
         self._session.flush()
         return True
-
-    def set_city_active(self, city_slug: str, *, is_active: bool) -> bool:
-        return self.update_city(city_slug, fields={"is_active": is_active})
 
     def route_slug_taken(self, city_slug: str, slug: str) -> bool:
         return (
@@ -431,19 +463,6 @@ class SqlCatalogRepository:
         self._session.add(route)
         self._session.flush()
         return True
-
-    def set_route_active(
-        self,
-        city_slug: str,
-        route_slug: str,
-        *,
-        is_active: bool,
-    ) -> bool:
-        return self.update_route(
-            city_slug,
-            route_slug,
-            fields={"is_active": is_active},
-        )
 
     # --- справочники: геометрия --------------------------------------------
 

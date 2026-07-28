@@ -3782,6 +3782,66 @@ button:disabled,
   background: rgba(255, 255, 255, 0.03);
 }
 
+/* Справочники живут в шапке, а не в левом меню: служебный экран под паролем,
+   которому не место рядом с рабочими разделами. */
+.topbar-admin {
+  white-space: nowrap;
+}
+
+.topbar-admin.is-active {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* Выход из админ-панели: закреплён в углу окна, чтобы не занимать место в
+   форме и оставаться доступным на любой высоте прокрутки. */
+.admin-signout {
+  position: fixed;
+  right: 28px;
+  bottom: 28px;
+  z-index: 30;
+  background: var(--surface);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+/* Отступ над строкой действий. В панели геозон его даёт `.geozone-form`
+   (колонка с gap), а в админ-панели строка лежит прямо в панели, где общего
+   gap нет — потому кнопка и прилипала к полям сверху. */
+.catalog-panel > .geozone-form-actions {
+  margin-top: 16px;
+}
+
+/* Кнопки в строке действий одного роста. Рядом стоят обычная, файловая и
+   красная: разнобой в высоте читается как поломка вёрстки, а не как акцент. */
+.geozone-form-actions .file-button,
+.geozone-form-actions .geozone-delete {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 10px 18px;
+  font-size: inherit;
+}
+
+/* В строках списка наоборот — компактное всё, включая файловую кнопку. */
+.row-actions .file-button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 5px 12px;
+  font-size: 12px;
+}
+
+.admin-login {
+  max-width: 520px;
+}
+
+/* Скрытый маршрут виден только в справочнике — приглушённым, чтобы его нельзя
+   было спутать с рабочим, но кнопка «Показать» оставалась под рукой. */
+.geozone-row.is-hidden-row {
+  opacity: 0.55;
+  border-style: dashed;
+}
+
 /* Строка в правке разворачивается в ту же форму, что и создание. */
 .geozone-row.is-editing {
   flex-direction: column;

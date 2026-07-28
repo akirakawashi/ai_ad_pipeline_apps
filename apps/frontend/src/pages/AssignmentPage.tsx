@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { getAssignmentRuns, getAssignmentSummary, updateAssignment } from '../api'
 import { RollupCharts } from '../components/RollupCharts'
 import { AssignmentForm } from '../components/AssignmentForm'
+import { AggregateToggle } from '../components/common/AggregateToggle'
 import { EmptyState, ErrorBanner } from '../components/common/Feedback'
 import { Metric } from '../components/common/Metric'
 import { PageHeader } from '../components/common/PageHeader'
@@ -9,30 +10,26 @@ import { RunCard } from '../components/common/RunCard'
 import { RunsSkeleton } from '../components/common/Skeletons'
 import { navigate, uploadPath } from '../routing'
 import type {
+  Aggregate,
   AssignmentPayload,
-  MetricStat,
   AssignmentSummary,
   PipelineRun,
 } from '../types'
 import {
   formatDuration,
-  formatNumber,
   formatPeriod,
+  formatStat,
   pluralShootings,
 } from '../utils/formatters'
 
 /** Обработка идёт минутами — чаще смотреть незачем. */
 const POLL_INTERVAL_MS = 20000
 
-function stat(value: MetricStat, digits = 1): string {
-  if (!value.mean) return '—'
-  const mean = formatNumber(Number(value.mean.toFixed(digits)))
-  if (!value.std) return mean
-  return `${mean} ± ${value.std.toFixed(digits)}`
-}
-
 export function AssignmentPage({ assignmentId }: { assignmentId: string }) {
   const [summary, setSummary] = useState<AssignmentSummary | null>(null)
+  // Среднее по умолчанию: оно слышит каждый проезд. Медиана — чтобы посмотреть
+  // на те же съёмки без влияния выбившегося проезда.
+  const [aggregate, setAggregate] = useState<Aggregate>('mean')
   const [runs, setRuns] = useState<PipelineRun[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -199,11 +196,22 @@ export function AssignmentPage({ assignmentId }: { assignmentId: string }) {
         </dl>
       )}
 
+      {/* Пока нет ни одной готовой съёмки, переключать нечего: в плитках прочерки. */}
+      {totals.shootings_completed > 0 && (
+        <section className="charts-toolbar" aria-label="Как считать показатели">
+          <span>Показатели за съёмку</span>
+          <AggregateToggle value={aggregate} onChange={setAggregate} />
+        </section>
+      )}
+
       <div className="summary-grid">
-        <Metric label="Объектов за съёмку" value={stat(totals.objects_per_shooting)} />
+        <Metric
+          label="Объектов за съёмку"
+          value={formatStat(totals.objects_per_shooting, aggregate)}
+        />
         <Metric
           label="Заметность за съёмку"
-          value={stat(totals.visibility_per_shooting)}
+          value={formatStat(totals.visibility_per_shooting, aggregate)}
         />
         <Metric label="Съёмок" value={totals.shootings_total} />
         <Metric label="Отснято" value={formatDuration(totals.duration_sec)} />
@@ -225,7 +233,11 @@ export function AssignmentPage({ assignmentId }: { assignmentId: string }) {
               работе — данные обновятся после обработки.
             </p>
           )}
-          <RollupCharts brands={brands} shootings={shootings} />
+          <RollupCharts
+            brands={brands}
+            shootings={shootings}
+            aggregate={aggregate}
+          />
         </>
       )}
 

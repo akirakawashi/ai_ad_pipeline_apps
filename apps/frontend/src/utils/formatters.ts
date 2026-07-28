@@ -1,3 +1,5 @@
+import type { Aggregate, MetricStat } from '../types'
+
 export function formatDuration(value: number | null) {
   if (!value) return '—'
   const minutes = Math.floor(value / 60)
@@ -14,6 +16,28 @@ export function formatNumber(value: number | undefined) {
   return value === undefined
     ? '—'
     : new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(value)
+}
+
+/** Выбранная оценка центра из величины «на съёмку». */
+export function statValue(value: MetricStat, aggregate: Aggregate): number {
+  return aggregate === 'median' ? value.median : value.mean
+}
+
+/**
+ * Величина «на съёмку» для плитки: выбранная оценка плюс разброс между
+ * съёмками. Разброс показываем при обеих оценках — он про то, насколько
+ * разошлись проезды, а не про то, каким способом их свернули.
+ */
+export function formatStat(
+  value: MetricStat,
+  aggregate: Aggregate,
+  digits = 1,
+): string {
+  const center = statValue(value, aggregate)
+  if (!center) return '—'
+  const text = formatNumber(Number(center.toFixed(digits)))
+  if (!value.std) return text
+  return `${text} ± ${value.std.toFixed(digits)}`
 }
 
 /**

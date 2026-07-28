@@ -16,14 +16,21 @@ from domain.catalog import CityBounds
 
 
 class CatalogRepository(Protocol):
-    def list_cities(self) -> list[CityDTO]: ...
+    def list_cities(self, *, include_inactive: bool = False) -> list[CityDTO]: ...
 
-    def get_city(self, city_slug: str) -> CityDetailDTO | None: ...
+    def get_city(
+        self,
+        city_slug: str,
+        *,
+        include_inactive: bool = False,
+    ) -> CityDetailDTO | None: ...
 
     def get_route(
         self,
         city_slug: str,
         route_slug: str,
+        *,
+        include_inactive: bool = False,
     ) -> RouteDTO | None: ...
 
     # --- справочники: правка ------------------------------------------------
@@ -42,8 +49,6 @@ class CatalogRepository(Protocol):
     def update_city(self, city_slug: str, *, fields: dict[str, object]) -> bool:
         """False — города нет."""
         ...
-
-    def set_city_active(self, city_slug: str, *, is_active: bool) -> bool: ...
 
     def route_slug_taken(self, city_slug: str, slug: str) -> bool: ...
 
@@ -67,14 +72,6 @@ class CatalogRepository(Protocol):
         route_slug: str,
         *,
         fields: dict[str, object],
-    ) -> bool: ...
-
-    def set_route_active(
-        self,
-        city_slug: str,
-        route_slug: str,
-        *,
-        is_active: bool,
     ) -> bool: ...
 
     # --- справочники: геометрия ---------------------------------------------

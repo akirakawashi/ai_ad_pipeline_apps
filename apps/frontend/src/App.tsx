@@ -84,13 +84,6 @@ function App() {
             Каталог
           </button>
           <button
-            className={route.page === 'admin' ? 'active' : ''}
-            onClick={() => navigate('/admin')}
-          >
-            <span>⚙</span>
-            Справочники
-          </button>
-          <button
             className={route.page === 'videos' || route.page === 'run' ? 'active' : ''}
             onClick={() => navigate('/videos')}
           >
@@ -112,6 +105,17 @@ function App() {
               </button>
             </div>
             <div className="topbar-right">
+              {/* Админ-панель убрана из левого меню намеренно: это не рабочий
+                  инструмент, а служебный экран под паролем. В общем меню она
+                  выглядела приглашением зайти. */}
+              <button
+                className={`ghost-button topbar-admin${
+                  route.page === 'admin' ? ' is-active' : ''
+                }`}
+                onClick={() => navigate('/admin')}
+              >
+                ⚙ Админ-панель
+              </button>
               <button
                 className="primary topbar-upload"
                 onClick={() => navigate(uploadPath())}

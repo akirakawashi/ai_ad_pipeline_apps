@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import {
   createCity,
   createRoute,
-  deactivateCity,
-  deactivateRoute,
+  forgetAdminSession,
+  hasAdminSession,
   getCities,
   getCity,
   updateCity,
@@ -11,6 +11,7 @@ import {
   uploadRoadsGeometry,
   uploadRouteGeometry,
 } from '../api'
+import { AdminLogin } from '../components/AdminLogin'
 import { EmptyState, ErrorBanner } from '../components/common/Feedback'
 import { PageHeader } from '../components/common/PageHeader'
 import { Select } from '../components/common/Select'
@@ -54,10 +55,17 @@ const EMPTY_ROUTE: RouteDraft = {
  * загружается файлом; маршрут без загруженной линии — законное состояние, на нём
  * уже можно завести задание и разметить зоны.
  *
- * Удаления нет: у заданий каскад на маршруты, поэтому «Убрать» деактивирует —
- * маршрут исчезает из выбора, его съёмки и цифры остаются.
+ * Удаления города и маршрута нет вовсе — только «Скрыть» и «Показать». У города
+ * каскад на маршруты, у маршрутов на задания и съёмки: снос утащил бы всю
+ * историю. Скрытое видно **только на этой странице** — приглушённым и с
+ * пометкой. В этом весь смысл: скрыть можно откуда угодно, а вернуть неоткуда,
+ * если справочник прячет скрытое наравне с остальными экранами.
  */
 export function AdminPage() {
+  // Пароль проверяет бэкенд; здесь только выбор, что рисовать. Ошибка 401 в
+  // любом запросе гасит сессию в api.ts, поэтому просроченный вход сам вернёт
+  // форму — состояние синхронизируется через reload().
+  const [signedIn, setSignedIn] = useState(hasAdminSession())
   const [cities, setCities] = useState<City[]>([])
   const [citySlug, setCitySlug] = useState('')
   const [detail, setDetail] = useState<CityDetail | null>(null)
@@ -78,13 +86,17 @@ export function AdminPage() {
 
   useEffect(() => {
     let disposed = false
-    getCities()
+    getCities(true)
       .then((list) => {
         if (disposed) return
         setCities(list)
         setCitySlug((current) => current || list[0]?.slug || '')
       })
-      .catch((reason) => !disposed && setError(errorMessage(reason)))
+      .catch((reason) => {
+        if (disposed) return
+        setSignedIn(hasAdminSession())
+        setError(errorMessage(reason))
+      })
     return () => {
       disposed = true
     }
@@ -93,9 +105,13 @@ export function AdminPage() {
   useEffect(() => {
     if (!citySlug) return
     let disposed = false
-    getCity(citySlug)
+    getCity(citySlug, true)
       .then((loaded) => !disposed && setDetail(loaded))
-      .catch((reason) => !disposed && setError(errorMessage(reason)))
+      .catch((reason) => {
+        if (disposed) return
+        setSignedIn(hasAdminSession())
+        setError(errorMessage(reason))
+      })
     return () => {
       disposed = true
     }
@@ -110,6 +126,8 @@ export function AdminPage() {
       setNotice(await action())
       reload()
     } catch (reason) {
+      // Пароль сменили на сервере — api.ts уже забыл сессию, возвращаем форму.
+      setSignedIn(hasAdminSession())
       setError(errorMessage(reason))
     } finally {
       setBusy(false)
@@ -140,12 +158,12 @@ export function AdminPage() {
       return `Город «${updated.name}» сохранён.`
     })
 
-  const removeCity = () =>
+  const toggleCity = (isActive: boolean) =>
     run(async () => {
-      await deactivateCity(citySlug)
-      setCitySlug('')
-      setDetail(null)
-      return 'Город убран из выбора. Его задания и съёмки на месте.'
+      const updated = await updateCity(citySlug, { is_active: isActive })
+      return isActive
+        ? `Город «${updated.name}» снова доступен всем.`
+        : `Город «${updated.name}» скрыт. Здесь он остался — вернуть можно кнопкой.`
     })
 
   const addRoute = () =>
@@ -175,10 +193,14 @@ export function AdminPage() {
       return `Маршрут «${updated.name}» сохранён.`
     })
 
-  const removeRoute = (route: Route) =>
+  const toggleRoute = (route: Route) =>
     run(async () => {
-      await deactivateRoute(citySlug, route.slug)
-      return `Маршрут «${route.name}» убран из выбора, его съёмки на месте.`
+      const updated = await updateRoute(citySlug, route.slug, {
+        is_active: !route.is_active,
+      })
+      return updated.is_active
+        ? `Маршрут «${updated.name}» снова доступен.`
+        : `Маршрут «${updated.name}» скрыт, его задания и съёмки на месте.`
     })
 
   const uploadRoads = (file: File) =>
@@ -204,13 +226,29 @@ export function AdminPage() {
     })
   }
 
+  if (!signedIn) {
+    return <AdminLogin onSuccess={() => setSignedIn(true)} />
+  }
+
   return (
     <div className="page">
       <PageHeader
-        eyebrow="Справочники"
+        eyebrow="Админ-панель"
         title="Города и маршруты"
         description="Слаг задаётся один раз: он в адресе страницы. Геометрия загружается файлом geojson и хранится в базе."
       />
+
+      {/* Кнопка закреплена в углу экрана, а не в потоке страницы: форма
+          длинная, и выход должен быть под рукой на любой её высоте. */}
+      <button
+        className="ghost-button admin-signout"
+        onClick={() => {
+          forgetAdminSession()
+          setSignedIn(false)
+        }}
+      >
+        Выйти
+      </button>
 
       {error && <ErrorBanner text={error} />}
       {notice && <p className="catalog-hint">{notice}</p>}
@@ -272,7 +310,12 @@ export function AdminPage() {
           <Select
             ariaLabel="Город"
             value={citySlug}
-            options={cities.map((city) => ({ value: city.slug, label: city.name }))}
+            options={cities.map((city) => ({
+              value: city.slug,
+              // Скрытые видны только здесь, поэтому подписываем прямо в списке:
+              // иначе непонятно, почему города нет на остальных страницах.
+              label: city.is_active ? city.name : `${city.name} — скрыт`,
+            }))}
             onChange={(slug) => {
               setCitySlug(slug)
               setEditingRoute(null)
@@ -284,6 +327,7 @@ export function AdminPage() {
           <p className="catalog-state">
             {pluralRoutes(detail.route_count)} · {pluralAssignments(detail.assignment_count)}
             {detail.has_roads_geometry ? ' · дорожный слой есть' : ' · дорожного слоя нет'}
+            {!detail.is_active && ' · город скрыт'}
           </p>
         )}
       </section>
@@ -326,10 +370,31 @@ export function AdminPage() {
                       }}
                     />
                   </label>
-                  <button className="geozone-delete" disabled={busy} onClick={removeCity}>
-                    Убрать город
-                  </button>
+                  {detail.is_active ? (
+                    <button
+                      className="geozone-delete"
+                      disabled={busy}
+                      onClick={() => void toggleCity(false)}
+                    >
+                      Скрыть город
+                    </button>
+                  ) : (
+                    <button
+                      className="primary"
+                      disabled={busy}
+                      onClick={() => void toggleCity(true)}
+                    >
+                      Показать город
+                    </button>
+                  )}
                 </div>
+                {!detail.is_active && (
+                  <p className="catalog-hint">
+                    Город скрыт: его не видно ни в архиве, ни при загрузке видео,
+                    ни в каталоге. Здесь он остаётся всегда — удаления города нет,
+                    иначе вместе с ним ушли бы его задания и съёмки.
+                  </p>
+                )}
                 <p className="catalog-hint">
                   Дорожный слой задаёт рамку города: ею каталог конструкций
                   отсекает точки, попавшие из другого города. При загрузке слоя
@@ -533,7 +598,10 @@ export function AdminPage() {
                       </div>
                     </li>
                   ) : (
-                    <li key={route.id} className="geozone-row">
+                    <li
+                      key={route.id}
+                      className={`geozone-row${route.is_active ? '' : ' is-hidden-row'}`}
+                    >
                       <span
                         className="geozone-swatch"
                         style={{ background: route.color_hex ?? 'var(--muted)' }}
@@ -546,6 +614,7 @@ export function AdminPage() {
                           {route.color_label ?? 'без подписи цвета'} ·{' '}
                           {pluralAssignments(route.assignment_count)} ·{' '}
                           {route.has_geometry ? 'линия загружена' : 'линии нет'}
+                          {!route.is_active && ' · скрыт'}
                         </span>
                         {route.description && (
                           <p className="geozone-row-description">{route.description}</p>
@@ -573,11 +642,11 @@ export function AdminPage() {
                           />
                         </label>
                         <button
-                          className="geozone-delete"
+                          className={route.is_active ? 'geozone-delete' : 'primary'}
                           disabled={busy}
-                          onClick={() => void removeRoute(route)}
+                          onClick={() => void toggleRoute(route)}
                         >
-                          Убрать
+                          {route.is_active ? 'Скрыть' : 'Показать'}
                         </button>
                       </span>
                     </li>

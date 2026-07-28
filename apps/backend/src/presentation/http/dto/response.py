@@ -144,11 +144,16 @@ class CreateCityRequest(ApiModel):
 
 
 class UpdateCityRequest(ApiModel):
-    """PATCH города: меняются только пришедшие поля. Слага здесь нет намеренно."""
+    """PATCH города: меняются только пришедшие поля. Слага здесь нет намеренно.
+
+    `is_active` — это и есть «скрыть» и «показать». Удаления города нет: у его
+    маршрутов каскад на задания и съёмки, и снос города утащил бы всю историю.
+    """
 
     name: str | None = Field(default=None, min_length=1, max_length=255)
     region: str | None = Field(default=None, max_length=255)
     display_order: int | None = Field(default=None, ge=0)
+    is_active: bool | None = Field(default=None)
 
     def changed_fields(self) -> dict[str, object]:
         return {name: getattr(self, name) for name in self.model_fields_set}
@@ -166,13 +171,18 @@ class CreateRouteRequest(ApiModel):
 
 
 class UpdateRouteRequest(ApiModel):
-    """PATCH маршрута: меняются только пришедшие поля, слаг неизменяем."""
+    """PATCH маршрута: меняются только пришедшие поля, слаг неизменяем.
+
+    `is_active` — «скрыть» и «показать», как у города. Скрытый маршрут пропадает
+    из выбора, его задания и съёмки остаются на месте.
+    """
 
     name: str | None = Field(default=None, min_length=1, max_length=255)
     color_label: str | None = Field(default=None, max_length=64)
     color_hex: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
     description: str | None = Field(default=None, max_length=2000)
     display_order: int | None = Field(default=None, ge=0)
+    is_active: bool | None = Field(default=None)
 
     def changed_fields(self) -> dict[str, object]:
         return {name: getattr(self, name) for name in self.model_fields_set}

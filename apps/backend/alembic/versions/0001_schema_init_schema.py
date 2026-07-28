@@ -1,17 +1,32 @@
-"""init
+"""Схема целиком: все десять таблиц в текущем виде.
 
-Revision ID: 0b5053bd16ee
-Revises: 
-Create Date: 2026-07-23 12:04:28.181382
+Это схлопнутая история. До 28.07.2026 схема набиралась восемью миграциями —
+init, два сида городов, сид маршрутов, геозоны, каталог, описание геозоны,
+переезд геометрии в БД, — и половина из них правила то, что добавила предыдущая:
+колонки `geojson_path` / `roads_geojson_path` появились и были удалены, так и не
+дожив до продакшена.
+
+Схлопнуто по действующему решению: база пока dev, переносить в миграции нечего,
+поэтому одна честная миграция вместо восьми со следами отменённых замыслов.
+Правило перестаёт действовать в день, когда появится живая база с данными,
+которые нельзя потерять, — с этого дня история только дописывается.
+
+Справочные данные (города и маршруты) сюда не входят: они отдельной миграцией
+`0002_seed`, потому что схема и содержимое живут разной жизнью — схему заменит
+следующая миграция, а сиды однажды заменит админка.
+
+Revision ID: 0001_schema
+Revises:
+Create Date: 2026-07-28
 """
 
 from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
-
-revision: str = '0b5053bd16ee'
+revision: str = '0001_schema'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -24,7 +39,11 @@ def upgrade() -> None:
     sa.Column('slug', sa.String(length=64), nullable=False),
     sa.Column('name', sa.String(length=255), nullable=False),
     sa.Column('region', sa.String(length=255), nullable=True),
-    sa.Column('roads_geojson_path', sa.String(length=512), nullable=True),
+    sa.Column('roads_geometry', postgresql.JSONB(none_as_null=True, astext_type=sa.Text()), nullable=True),
+    sa.Column('bounds_min_latitude', sa.Float(), nullable=True),
+    sa.Column('bounds_max_latitude', sa.Float(), nullable=True),
+    sa.Column('bounds_min_longitude', sa.Float(), nullable=True),
+    sa.Column('bounds_max_longitude', sa.Float(), nullable=True),
     sa.Column('display_order', sa.Integer(), nullable=False),
     sa.Column('is_active', sa.Boolean(), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
@@ -41,6 +60,31 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('users_id')
     )
     op.create_index(op.f('ix_users_full_name'), 'users', ['full_name'], unique=True)
+    op.create_table('catalog_imports',
+    sa.Column('catalog_imports_id', sa.String(length=36), nullable=False),
+    sa.Column('cities_id', sa.String(length=36), nullable=False),
+    sa.Column('revision', sa.Integer(), nullable=True),
+    sa.Column('status', sa.String(length=32), nullable=False),
+    sa.Column('is_current', sa.Boolean(), nullable=False),
+    sa.Column('file_names', postgresql.JSONB(astext_type=sa.Text()), server_default='[]', nullable=False),
+    sa.Column('rows_read', sa.Integer(), nullable=False),
+    sa.Column('rows_rejected', sa.Integer(), nullable=False),
+    sa.Column('points_total', sa.Integer(), nullable=False),
+    sa.Column('files_rejected', sa.Integer(), nullable=False),
+    sa.Column('uploaded_by_users_id', sa.String(length=36), nullable=True),
+    sa.Column('applied_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+    sa.ForeignKeyConstraint(['cities_id'], ['cities.cities_id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['uploaded_by_users_id'], ['users.users_id'], ondelete='SET NULL'),
+    sa.PrimaryKeyConstraint('catalog_imports_id'),
+    sa.UniqueConstraint('cities_id', 'revision', name='uq_catalog_imports_city_revision')
+    )
+    op.create_index(op.f('ix_catalog_imports_cities_id'), 'catalog_imports', ['cities_id'], unique=False)
+    op.create_index('ix_catalog_imports_city_current', 'catalog_imports', ['cities_id', 'is_current'], unique=False)
+    op.create_index(op.f('ix_catalog_imports_created_at'), 'catalog_imports', ['created_at'], unique=False)
+    op.create_index(op.f('ix_catalog_imports_status'), 'catalog_imports', ['status'], unique=False)
+    op.create_index(op.f('ix_catalog_imports_uploaded_by_users_id'), 'catalog_imports', ['uploaded_by_users_id'], unique=False)
     op.create_table('routes',
     sa.Column('routes_id', sa.String(length=36), nullable=False),
     sa.Column('cities_id', sa.String(length=36), nullable=False),
@@ -49,7 +93,7 @@ def upgrade() -> None:
     sa.Column('color_label', sa.String(length=64), nullable=True),
     sa.Column('color_hex', sa.String(length=16), nullable=True),
     sa.Column('description', sa.Text(), nullable=True),
-    sa.Column('geojson_path', sa.String(length=512), nullable=False),
+    sa.Column('geometry', postgresql.JSONB(none_as_null=True, astext_type=sa.Text()), nullable=True),
     sa.Column('display_order', sa.Integer(), nullable=False),
     sa.Column('is_active', sa.Boolean(), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
@@ -59,6 +103,22 @@ def upgrade() -> None:
     sa.UniqueConstraint('cities_id', 'slug', name='uq_routes_city_slug')
     )
     op.create_index(op.f('ix_routes_cities_id'), 'routes', ['cities_id'], unique=False)
+    op.create_table('ad_structures',
+    sa.Column('ad_structures_id', sa.String(length=36), nullable=False),
+    sa.Column('catalog_imports_id', sa.String(length=36), nullable=False),
+    sa.Column('cities_id', sa.String(length=36), nullable=False),
+    sa.Column('address', sa.Text(), nullable=False),
+    sa.Column('latitude', sa.Float(), nullable=False),
+    sa.Column('longitude', sa.Float(), nullable=False),
+    sa.Column('surfaces_count', sa.Integer(), nullable=False),
+    sa.Column('source_rows', postgresql.JSONB(astext_type=sa.Text()), server_default='[]', nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+    sa.ForeignKeyConstraint(['catalog_imports_id'], ['catalog_imports.catalog_imports_id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['cities_id'], ['cities.cities_id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('ad_structures_id')
+    )
+    op.create_index(op.f('ix_ad_structures_catalog_imports_id'), 'ad_structures', ['catalog_imports_id'], unique=False)
+    op.create_index(op.f('ix_ad_structures_cities_id'), 'ad_structures', ['cities_id'], unique=False)
     op.create_table('assignments',
     sa.Column('assignments_id', sa.String(length=36), nullable=False),
     sa.Column('routes_id', sa.String(length=36), nullable=False),
@@ -78,6 +138,20 @@ def upgrade() -> None:
     op.create_index(op.f('ix_assignments_author_users_id'), 'assignments', ['author_users_id'], unique=False)
     op.create_index(op.f('ix_assignments_created_at'), 'assignments', ['created_at'], unique=False)
     op.create_index(op.f('ix_assignments_routes_id'), 'assignments', ['routes_id'], unique=False)
+    op.create_table('route_geozones',
+    sa.Column('route_geozones_id', sa.String(length=36), nullable=False),
+    sa.Column('routes_id', sa.String(length=36), nullable=False),
+    sa.Column('name', sa.String(length=255), nullable=False),
+    sa.Column('description', sa.Text(), server_default='', nullable=False),
+    sa.Column('start_fraction', sa.Float(), nullable=False),
+    sa.Column('end_fraction', sa.Float(), nullable=False),
+    sa.Column('coefficient', sa.Float(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+    sa.ForeignKeyConstraint(['routes_id'], ['routes.routes_id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('route_geozones_id')
+    )
+    op.create_index(op.f('ix_route_geozones_routes_id'), 'route_geozones', ['routes_id'], unique=False)
     op.create_table('pipeline_runs',
     sa.Column('pipeline_runs_id', sa.String(length=36), nullable=False),
     sa.Column('source_name', sa.String(length=512), nullable=False),
@@ -161,12 +235,23 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_pipeline_runs_created_at'), table_name='pipeline_runs')
     op.drop_index(op.f('ix_pipeline_runs_assignments_id'), table_name='pipeline_runs')
     op.drop_table('pipeline_runs')
+    op.drop_index(op.f('ix_route_geozones_routes_id'), table_name='route_geozones')
+    op.drop_table('route_geozones')
     op.drop_index(op.f('ix_assignments_routes_id'), table_name='assignments')
     op.drop_index(op.f('ix_assignments_created_at'), table_name='assignments')
     op.drop_index(op.f('ix_assignments_author_users_id'), table_name='assignments')
     op.drop_table('assignments')
+    op.drop_index(op.f('ix_ad_structures_cities_id'), table_name='ad_structures')
+    op.drop_index(op.f('ix_ad_structures_catalog_imports_id'), table_name='ad_structures')
+    op.drop_table('ad_structures')
     op.drop_index(op.f('ix_routes_cities_id'), table_name='routes')
     op.drop_table('routes')
+    op.drop_index(op.f('ix_catalog_imports_uploaded_by_users_id'), table_name='catalog_imports')
+    op.drop_index(op.f('ix_catalog_imports_status'), table_name='catalog_imports')
+    op.drop_index(op.f('ix_catalog_imports_created_at'), table_name='catalog_imports')
+    op.drop_index('ix_catalog_imports_city_current', table_name='catalog_imports')
+    op.drop_index(op.f('ix_catalog_imports_cities_id'), table_name='catalog_imports')
+    op.drop_table('catalog_imports')
     op.drop_index(op.f('ix_users_full_name'), table_name='users')
     op.drop_table('users')
     op.drop_index(op.f('ix_cities_slug'), table_name='cities')

@@ -67,6 +67,19 @@ class Settings(BaseSettings):
         gt=0,
     )
 
+    # Пароль админ-панели. Полноценной авторизации в системе нет, и это не она:
+    # одна пара логин/пароль на всех, кто правит города и маршруты. Задача —
+    # отгородить админ-панель от сотрудников, которым туда просто не надо, внутри
+    # корпоративной сети. От того, кто целенаправленно лезет, это не защита.
+    admin_username: str = Field(
+        default="admin",
+        validation_alias="ADMIN_USERNAME",
+    )
+    admin_password: str = Field(
+        default="admin",
+        validation_alias="ADMIN_PASSWORD",
+    )
+
     app: AppSettings = Field(default_factory=AppSettings)
     cors: CorsSettings = Field(default_factory=CorsSettings)
     pipeline: PipelineSettings = Field(default_factory=PipelineSettings)
