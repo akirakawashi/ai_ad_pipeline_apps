@@ -304,40 +304,44 @@ export function AdminPage() {
         </div>
       </section>
 
-      <section className="filter-bar">
-        <div className="field">
-          Город
-          <Select
-            ariaLabel="Город"
-            value={citySlug}
-            options={cities.map((city) => ({
-              value: city.slug,
-              // Скрытые видны только здесь, поэтому подписываем прямо в списке:
-              // иначе непонятно, почему города нет на остальных страницах.
-              label: city.is_active ? city.name : `${city.name} — скрыт`,
-            }))}
-            onChange={(slug) => {
-              setCitySlug(slug)
-              setEditingRoute(null)
-              setCityEdit(null)
-            }}
-          />
-        </div>
-        {detail && (
-          <p className="catalog-state">
-            {pluralRoutes(detail.route_count)} · {pluralAssignments(detail.assignment_count)}
-            {detail.has_roads_geometry ? ' · дорожный слой есть' : ' · дорожного слоя нет'}
-            {!detail.is_active && ' · город скрыт'}
-          </p>
-        )}
-      </section>
+      {/* Выбор города — шапка блока города, а не отдельная карточка над ним.
+          Отдельной карточкой он не читался как то, что переключает всё ниже:
+          было непонятно, почему город именно этот и где его менять. */}
+      <section className="panel catalog-panel city-scope">
+        <header className="city-scope-head">
+          <div className="field city-scope-picker">
+            Город
+            <Select
+              ariaLabel="Город"
+              value={citySlug}
+              options={cities.map((city) => ({
+                value: city.slug,
+                // Скрытые видны только здесь, поэтому подписываем прямо в
+                // списке: иначе непонятно, почему города нет на остальных
+                // страницах.
+                label: city.is_active ? city.name : `${city.name} — скрыт`,
+              }))}
+              onChange={(slug) => {
+                setCitySlug(slug)
+                setEditingRoute(null)
+                setCityEdit(null)
+              }}
+            />
+          </div>
+          {detail && (
+            <p className="catalog-state">
+              {pluralRoutes(detail.route_count)} ·{' '}
+              {pluralAssignments(detail.assignment_count)}
+              {detail.has_roads_geometry ? ' · дорожный слой есть' : ' · дорожного слоя нет'}
+              {!detail.is_active && ' · город скрыт'}
+            </p>
+          )}
+        </header>
 
-      {detail === null ? (
-        <EmptyState text="Выберите город или создайте первый." />
-      ) : (
-        <>
-          <section className="panel catalog-panel">
-            <h2>{detail.name}</h2>
+        {detail === null ? (
+          <EmptyState text="Выберите город или создайте первый." />
+        ) : (
+          <>
             {cityEdit === null ? (
               <>
                 <p className="catalog-hint">
@@ -441,10 +445,8 @@ export function AdminPage() {
                 </div>
               </>
             )}
-          </section>
-
-          <section className="panel catalog-panel">
-            <h2>Новый маршрут</h2>
+          <div className="city-scope-block">
+            <h3>Новый маршрут</h3>
             <div className="geozone-fields">
               <label className="field">
                 Слаг
@@ -516,10 +518,10 @@ export function AdminPage() {
                 Создать маршрут
               </button>
             </div>
-          </section>
+          </div>
 
-          <section className="panel catalog-panel">
-            <h2>Маршруты</h2>
+          <div className="city-scope-block">
+            <h3>Маршруты</h3>
             {detail.routes.length === 0 ? (
               <EmptyState text="У города нет маршрутов." />
             ) : (
@@ -654,9 +656,10 @@ export function AdminPage() {
                 )}
               </ul>
             )}
-          </section>
+          </div>
         </>
       )}
+      </section>
     </div>
   )
 }

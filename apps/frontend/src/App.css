@@ -3008,6 +3008,7 @@ button:disabled,
 
 .destination-fields .field,
 .filter-bar .field,
+.city-scope-picker,
 .catalog-row .field {
   display: grid;
   gap: 6px;
@@ -3802,6 +3803,50 @@ button:disabled,
   z-index: 30;
   background: var(--surface);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+/* Подпись вместо пустого превью: у города ещё нет маршрутов, а рисуем мы
+   именно их линии. Без подписи карточка читается как несохранившийся город. */
+.city-route-preview-empty {
+  fill: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Шапка блока города: выбор города и его состояние в одной строке, отчёркнутой
+   от содержимого. Раньше селектор жил отдельной карточкой над панелью и не
+   читался как то, что переключает всё ниже — было непонятно, почему город
+   именно этот и где его сменить. */
+.city-scope-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 18px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.city-scope-picker {
+  min-width: 240px;
+}
+
+/* Всё про выбранный город живёт в одной панели: город меняют и тут же с ним
+   работают. Блоки внутри разделены чертой, а не воздухом между карточками —
+   отдельными карточками они читались как самостоятельные разделы, не
+   связанные с тем, какой город выбран. */
+.city-scope-block {
+  margin-top: 22px;
+  padding-top: 22px;
+  border-top: 1px solid var(--line);
+}
+
+.city-scope-block h3 {
+  margin: 0 0 14px;
+  font-size: 15px;
 }
 
 /* Отступ над строкой действий. В панели геозон его даёт `.geozone-form`
