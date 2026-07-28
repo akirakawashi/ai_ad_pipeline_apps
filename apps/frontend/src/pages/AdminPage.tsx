@@ -381,8 +381,10 @@ export function AdminPage() {
           {creatingCity ? (
             <>
               <div className="geozone-fields">
+                {/* Не «слаг»: это жаргон, а панелью пользуется маркетинг.
+                    Называем тем, чем оно и является, — куском адреса. */}
                 <label className="field">
-                  Слаг
+                  Имя в ссылке
                   <input
                     className="text-input"
                     autoFocus
@@ -420,8 +422,9 @@ export function AdminPage() {
                 </label>
               </div>
               <p className="catalog-hint">
-                Слаг задаётся один раз: он в адресе страницы города и потом не
-                меняется.
+                Имя в ссылке — латиницей, без пробелов: город со ссылкой «kerch»
+                открывается по адресу /archive/kerch. Задаётся один раз и потом
+                не меняется, иначе сохранённые ссылки перестанут работать.
               </p>
               <div className="geozone-form-actions">
                 <button
@@ -450,7 +453,7 @@ export function AdminPage() {
               {tab === 'city' && (cityEdit === null ? (
                 <>
                   <p className="catalog-hint">
-                    Слаг: {detail.slug} · регион: {detail.region ?? '—'}
+                    Имя в ссылке: {detail.slug} · регион: {detail.region ?? '—'}
                   </p>
                   <div className="geozone-form-actions">
                     <button
@@ -557,7 +560,7 @@ export function AdminPage() {
                     <h3>Новый маршрут</h3>
                     <div className="geozone-fields">
                       <label className="field">
-                        Слаг
+                        Имя в ссылке
                         <input
                           className="text-input"
                           placeholder="route-1"
@@ -617,6 +620,11 @@ export function AdminPage() {
                         />
                       </label>
                     </div>
+                    <p className="catalog-hint">
+                      Имя в ссылке — латиницей, без пробелов: маршрут «route-1»
+                      открывается по адресу /archive/{citySlug}/route-1. Задаётся
+                      один раз и потом не меняется.
+                    </p>
                     <div className="geozone-form-actions">
                       <button
                         className="primary"

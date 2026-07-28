@@ -3966,15 +3966,13 @@ input[type='color'].text-input::-moz-color-swatch {
   font-size: inherit;
 }
 
-/* В строках списка наоборот — компактное всё, включая файловую кнопку. Ростом
-   они 30px, и общее контрольное скругление на них уехало бы в овал: ступенью
-   ниже. */
+/* В строках списка наоборот — компактное всё, включая файловую кнопку. */
 .row-actions .file-button {
   display: inline-flex;
   align-items: center;
-  min-height: 30px;
-  padding: 5px 12px;
-  font-size: 12px;
+  min-height: 36px;
+  padding: 8px 16px;
+  font-size: 13px;
 }
 
 .admin-login {
@@ -4016,6 +4014,13 @@ input[type='color'].text-input::-moz-color-swatch {
   min-width: 0;
 }
 
+/* Строка выровнена по верху ради текста слева — он может быть в два-три ряда, и
+   заголовок обязан начинаться на общей линии. Кнопкам это не подходит: у них
+   один ряд, и они повисали вверху с пустотой под собой. Центрируем только их. */
+.geozone-row > .row-actions {
+  align-self: center;
+}
+
 .geozone-row-name {
   font-weight: 600;
 }
@@ -4042,14 +4047,15 @@ input[type='color'].text-input::-moz-color-swatch {
   white-space: pre-wrap;
 }
 
+/* Красная кнопка строки — одного роста и кегля с соседями по `.row-actions`. */
 .geozone-delete {
-  min-height: 30px;
-  padding: 5px 12px;
+  min-height: 36px;
+  padding: 8px 16px;
   border: 1px solid var(--line-strong);
   border-radius: 8px;
   background: transparent;
   color: var(--danger);
-  font-size: 12px;
+  font-size: 13px;
   cursor: pointer;
 }
 
@@ -4090,9 +4096,17 @@ input[type='color'].text-input::-moz-color-swatch {
   flex-shrink: 0;
 }
 
+/* Счётчики стоят рядом с выпадашкой в строке, выровненной по нижнему краю, —
+   поэтому одной строкой текста они садились на низ контрола, а не на его
+   середину. Даём тексту высоту контрола (те же 40px, что `min-height` у кнопок)
+   и центрируем внутри: низ коробки по-прежнему на общей линии, а текст
+   оказывается напротив выбранного значения. */
 .catalog-state {
-  margin: 0 0 2px;
+  display: flex;
+  align-items: center;
   align-self: end;
+  min-height: 40px;
+  margin: 0;
   color: var(--muted);
   font-size: 13px;
 }
@@ -4229,15 +4243,24 @@ input[type='color'].text-input::-moz-color-swatch {
   cursor: pointer;
 }
 
+/* По центру, а не по растяжке: рядом с кнопками в строке стоит текстовый бейдж
+   («показывается»), у него своей высоты нет — он растягивался на высоту кнопки,
+   а текст оставался прижат к верху коробки. */
 .row-actions {
   display: inline-flex;
+  align-items: center;
   gap: 8px;
 }
 
+/* Кнопки строки — компактные, но не крошечные. На 30px они не добирали высоту
+   строки: слева два ряда текста, справа мелкие кнопки, и под ними оставалась
+   пустота. 36px и 13px кегля закрывают строку по высоте и читаются с рабочей
+   дистанции; до полноразмерных 40px не дотягиваем намеренно — это действия над
+   элементом списка, а не главные кнопки формы. */
 .row-actions .ghost-button {
-  min-height: 30px;
-  padding: 5px 12px;
-  font-size: 12px;
+  min-height: 36px;
+  padding: 8px 16px;
+  font-size: 13px;
 }
 
 /* Точки каталога поверх дорог: размер кружка растёт от числа поверхностей. */
