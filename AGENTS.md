@@ -181,6 +181,9 @@ only feed the pipeline's own `report.html`.
 | Change who can see hidden cities/routes | `include_inactive` threads through `list_cities` / `get_city` (repository → service → router → `api.ts`). Only `AdminPage.tsx` passes `true` |
 | Change catalogue parsing (new column, new format) | `infrastructure/catalog/parser.py` only; the row/point types live in `domain/catalog.py` |
 | Retune catalogue distance thresholds | `MERGE_DISTANCE_M` / `DIFF_DISTANCE_M` / `CITY_BOUNDS_MARGIN_M` in `domain/catalog.py` |
+| Change how a catalogue pack is uploaded or a revision rolled back | `components/CatalogImports.tsx` (admin only). `CatalogPage.tsx` is the read-only directory and must stay that way |
+| Add a section to the admin panel | a component under `components/`, mounted from `AdminPage.tsx`. City-scoped → a tab in `CITY_TABS`; not city-scoped → a page-level section in `AdminSection` (like `AdminUsers.tsx`). Keep the two switchers visually different — underlined text for sections, pill tabs inside a city — or they read as one level. Guard its writes with `require_admin` in the same change |
+| Change the people directory | `user_service.py` → `users.py` router → `AdminUsers.tsx` — creation, renaming and hiding all live there. `UserSelect.tsx` only selects; do not put a create form back into it (see §10) |
 | Change what the overlay card shows | `viewer/payload.py` + `OverlayObjectPayload` in `pipeline_contracts/artifacts.py` + `VideoOverlayPlayer.tsx` |
 
 ---
@@ -207,11 +210,19 @@ cd apps/frontend && pnpm dev && pnpm build && pnpm lint
   `presentation/http/dto/response.py`. Some application DTOs subclass contract models directly
   (`RunObjectDTO(TrackCsvRow)`), which is intentional — the CSV *is* the contract.
 * **Admin password:** one login/password pair from settings (`ADMIN_USERNAME` / `ADMIN_PASSWORD`,
-  default `admin`/`admin`), checked by `presentation/http/security.py` over HTTP Basic. `require_admin`
-  guards every write on cities and routes; `allow_hidden` guards `include_inactive` on the two reads.
-  It is **not** authorization and there are no roles — it fences the admin panel off from
-  colleagues who have no business there, inside a corporate network. The login form in the UI is
-  convenience only; the guarantee is that the endpoints answer 401 on their own.
+  default `admin`/`admin`), checked by `presentation/http/security.py` over HTTP Basic. It is **not**
+  authorization and there are no roles — it fences the admin panel off from colleagues who have no
+  business there, inside a corporate network. The login form in the UI is convenience only; the
+  guarantee is that the endpoints answer 401 on their own. What it guards:
+  * `require_admin` — every write on cities and routes, all four catalogue-revision writes
+    (upload / apply / restore / delete), and **both** writes on people (`POST /users`,
+    `PATCH /users/{id}`);
+  * `allow_hidden` — `include_inactive` on `GET /cities`, `GET /cities/{slug}` and `GET /users`.
+  * **The line is the cost of a mistake, not the difficulty.** Administration is what changes a
+    directory for everyone at once. Operational work — assignments, shootings, video upload,
+    geozones — stays open, or the product becomes unusable. What stays open on the directory side
+    is reads only: the catalogue list (a product screen) and `GET /users` (every upload form's
+    dropdown reads it).
 * **API envelope:** every success response is `{"data": …}` (`OkResponse[T]`). Errors are
   `{"detail": "<Russian sentence>"}` produced by handlers in `presentation/http/exception_handlers.py`.
   Domain errors are typed exceptions in `application/exceptions.py`, never raw `HTTPException`.
@@ -241,6 +252,15 @@ cd apps/frontend && pnpm dev && pnpm build && pnpm lint
   one spot. They collapse into one row with `surfaces_count`; never dedupe by address.
 * **Catalogue revisions**: `catalog_imports.is_current` is the single source of truth for visibility —
   `ad_structures` has no flag of its own. Rollback flips two rows and must never rewrite structures.
+* **People are created in the admin panel only — `UserSelect` selects, it never creates.** It used
+  to create: a free-text field in the «Кто загрузил» dropdown, filled in by whoever happened to be
+  uploading. The directory collected twins («Иванов», «Иванов А.», «иванов») faster than anyone
+  could clean them, because the person entering a name was not the person responsible for the
+  directory. Both `POST /users` and `PATCH /users/{id}` are behind the password now; only `GET`
+  stays open, because every upload form reads it. Consequence: an empty directory blocks uploading —
+  `UserSelect` says so out loud instead of showing a silent empty dropdown. There is no delete: a
+  person stands as the author of shootings and imports, so `is_active` hides them from the dropdowns
+  and the same screen brings them back.
 * Coefficient tables are **defaults, not calibrated numbers** — area, position, contrast and
   confidence were set so work could proceed. Calibration against a real distribution is still open.
 * `run_video_pipeline.sh` appends `--brand-overrides` when `ml/pipeline/brand_overrides.csv` exists,

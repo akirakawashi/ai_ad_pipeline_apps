@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, File, Form, Path, Query, UploadFile
 
 from application.services.ad_catalog_service import AdCatalogService, UploadedFile
 from presentation.http.dependencies import get_ad_catalog_service
+from presentation.http.security import require_admin
 from presentation.http.dto.response import (
     AdStructureResponse,
     CatalogImportReportResponse,
@@ -16,11 +17,18 @@ from presentation.http.dto.response import (
 # плоско по её идентификатору. Один роутер держит их вместе, как у геозон.
 router = APIRouter(tags=["Ad catalog"])
 
+# Всё, что меняет каталог, — под админским паролем: одной кнопкой «Удалить»
+# сносится ревизия на шесть сотен конструкций. Оба чтения остаются открытыми, и
+# это не послабление: `list_catalog_imports` — единственный источник строки
+# «Ревизия N · точек: X» на продуктовой странице каталога, а `list_ad_structures`
+# и есть сама таблица, ради которой на страницу приходят.
+
 
 @router.post(
     "/cities/{city_slug}/catalog/imports",
     response_model=OkResponse[CatalogImportReportResponse],
     status_code=201,
+    dependencies=[Depends(require_admin)],
 )
 def upload_catalog_import(
     city_slug: str = Path(description="Слаг города"),
@@ -49,6 +57,7 @@ def upload_catalog_import(
 @router.post(
     "/catalog/imports/{import_id}/apply",
     response_model=OkResponse[CatalogImportResponse],
+    dependencies=[Depends(require_admin)],
 )
 def apply_catalog_import(
     import_id: str = Path(description="Идентификатор загрузки"),
@@ -62,6 +71,7 @@ def apply_catalog_import(
 @router.post(
     "/catalog/imports/{import_id}/restore",
     response_model=OkResponse[CatalogImportResponse],
+    dependencies=[Depends(require_admin)],
 )
 def restore_catalog_import(
     import_id: str = Path(description="Идентификатор ревизии"),
@@ -72,7 +82,11 @@ def restore_catalog_import(
     return OkResponse(data=CatalogImportResponse.model_validate(result))
 
 
-@router.delete("/catalog/imports/{import_id}", status_code=204)
+@router.delete(
+    "/catalog/imports/{import_id}",
+    status_code=204,
+    dependencies=[Depends(require_admin)],
+)
 def delete_catalog_import(
     import_id: str = Path(description="Идентификатор загрузки или ревизии"),
     service: AdCatalogService = Depends(get_ad_catalog_service),

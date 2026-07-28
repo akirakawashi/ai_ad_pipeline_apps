@@ -3401,43 +3401,12 @@ button:disabled,
 
 /* Выбор человека из справочника (components/common/UserSelect.tsx) */
 
-.user-select-create {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.user-select-create .text-input {
-  flex: 1 1 180px;
-}
-
-.user-select-create button {
-  min-height: 40px;
-  padding: 10px 16px;
-  border-radius: 7px;
-  font-size: 13px;
-  font-weight: 800;
-  cursor: pointer;
-}
-
-.user-select-add {
-  justify-self: start;
-  min-height: 0;
-  padding: 2px 0;
-  border: 0;
-  background: transparent;
-  color: var(--accent);
+.user-select-hint {
+  color: var(--muted);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   text-transform: none;
   letter-spacing: normal;
-  cursor: pointer;
-}
-
-.user-select-add:hover:not(:disabled) {
-  background: transparent;
-  transform: none;
-  text-decoration: underline;
 }
 
 .user-select-error {
@@ -3830,8 +3799,97 @@ button:disabled,
   border-bottom: 1px solid var(--line);
 }
 
+/* Селектор и «+ Новый город» — одна сущность: «какой город». Держим их вместе
+   и одного роста, чтобы кнопка не читалась как действие над выбранным. */
+.city-scope-city {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+}
+
 .city-scope-picker {
   min-width: 240px;
+}
+
+/* Ровно габариты `.dropdown-trigger`: те же отступы, радиус и кегль. */
+.city-scope-add {
+  min-height: 0;
+  padding: 10px 16px;
+  border-radius: 10px;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+/* Разделы админ-панели. Намеренно не похожи на вкладки внутри города: там
+   кнопки-пилюли на подложке, здесь подчёркнутый текст. Два одинаковых
+   переключателя друг под другом читались бы как один уровень. */
+.admin-sections {
+  display: flex;
+  gap: 34px;
+  margin: -4px 0 26px;
+  border-bottom: 1px solid var(--line);
+}
+
+.admin-sections button {
+  min-height: 0;
+  padding: 0 0 14px;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 21px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  text-transform: none;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.admin-sections button:hover:not(:disabled) {
+  background: transparent;
+  transform: none;
+  color: var(--text);
+}
+
+.admin-sections button.is-active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+/* Вкладки занимают всю ширину шапки и переносятся под селектор: они относятся
+   ко всему блоку, а не к строке с городом. */
+.city-scope-tabs {
+  flex-basis: 100%;
+  max-width: 460px;
+}
+
+/* Первый блок вкладки уже отделён чертой самой шапки — вторая линия рядом
+   читалась бы как пустой раздел между ними. */
+.city-scope-body > .city-scope-block:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+/* Заголовок третьего уровня встречается внутри блоков вкладки «Каталог». */
+.city-scope-block h4 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+
+/* Скрытый человек виден только в админ-панели — приглушённым, как скрытый
+   маршрут, но кнопка «Показать» остаётся под рукой. */
+.data-table tr.is-hidden-row {
+  opacity: 0.55;
+}
+
+/* Список отделён от формы заведения чертой — тем же приёмом, что блоки внутри
+   городской панели. */
+.admin-users-list {
+  margin-top: 22px;
+  padding-top: 22px;
+  border-top: 1px solid var(--line);
 }
 
 /* Всё про выбранный город живёт в одной панели: город меняют и тут же с ним

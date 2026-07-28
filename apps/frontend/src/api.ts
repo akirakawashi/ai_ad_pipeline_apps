@@ -197,14 +197,27 @@ export function listRuns(params: ListRunsParams = {}): Promise<RunsPage> {
   return apiFetch(`/runs?${query.toString()}`)
 }
 
-export function getUsers(): Promise<User[]> {
-  return apiFetch('/users')
+/** `includeInactive` — только для админ-панели: обычным экранам скрытые не нужны. */
+export function getUsers(includeInactive = false): Promise<User[]> {
+  return apiFetch(`/users${includeInactive ? '?include_inactive=true' : ''}`)
 }
 
 export function createUser(fullName: string): Promise<User> {
   return apiFetch('/users', {
     method: 'POST',
     body: JSON.stringify({ full_name: fullName }),
+  })
+}
+
+export interface UserUpdatePayload {
+  full_name?: string
+  is_active?: boolean
+}
+
+export function updateUser(userId: string, payload: UserUpdatePayload): Promise<User> {
+  return apiFetch(`/users/${userId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
   })
 }
 
