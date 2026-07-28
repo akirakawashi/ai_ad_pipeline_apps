@@ -126,6 +126,10 @@ class AdCatalogService:
     def restore(self, import_id: str) -> CatalogImportDTO:
         return self._switch(self._repository.restore_import, import_id)
 
+    def hide(self, import_id: str) -> CatalogImportDTO:
+        """Снять с показа. Обратное действие — обычный откат `restore`."""
+        return self._switch(self._repository.hide_import, import_id)
+
     def delete(self, import_id: str) -> None:
         try:
             deleted = self._repository.delete_import(import_id)

@@ -117,6 +117,10 @@ def test_catalog_writes_are_closed_without_password(anonymous_client):
         == 401
     )
     assert (
+        anonymous_client.post(f"/api/v1/catalog/imports/{MISSING_ID}/hide").status_code
+        == 401
+    )
+    assert (
         anonymous_client.delete(f"/api/v1/catalog/imports/{MISSING_ID}").status_code
         == 401
     )

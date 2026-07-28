@@ -3,6 +3,7 @@ import {
   applyCatalogImport,
   deleteCatalogImport,
   getCatalogImports,
+  hideCatalogImport,
   restoreCatalogImport,
   uploadCatalogImport,
 } from '../api'
@@ -138,6 +139,23 @@ export function CatalogImports({ citySlug }: { citySlug: string }) {
     try {
       await restoreCatalogImport(item.id)
       setNotice(`Возвращена ревизия ${item.revision}.`)
+      reload()
+    } catch (reason) {
+      setError(errorMessage(reason))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleHide = async (item: CatalogImport) => {
+    setBusy(true)
+    setError(null)
+    try {
+      await hideCatalogImport(item.id)
+      setNotice(
+        `Ревизия ${item.revision} снята с показа: каталог города пуст,` +
+          ' точки убраны с карты. Вернуть — кнопкой «Вернуть».',
+      )
       reload()
     } catch (reason) {
       setError(errorMessage(reason))
@@ -290,6 +308,14 @@ export function CatalogImports({ citySlug }: { citySlug: string }) {
 
       <div className="city-scope-block">
         <h3>История ревизий</h3>
+        {/* «Ни одной текущей» — законное состояние, но по таблице оно читается
+            плохо: снятая ревизия выглядит как любая старая. Говорим прямо. */}
+        {imports.length > 0 && !imports.some((item) => item.is_current) && (
+          <p className="catalog-hint">
+            Сейчас у города нет текущей ревизии: каталог пуст, конструкции не
+            показываются ни в списке, ни на карте. Вернуть — кнопкой «Вернуть».
+          </p>
+        )}
         {imports.length === 0 ? (
           <EmptyState text="Загрузок ещё не было." />
         ) : (
@@ -315,7 +341,19 @@ export function CatalogImports({ citySlug }: { citySlug: string }) {
                     <td className="numeric">{item.points_total}</td>
                     <td>
                       {item.is_current ? (
-                        <span className="catalog-badge">показывается</span>
+                        // Снять с показа можно только текущую, и это её
+                        // единственный выход: удалить показываемую ревизию
+                        // запрещено, а откатываться у первой некуда.
+                        <span className="row-actions">
+                          <span className="catalog-badge">показывается</span>
+                          <button
+                            className="ghost-button"
+                            disabled={busy}
+                            onClick={() => handleHide(item)}
+                          >
+                            Снять с показа
+                          </button>
+                        </span>
                       ) : (
                         <span className="row-actions">
                           {item.revision !== null && (

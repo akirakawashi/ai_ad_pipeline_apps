@@ -446,6 +446,52 @@ class TestRevisions:
             client.post(f"/api/v1/catalog/imports/{import_id}/restore").status_code == 409
         )
 
+    def test_hiding_the_only_revision_empties_the_catalog(self, client, upload):
+        """Единственная ревизия города должна сниматься с показа.
+
+        Иначе она несъёмная: откатиться не на что, а удалять текущую нельзя, —
+        та же дверь в одну сторону, что была у «удаления» городов.
+        """
+        report = payload(upload(LENINA_ROWS))
+        import_id = report["catalog_import"]["id"]
+        client.post(f"/api/v1/catalog/imports/{import_id}/apply")
+
+        hidden = payload(client.post(f"/api/v1/catalog/imports/{import_id}/hide"))
+
+        assert hidden["is_current"] is False
+        # Номер ревизии остаётся: она снята с показа, а не отменена.
+        assert hidden["revision"] == 1
+        assert structures(client)["total"] == 0
+
+    def test_hidden_revision_comes_back_by_restore(self, client, upload):
+        """Возврат делается обычным откатом — отдельной ручки быть не должно."""
+        report = payload(upload(LENINA_ROWS))
+        import_id = report["catalog_import"]["id"]
+        client.post(f"/api/v1/catalog/imports/{import_id}/apply")
+        client.post(f"/api/v1/catalog/imports/{import_id}/hide")
+
+        restored = payload(client.post(f"/api/v1/catalog/imports/{import_id}/restore"))
+
+        assert restored["is_current"] is True
+        assert restored["revision"] == 1
+        assert structures(client)["total"] == 2
+
+    def test_hidden_revision_can_be_deleted(self, client, upload):
+        """Снятая с показа удаляется как обычная старая — запрет снимается вместе с флагом."""
+        report = payload(upload(LENINA_ROWS))
+        import_id = report["catalog_import"]["id"]
+        client.post(f"/api/v1/catalog/imports/{import_id}/apply")
+        client.post(f"/api/v1/catalog/imports/{import_id}/hide")
+
+        assert client.delete(f"/api/v1/catalog/imports/{import_id}").status_code == 204
+        assert payload(client.get("/api/v1/cities/sevastopol/catalog/imports")) == []
+
+    def test_hiding_what_is_not_shown_conflicts(self, client, upload):
+        report = payload(upload(LENINA_ROWS))
+        import_id = report["catalog_import"]["id"]
+
+        assert client.post(f"/api/v1/catalog/imports/{import_id}/hide").status_code == 409
+
     def test_current_revision_cannot_be_deleted(self, client, upload):
         report = payload(upload(LENINA_ROWS))
         import_id = report["catalog_import"]["id"]

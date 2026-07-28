@@ -323,8 +323,12 @@ async function uploadGeometry<T>(path: string, file: File): Promise<T> {
 
 /** DELETE отдаёт 204 без тела — apiFetch ждёт конверт, поэтому отдельная обёртка. */
 async function apiDelete(path: string): Promise<void> {
-  const response = await fetch(`${API_BASE}${path}`, { method: 'DELETE' })
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: 'DELETE',
+    headers: adminHeaders(),
+  })
   if (!response.ok) {
+    if (response.status === 401) forgetAdminSession()
     const body = await response.json().catch(() => null)
     throw new Error(body?.detail ?? `HTTP ${response.status}`)
   }
@@ -459,12 +463,17 @@ export async function uploadCatalogImport(
   files.forEach((file) => form.append('files', file))
   form.append('uploaded_by_user_id', uploadedByUserId)
 
+  // Заголовок админа обязателен: ручка под `require_admin`. Эта загрузка идёт
+  // мимо `apiFetch` из-за multipart, поэтому его легко забыть — и тогда экран
+  // под паролем получает 401 на ровном месте.
   const response = await fetch(`${API_BASE}/cities/${citySlug}/catalog/imports`, {
     method: 'POST',
     body: form,
+    headers: adminHeaders(),
   })
   const body = await response.json().catch(() => null)
   if (!response.ok) {
+    if (response.status === 401) forgetAdminSession()
     throw new Error(body?.detail ?? `HTTP ${response.status}`)
   }
   return body.data as CatalogImportReport
@@ -476,6 +485,11 @@ export function applyCatalogImport(importId: string): Promise<CatalogImport> {
 
 export function restoreCatalogImport(importId: string): Promise<CatalogImport> {
   return apiFetch(`/catalog/imports/${importId}/restore`, { method: 'POST' })
+}
+
+/** Снять каталог города с показа. Вернуть — обычным `restoreCatalogImport`. */
+export function hideCatalogImport(importId: string): Promise<CatalogImport> {
+  return apiFetch(`/catalog/imports/${importId}/hide`, { method: 'POST' })
 }
 
 export function deleteCatalogImport(importId: string): Promise<void> {

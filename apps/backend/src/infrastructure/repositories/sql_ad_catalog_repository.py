@@ -184,6 +184,27 @@ class SqlAdCatalogRepository:
         self._session.refresh(model)
         return _import_to_dto(model)
 
+    def hide_import(self, import_id: str) -> CatalogImportDTO | None:
+        """Снять ревизию с показа, не назначая другую.
+
+        «У города нет текущей ревизии» — законное состояние: так выглядит город,
+        куда ещё ничего не грузили. Без этой ручки единственная ревизия города
+        оказывалась несъёмной: откатиться не на что, а удалить текущую запрещено.
+        Возврат делается обычным откатом — та же кнопка «Вернуть».
+        """
+        model = self._import_by_id(import_id)
+        if model is None:
+            return None
+        if not model.is_current:
+            raise CatalogImportStateError("Эта ревизия и так не показывается.")
+
+        self._lock_city(model.cities_id)
+        model.is_current = False
+        self._session.add(model)
+        self._session.flush()
+        self._session.refresh(model)
+        return _import_to_dto(model)
+
     def delete_import(self, import_id: str) -> bool:
         model = self._import_by_id(import_id)
         if model is None:

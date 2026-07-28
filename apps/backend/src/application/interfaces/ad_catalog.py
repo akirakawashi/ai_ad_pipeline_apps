@@ -68,6 +68,13 @@ class AdCatalogRepository(Protocol):
         """Возвращает город на прежнюю ревизию: гасит текущую, зажигает эту."""
         ...
 
+    def hide_import(self, import_id: str) -> CatalogImportDTO | None:
+        """Снимает ревизию с показа, не назначая другую.
+
+        None — пака нет. `CatalogImportStateError`, если он и так не показан.
+        """
+        ...
+
     def delete_import(self, import_id: str) -> bool:
         """Удаляет неприменённый пак или старую ревизию. False — пака нет."""
         ...

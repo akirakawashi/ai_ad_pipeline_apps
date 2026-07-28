@@ -252,6 +252,16 @@ cd apps/frontend && pnpm dev && pnpm build && pnpm lint
   one spot. They collapse into one row with `surfaces_count`; never dedupe by address.
 * **Catalogue revisions**: `catalog_imports.is_current` is the single source of truth for visibility —
   `ad_structures` has no flag of its own. Rollback flips two rows and must never rewrite structures.
+  **"No current revision" is a legal state** — it is what a city looks like before anything is
+  uploaded, and `POST /catalog/imports/{id}/hide` puts a city back into it. Without that verb the
+  first revision of a city was unremovable: nothing to roll back to, and deleting the current one is
+  refused. Un-hiding is plain `restore` — no second verb, and the button was already there.
+* **Three functions in `api.ts` bypass `apiFetch`, and each needs `adminHeaders()` by hand.**
+  `uploadGeometry` and `uploadCatalogImport` build multipart bodies, `apiDelete` handles the empty
+  204 — none of them go through the wrapper that attaches the password and clears the session on
+  401. Putting `require_admin` on an endpoint reached through one of them and forgetting the header
+  produces the worst possible symptom: a screen that is already behind the login form answers
+  «введите логин и пароль». Guard an endpoint → check which of the three reaches it.
 * **People are created in the admin panel only — `UserSelect` selects, it never creates.** It used
   to create: a free-text field in the «Кто загрузил» dropdown, filled in by whoever happened to be
   uploading. The directory collected twins («Иванов», «Иванов А.», «иванов») faster than anyone

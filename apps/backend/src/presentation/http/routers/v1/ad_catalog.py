@@ -82,6 +82,24 @@ def restore_catalog_import(
     return OkResponse(data=CatalogImportResponse.model_validate(result))
 
 
+@router.post(
+    "/catalog/imports/{import_id}/hide",
+    response_model=OkResponse[CatalogImportResponse],
+    dependencies=[Depends(require_admin)],
+)
+def hide_catalog_import(
+    import_id: str = Path(description="Идентификатор текущей ревизии"),
+    service: AdCatalogService = Depends(get_ad_catalog_service),
+) -> OkResponse[CatalogImportResponse]:
+    """Убирает каталог города с глаз, не назначая другую ревизию.
+
+    Без этой ручки единственная ревизия города была несъёмной: откатиться не на
+    что, а удалить текущую запрещено. Вернуть — обычным откатом.
+    """
+    result = service.hide(import_id)
+    return OkResponse(data=CatalogImportResponse.model_validate(result))
+
+
 @router.delete(
     "/catalog/imports/{import_id}",
     status_code=204,
