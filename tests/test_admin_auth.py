@@ -14,10 +14,13 @@ from __future__ import annotations
 
 import io
 import json
+from base64 import b64encode
+from types import SimpleNamespace
 
 import pytest
 
 from conftest import ADMIN_LOGIN, ADMIN_PASSWORD, payload
+from presentation.http import security
 
 CITIES = "/api/v1/cities"
 SESSION = "/api/v1/admin/session"
@@ -70,6 +73,66 @@ def test_unauthorized_answer_is_a_russian_sentence_with_the_scheme(anonymous_cli
     response = anonymous_client.get(SESSION)
     assert response.json()["detail"] == "Админ-панель под паролем. Введите логин и пароль."
     assert response.headers["WWW-Authenticate"].startswith("Basic")
+
+
+# --- пароль на любом языке --------------------------------------------------
+#
+# Продукт русский, и владелец скорее поставит русский пароль, чем латинский.
+# Штатный HTTPBasic из FastAPI декодирует заголовок как ASCII, и с таким паролем
+# в панель нельзя было войти вовсе: верный не переживал декод (401), а неверный
+# ронял сравнение строк в TypeError (500). Дверь запиралась с обеих сторон.
+
+
+def test_cyrillic_password_lets_the_owner_in(anonymous_client, monkeypatch):
+    """Главный случай: русский пароль — рабочий, а не кирпич."""
+    monkeypatch.setattr(
+        security,
+        "get_settings",
+        lambda: SimpleNamespace(admin_username="админ", admin_password="пароль"),
+    )
+    response = anonymous_client.get(SESSION, auth=("админ", "пароль"))
+    assert response.status_code == 204
+
+
+def test_wrong_cyrillic_password_is_a_plain_401(anonymous_client, monkeypatch):
+    """Не 500: сравнение идёт по байтам, а на строках оно падало с TypeError."""
+    monkeypatch.setattr(
+        security,
+        "get_settings",
+        lambda: SimpleNamespace(admin_username="админ", admin_password="пароль"),
+    )
+    response = anonymous_client.get(SESSION, auth=("админ", "не тот"))
+    assert response.status_code == 401
+
+
+def test_cyrillic_attempt_answers_in_russian(anonymous_client):
+    """Промахнулся раскладкой — получает наш текст, а не «Not authenticated».
+
+    Раньше эту пару отбраковывала библиотека своей ошибкой, до нашего кода:
+    единственный ответ про пароль формируется в `_verify`, и попасть туда должны
+    все отказы без исключения.
+    """
+    response = anonymous_client.get(SESSION, auth=("admin", "неверный"))
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Админ-панель под паролем. Введите логин и пароль."
+
+
+@pytest.mark.parametrize(
+    "header",
+    [
+        "Basic ###not-base64###",
+        # Пара без двоеточия — это не «логин:пароль», а мусор.
+        f"Basic {b64encode(b'nocolon').decode()}",
+        "Bearer sometoken",
+        "Basic",
+    ],
+    ids=["не base64", "без двоеточия", "чужая схема", "схема без значения"],
+)
+def test_broken_authorization_header_is_a_russian_401(anonymous_client, header: str):
+    """Любой мусор в заголовке — обычный отказ, а не 500 и не чужой текст."""
+    response = anonymous_client.get(SESSION, headers={"Authorization": header})
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Админ-панель под паролем. Введите логин и пароль."
 
 
 # --- что закрыто ------------------------------------------------------------

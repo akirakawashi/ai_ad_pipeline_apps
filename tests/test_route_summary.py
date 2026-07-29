@@ -48,7 +48,7 @@ def _tracks_csv(run_id: str, brands_visibility: dict[str, float]) -> bytes:
                 FinalStatus.OTHER if brand == "other" else FinalStatus.DETECTED_BRAND
             ),
             business_brand=brand,
-            business_visible=1,
+            business_visible=True,
             final_status_reason="ok",
             track_confirmed=True,
             manual_review_required=False,

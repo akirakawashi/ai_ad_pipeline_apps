@@ -41,7 +41,8 @@ def create_run(client, **overrides):
 def set_duration(run_id: str, seconds: float) -> None:
     """Длительность проставляет воркер после обработки — здесь имитируем."""
     with Session(engine) as session:
-        session.exec(
+        # execute, а не exec: exec у SQLModel типизирован под select.
+        session.execute(
             text(
                 "UPDATE pipeline_runs SET duration_sec = :d WHERE pipeline_runs_id = :i"
             ).bindparams(d=seconds, i=run_id)

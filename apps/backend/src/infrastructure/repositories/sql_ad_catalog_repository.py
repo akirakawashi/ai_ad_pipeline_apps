@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from sqlalchemy.orm import defer
 from sqlmodel import Session, func, select
 
 from application.common.dto import AdStructureDTO, CatalogImportDTO
@@ -271,7 +272,14 @@ class SqlAdCatalogRepository:
     # --- вспомогательное -----------------------------------------------------
 
     def _city_by_slug(self, city_slug: str) -> City | None:
-        return self._session.exec(select(City).where(City.slug == city_slug)).first()
+        # defer обязателен: от города здесь нужны только идентификатор, название
+        # и рамка, а дорожный слой — это до полутора мегабайт JSONB, которые
+        # иначе поднимаются и выбрасываются на каждом чтении каталога.
+        return self._session.exec(
+            select(City)
+            .where(City.slug == city_slug)
+            .options(defer(City.roads_geometry))
+        ).first()
 
     def _import_by_id(self, import_id: str) -> CatalogImport | None:
         return self._session.exec(
@@ -285,9 +293,16 @@ class SqlAdCatalogRepository:
 
         Иначе два одновременных применения оба погасят текущую ревизию и оба
         зажгут свою — город останется с двумя актуальными.
+
+        defer здесь важнее, чем на чтении: без него дорожный слой едет по сети
+        внутри уже взятой блокировки, то есть растягивает критическую секцию
+        ради данных, которые этому методу не нужны вовсе.
         """
         self._session.exec(
-            select(City).where(City.cities_id == city_id).with_for_update()
+            select(City)
+            .where(City.cities_id == city_id)
+            .options(defer(City.roads_geometry))
+            .with_for_update()
         ).first()
 
     def _switch_off_current(self, city_id: str) -> None:

@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 
 import pytest
 from sqlmodel import Session, select
@@ -46,6 +47,9 @@ def _upload(client, url: str, content: bytes, name: str = "layer.geojson"):
 def _city_bounds(slug: str) -> tuple[float | None, ...]:
     with Session(engine) as session:
         city = session.exec(select(City).where(City.slug == slug)).first()
+        # Рамку спрашивают у города, который тест только что завёл: если его
+        # нет, падать надо здесь, а не ниже с AttributeError на None.
+        assert city is not None
         return (
             city.bounds_min_latitude,
             city.bounds_max_latitude,
@@ -66,7 +70,7 @@ def _drop_city(slug: str) -> None:
 
 
 @pytest.fixture
-def city(client) -> str:
+def city(client) -> Iterator[str]:
     """Свой город на каждый тест, с уборкой за собой."""
     created = payload(
         client.post(
@@ -80,7 +84,7 @@ def city(client) -> str:
 
 
 @pytest.fixture
-def other_city(client) -> str:
+def other_city(client) -> Iterator[str]:
     """Второй временный город: проверить, что слаги маршрутов не конфликтуют
     между городами, не трогая сидовые данные."""
     created = payload(client.post(CITIES, json={"slug": "yalta", "name": "Ялта"}))

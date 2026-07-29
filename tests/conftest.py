@@ -7,8 +7,10 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Iterator
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 from urllib.parse import quote_plus
 
 from dotenv import load_dotenv
@@ -95,7 +97,7 @@ def _admin_dsn() -> str:
 
 
 @pytest.fixture(scope="session", autouse=True)
-def database() -> None:
+def database() -> Iterator[None]:
     """Создаёт базу под тесты, накатывает миграции, в конце сносит.
 
     Схема берётся из тех же миграций, что поедут в прод, — иначе тесты
@@ -124,7 +126,7 @@ def database() -> None:
 
 
 @pytest.fixture(autouse=True)
-def clean_tables(database: None) -> None:
+def clean_tables(database: None) -> Iterator[None]:
     """Каждый тест начинает с пустых изменяемых таблиц, но с сидами каталога."""
     yield
     with Session(engine) as session:
@@ -133,7 +135,9 @@ def clean_tables(database: None) -> None:
         existing = set(inspect(engine).get_table_names())
         tables = [name for name in MUTABLE_TABLES if name in existing]
         if tables:
-            session.exec(text(f"TRUNCATE {', '.join(tables)} CASCADE"))
+            # execute, а не exec: exec у SQLModel — типизированная обёртка под
+            # select, сырой SQL по её сигнатуре не проходит.
+            session.execute(text(f"TRUNCATE {', '.join(tables)} CASCADE"))
             session.commit()
 
 
@@ -155,7 +159,7 @@ def storage() -> FakeObjectStorage:
 
 
 @pytest.fixture
-def client(storage: FakeObjectStorage) -> TestClient:
+def client(storage: FakeObjectStorage) -> Iterator[TestClient]:
     """Клиент без запуска lifespan: подключение к MinIO тестам не нужно.
 
     Ходит с паролем справочников: правка городов и маршрутов закрыта, а
@@ -170,7 +174,7 @@ def client(storage: FakeObjectStorage) -> TestClient:
 
 
 @pytest.fixture
-def anonymous_client(storage: FakeObjectStorage) -> TestClient:
+def anonymous_client(storage: FakeObjectStorage) -> Iterator[TestClient]:
     """Тот же клиент, но без пароля — им проверяется, что закрыто именно то."""
     app.dependency_overrides[get_object_storage] = lambda: storage
     yield TestClient(app)
@@ -183,6 +187,11 @@ def city_route() -> tuple[str, str]:
     return "simferopol", "route-1"
 
 
-def payload(response) -> object:
-    """Разворачивает конверт {"data": ...} ответа API."""
+def payload(response) -> Any:
+    """Разворачивает конверт {"data": ...} ответа API.
+
+    `Any`, а не `object`: внутри — JSON произвольной формы, и тесты сразу лезут
+    в него по ключу. С `object` каждое `payload(...)["id"]` становится ошибкой
+    типов, хотя проверять там нечего — форму ответа держат DTO на бэкенде.
+    """
     return response.json()["data"]

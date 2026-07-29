@@ -35,7 +35,12 @@ interface UploadPageProps {
 export function UploadPage({ citySlug, routeSlug, assignmentId }: UploadPageProps) {
   const [cities, setCities] = useState<City[]>([])
   const [detail, setDetail] = useState<CityDetail | null>(null)
-  const [assignments, setAssignments] = useState<Assignment[]>([])
+  // Задания храним вместе с меткой, чьи они, — как маршруты в VideosPage.
+  // Без метки список пережил бы смену города и выдал бы себя за задания нового.
+  const [loadedAssignments, setLoadedAssignments] = useState<{
+    routeKey: string
+    items: Assignment[]
+  } | null>(null)
   const [pinnedAssignment, setPinnedAssignment] = useState<Assignment | null>(null)
   const [selectedCity, setSelectedCity] = useState(citySlug ?? '')
   const [selectedRoute, setSelectedRoute] = useState(routeSlug ?? '')
@@ -82,15 +87,13 @@ export function UploadPage({ citySlug, routeSlug, assignmentId }: UploadPageProp
   }, [pinned, selectedCity])
 
   useEffect(() => {
-    if (pinned || !selectedCity || !selectedRoute) {
-      setAssignments([])
-      return
-    }
+    if (pinned || !selectedCity || !selectedRoute) return
+    const routeKey = `${selectedCity}/${selectedRoute}`
     let disposed = false
     getRouteAssignments(selectedCity, selectedRoute)
       .then((page) => {
         if (disposed) return
-        setAssignments(page.items)
+        setLoadedAssignments({ routeKey, items: page.items })
         // Список идёт от свежих: обычно грузят в последнее заведённое задание.
         setSelectedAssignment(page.items[0]?.id ?? '')
       })
@@ -106,13 +109,33 @@ export function UploadPage({ citySlug, routeSlug, assignmentId }: UploadPageProp
   // список маршрутов не должен показываться как его.
   const activeDetail = detail && detail.slug === selectedCity ? detail : null
 
+  // Тем же приёмом и задания. Метка обязательна: между сменой города и ответом
+  // сервера страница показывает новый город, а список заданий ещё старый —
+  // и в это окно можно было отправить съёмку в задание прежнего города.
+  const routeKey = `${selectedCity}/${selectedRoute}`
+  const assignmentsReady = loadedAssignments?.routeKey === routeKey
+  const assignments =
+    pinned || !selectedCity || !selectedRoute || !assignmentsReady
+      ? []
+      : (loadedAssignments?.items ?? [])
+
+  // Выбранное задание тоже устаревает вместе со списком: сам по себе это просто
+  // идентификатор, и он переживает смену города. Считаем его выбранным, только
+  // пока он есть в текущем списке. В VideosPage такого нет — там выбор живёт в
+  // адресе и устареть не может, здесь он в состоянии страницы.
+  const activeAssignment = assignments.some((item) => item.id === selectedAssignment)
+    ? selectedAssignment
+    : ''
+
   const targetAssignmentId = pinned
     ? (assignmentId ?? null)
     : noAssignment
       ? null
-      : selectedAssignment || null
+      : activeAssignment || null
 
-  const destinationReady = pinned || noAssignment || Boolean(selectedAssignment)
+  // Именно эта строка гасит «Загрузить» в окне рассинхрона: без неё выпадашка
+  // была бы честной, а отправить в чужое задание всё равно можно.
+  const destinationReady = pinned || noAssignment || Boolean(activeAssignment)
   const routeChosen = Boolean(selectedCity && selectedRoute)
 
   const upload = useVideoUpload({
@@ -198,10 +221,14 @@ export function UploadPage({ citySlug, routeSlug, assignmentId }: UploadPageProp
                 Задание
                 <Select
                   ariaLabel="Задание"
-                  value={selectedAssignment}
+                  value={activeAssignment}
                   disabled={noAssignment || !assignments.length || upload.busy}
                   placeholder={
-                    routeChosen ? 'Заданий пока нет' : 'Сначала выберите маршрут'
+                    !routeChosen
+                      ? 'Сначала выберите маршрут'
+                      : assignmentsReady
+                        ? 'Заданий пока нет'
+                        : 'Загружаем задания…'
                   }
                   options={assignments.map((assignment) => ({
                     value: assignment.id,
@@ -212,7 +239,9 @@ export function UploadPage({ citySlug, routeSlug, assignmentId }: UploadPageProp
               </div>
             </div>
 
-            {!noAssignment && routeChosen && !assignments.length && (
+            {/* assignmentsReady обязателен: без него баннер мигал бы «нет
+                заданий» на каждой смене маршрута, пока список ещё грузится. */}
+            {!noAssignment && routeChosen && assignmentsReady && !assignments.length && (
               <InfoBanner text="На этом маршруте нет заданий. Заведите задание на странице маршрута: съёмки загружаются в готовое задание." />
             )}
 

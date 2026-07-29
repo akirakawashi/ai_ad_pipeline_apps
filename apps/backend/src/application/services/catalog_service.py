@@ -99,8 +99,12 @@ class CatalogService:
     def __init__(
         self,
         repository: CatalogRepository,
-        run_service: PipelineRunService | None = None,
+        run_service: PipelineRunService,
     ) -> None:
+        # run_service обязателен: сводки задания и маршрута читают метрики съёмок
+        # через него, и сервис без него — наполовину нерабочий объект. Раньше
+        # параметр был необязательным, и под это в двух методах лежали проверки
+        # «создан без run_service»; создавали сервис всё равно всегда одинаково.
         self._repository = repository
         self._run_service = run_service
 
@@ -452,8 +456,6 @@ class CatalogService:
         assignment = self._repository.get_assignment(assignment_id)
         if assignment is None:
             raise CatalogNotFoundError("Задание не найдено.")
-        if self._run_service is None:
-            raise RuntimeError("CatalogService создан без run_service.")
 
         runs = self._repository.list_assignment_runs(assignment_id)
         shootings = [
@@ -482,8 +484,6 @@ class CatalogService:
         route = self._repository.get_route(city_slug, route_slug)
         if route is None:
             raise CatalogNotFoundError("Маршрут не найден.")
-        if self._run_service is None:
-            raise RuntimeError("CatalogService создан без run_service.")
 
         runs = self._repository.list_route_runs(city_slug, route_slug)
         if runs is None:

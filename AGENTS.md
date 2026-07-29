@@ -194,11 +194,22 @@ only feed the pipeline's own `report.html`.
 ./scripts/dev.sh up          # postgres + minio + migrations + backend (docker) + worker (host)
 ./scripts/dev.sh down|logs
 uv run pytest                # needs postgres up; creates/drops ad_pipeline_test
-uv run pytest tests/test_scoring.py     # pure unit tests, no DB
+uv run pytest tests/test_scoring.py     # scoring in isolation — but still needs postgres, see below
 uv run ruff check . && uv run mypy .
 cd apps/frontend && pnpm dev && pnpm build && pnpm lint
 ./run_video_pipeline.sh path/to/video.mp4     # standalone ML run (GPU + weights required)
 ```
+
+**Run `ruff`, `mypy` and `pytest` after every change, and `pnpm lint` after every frontend change.**
+All four are expected to be clean — that is the baseline, not an aspiration. `mypy` in particular
+only works as a signal while it stays at zero: it sat at 26 errors for a while, none of them real
+bugs, and the one consequence was that nobody looked at it. If a finding genuinely cannot be
+expressed in types, silence it at the single line with `# type: ignore[code]` **and a comment saying
+why** — never by widening a signature or excluding a module.
+
+`tests/test_scoring.py` needs no database of its own, but you still cannot run it without one: the
+session-scoped autouse `database` fixture in `conftest.py` creates the test database before any test
+is collected, and calls `pytest.exit` when postgres is unreachable. There is no DB-free subset.
 
 ---
 
@@ -213,7 +224,8 @@ cd apps/frontend && pnpm dev && pnpm build && pnpm lint
   default `admin`/`admin`), checked by `presentation/http/security.py` over HTTP Basic. It is **not**
   authorization and there are no roles — it fences the admin panel off from colleagues who have no
   business there, inside a corporate network. The login form in the UI is convenience only; the
-  guarantee is that the endpoints answer 401 on their own. What it guards:
+  guarantee is that the endpoints answer 401 on their own. **The password may be in any language** —
+  see the UTF-8 trap in §10. What it guards:
   * `require_admin` — every write on cities and routes, all four catalogue-revision writes
     (upload / apply / restore / delete), and **both** writes on people (`POST /users`,
     `PATCH /users/{id}`);
@@ -238,6 +250,21 @@ cd apps/frontend && pnpm dev && pnpm build && pnpm lint
   keep them truthful when you edit the code they describe.
 * **Frontend:** no state library, no router library; `fetch` wrapper in `api.ts`, types mirrored by
   hand in `types.ts`. Keep them in sync with backend response DTOs manually.
+* **Server data fetched by an on-page selection is stored with a tag saying whose it is, and read
+  through a derived guard — never cleared in an effect.** The shape is always the same:
+  `useState<{ key: …; items: … } | null>(null)`, then
+  `const ofCurrent = loaded?.key === currentKey ? loaded : null`. `VideosPage.tsx` (routes,
+  assignments), `UploadPage.tsx` (city detail, assignments) and `CatalogPage.tsx` (structures,
+  revisions) all use it — copy it, do not invent a hook, or there will be a fourth way to do one
+  thing. `null` additionally means "not loaded yet", which is what lets a screen say «Загружаем…»
+  instead of lying «пусто» for half a second on every switch.
+  **This is not cosmetic.** Pages keyed by a route param are safe — `App.tsx` gives them a `key`, so
+  they remount and stale state cannot survive. Pages driven by a dropdown do not remount, and in
+  `UploadPage` that window was a data bug, not a flicker: the assignment picker kept the previous
+  city's options while the new city was already shown, `destinationReady` still saw the old id, and
+  a shooting could be uploaded into another city's assignment — which then quietly skewed that
+  route's metrics. A selection derived from fetched data (`activeAssignment`) must be validated
+  against the list that is on screen *now*, not merely stored.
 
 ---
 
@@ -290,6 +317,25 @@ cd apps/frontend && pnpm dev && pnpm build && pnpm lint
   that loads `City` or `Route` models carries `defer(...)` on those columns, and DTOs expose only
   `has_geometry` / `has_roads_geometry`. `_route_to_dto` takes the flag as an argument on purpose —
   reading `route.geometry` there would undo the deferral. Geometry has its own endpoints with `ETag`.
+  **This is no longer an honour system:** [tests/test_geometry_deferred.py](tests/test_geometry_deferred.py)
+  listens to the SQL that actually reaches Postgres and fails if `roads_geometry` is selected by an
+  endpoint that has no business loading it. The rule needed teeth — `sql_ad_catalog_repository.py`
+  had fallen out of it entirely, and `GET /ad-structures` was paying 12 ms per request to fetch
+  755 KB of JSONB it then threw away. Note the distinction the test encodes: `roads_geometry IS NOT
+  NULL` is a *legal* mention — that is how `has_roads_geometry` is computed, in the database, so only
+  a boolean crosses the wire. Referencing the column is fine; selecting its value is not.
+* **The admin password is UTF-8 end to end, and every layer had to be taught it.** Two library
+  defaults conspire against a non-Latin password. FastAPI's `HTTPBasic` decodes the header as
+  **ASCII** and raises its own error before your dependency runs — `auto_error=False` does not stop
+  it. `secrets.compare_digest` on **`str`** raises `TypeError` on non-ASCII, which surfaces as a 500,
+  not a 401. Set a Cyrillic `ADMIN_PASSWORD` on the old code and the panel locked from both sides:
+  the correct password never survived the decode (401), any wrong one crashed the comparison (500).
+  Hence `_Utf8HTTPBasic` in `security.py` (subclass, not a from-scratch dependency — the base class
+  carries the OpenAPI scheme) and byte comparison in `_verify`. **Two consequences to preserve:**
+  the frontend's `basicToken` in `api.ts` hand-rolls UTF-8 base64 because `btoa` is latin1-only —
+  that is not redundant, it is the other half; and every rejection must reach `_verify`, so
+  `_Utf8HTTPBasic` returns `None` on anything malformed and never raises — otherwise the library's
+  English "Not authenticated" leaks out in place of the Russian sentence.
 * **Uploading a city's road layer recomputes `bounds_*` in the same operation.** The catalogue parser
   uses that box to drop out-of-town points; a new layer with a stale box silently discards good rows.
 * **`ShootingMetricsDTO` is the unit of account at every level.** Assignment and route both read it;

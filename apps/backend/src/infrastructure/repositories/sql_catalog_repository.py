@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from typing import cast
 
 from sqlalchemy import func
 from sqlalchemy.orm import defer, noload, selectinload
@@ -808,10 +809,13 @@ class SqlCatalogRepository:
         self._lock_route(geozone.routes_id)
         merged_start = fields.get("start_fraction", geozone.start_fraction)
         merged_end = fields.get("end_fraction", geozone.end_fraction)
+        # cast, а не проверка: fields объявлен как dict[str, object], потому что
+        # в PATCH приходит что угодно, но обе границы уже провалидированы
+        # `_check_geozone_bounds` в CatalogService — сюда доходят только числа.
         self._ensure_no_overlap(
             geozone.routes_id,
-            float(merged_start),
-            float(merged_end),
+            float(cast(float, merged_start)),
+            float(cast(float, merged_end)),
             exclude_id=geozone.route_geozones_id,
         )
 

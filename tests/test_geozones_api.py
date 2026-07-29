@@ -76,6 +76,9 @@ def _route_id(city_slug: str, route_slug: str) -> str:
             .join(City, City.cities_id == Route.cities_id)
             .where(City.slug == city_slug, Route.slug == route_slug)
         ).first()
+        # Маршрут из сид-миграции: если его нет, падать надо здесь и внятно,
+        # а не ниже по стеку с AttributeError на None.
+        assert route is not None
         return route.routes_id
 
 
