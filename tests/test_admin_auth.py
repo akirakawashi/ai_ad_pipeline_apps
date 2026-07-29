@@ -2,8 +2,8 @@
 
 Смысл набора — зафиксировать границу. Форму входа обойти легко (это просто
 экран), поэтому важно, что закрыты сами эндпоинты: без пароля правка городов,
-маршрутов, ревизий каталога и справочника людей не проходит, чем бы её ни
-вызывали.
+маршрутов, заданий, ревизий каталога и справочника людей не проходит, чем бы её
+ни вызывали.
 
 Обратная половина не менее важна и проверяется здесь же: чтения, из которых
 живёт продукт, остаются открытыми. Закрыть их паролем значило бы закрыть весь
@@ -146,8 +146,20 @@ def test_broken_authorization_header_is_a_russian_401(anonymous_client, header: 
         ("patch", f"{CITIES}/simferopol", {"is_active": False}),
         ("post", f"{CITIES}/simferopol/routes", {"slug": "route-9", "name": "Новый"}),
         ("patch", f"{CITIES}/simferopol/routes/route-1", {"name": "Другое имя"}),
+        ("post", f"{CITIES}/simferopol/routes/route-1/assignments", {}),
+        ("patch", f"/api/v1/assignments/{MISSING_ID}", {"description": "x"}),
+        ("patch", f"/api/v1/assignments/{MISSING_ID}", {"is_active": False}),
     ],
-    ids=["создать город", "правка города", "скрыть город", "создать маршрут", "правка маршрута"],
+    ids=[
+        "создать город",
+        "правка города",
+        "скрыть город",
+        "создать маршрут",
+        "правка маршрута",
+        "создать задание",
+        "правка задания",
+        "скрыть задание",
+    ],
 )
 def test_writes_are_closed_without_password(anonymous_client, method, url, body):
     assert getattr(anonymous_client, method)(url, json=body).status_code == 401
@@ -211,6 +223,44 @@ def test_hidden_cities_are_closed_without_password(anonymous_client):
     assert anonymous_client.get(f"{CITIES}?include_inactive=true").status_code == 401
     assert (
         anonymous_client.get(f"{CITIES}/simferopol?include_inactive=true").status_code == 401
+    )
+
+
+def test_hidden_assignments_are_closed_without_password(anonymous_client):
+    """Скрытое задание видно только админке — там же его и возвращают."""
+    assignments = f"{CITIES}/simferopol/routes/route-1/assignments"
+    assert anonymous_client.get(f"{assignments}?include_inactive=true").status_code == 401
+    assert (
+        anonymous_client.get(
+            f"/api/v1/assignments/{MISSING_ID}?include_inactive=true"
+        ).status_code
+        == 401
+    )
+
+
+def test_assignment_reads_and_uploading_stay_open(anonymous_client, client):
+    """Граница проходит между «завести кампанию» и «сдать в неё проезд».
+
+    Задание заводит ответственный, но выбирает его при загрузке водитель, и
+    список заданий читает каждая форма загрузки. Закрыть чтение значило бы
+    закрыть саму загрузку — операционную работу, ради которой продукт и есть.
+    """
+    assignments = f"{CITIES}/simferopol/routes/route-1/assignments"
+    created = payload(client.post(assignments, json={}))
+
+    assert anonymous_client.get(assignments).status_code == 200
+    assert anonymous_client.get(f"/api/v1/assignments/{created['id']}").status_code == 200
+    assert (
+        anonymous_client.post(
+            "/api/v1/runs",
+            json={
+                "file_name": "pass.mp4",
+                "content_type": "video/mp4",
+                "size_bytes": 1024,
+                "assignment_id": created["id"],
+            },
+        ).status_code
+        == 201
     )
 
 

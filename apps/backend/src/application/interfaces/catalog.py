@@ -109,6 +109,7 @@ class CatalogRepository(Protocol):
         route_slug: str,
         page: int,
         page_size: int,
+        include_inactive: bool = False,
     ) -> tuple[list[AssignmentDTO], int]: ...
 
     def create_assignment(
@@ -137,7 +138,12 @@ class CatalogRepository(Protocol):
         """Перезаписывает только переданные поля. None — задания нет."""
         ...
 
-    def get_assignment(self, assignment_id: str) -> AssignmentDTO | None: ...
+    def get_assignment(
+        self,
+        assignment_id: str,
+        *,
+        include_inactive: bool = False,
+    ) -> AssignmentDTO | None: ...
 
     def list_assignment_runs(self, assignment_id: str) -> list[PipelineRunDTO]: ...
 
@@ -145,9 +151,15 @@ class CatalogRepository(Protocol):
         self,
         city_slug: str,
         route_slug: str,
+        *,
+        shot_from: datetime | None = None,
+        shot_to: datetime | None = None,
     ) -> list[PipelineRunDTO] | None:
         """Съёмки всех заданий маршрута с загруженным заданием. None — маршрута
-        нет. Порядок — по времени съёмки."""
+        нет. Порядок — по времени съёмки.
+
+        Период — полуинтервал [shot_from, shot_to) по `shot_started_at`. Съёмка
+        без даты в него не попадает: поместить её во времени нечем."""
         ...
 
     def list_geozones(

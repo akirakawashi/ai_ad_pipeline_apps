@@ -25,6 +25,7 @@ from application.exceptions import (
     InvalidAssignmentError,
     InvalidGeometryError,
     InvalidGeozoneError,
+    InvalidPeriodError,
 )
 from application.interfaces import CatalogRepository
 from application.services.metrics_rollup import rollup_brands, rollup_totals
@@ -290,14 +291,24 @@ class CatalogService:
         route_slug: str,
         page: int,
         page_size: int,
+        include_inactive: bool = False,
     ) -> PaginatedAssignmentsDTO:
-        if self._repository.get_route(city_slug, route_slug) is None:
+        # Маршрут тоже смотрим с оглядкой на флаг: в админке задания заводят и на
+        # скрытом маршруте — иначе он превратился бы в тупик, где ничего не
+        # починить, не показав его сначала всем.
+        if (
+            self._repository.get_route(
+                city_slug, route_slug, include_inactive=include_inactive
+            )
+            is None
+        ):
             raise CatalogNotFoundError("Маршрут не найден.")
         items, total = self._repository.list_assignments(
             city_slug=city_slug,
             route_slug=route_slug,
             page=page,
             page_size=page_size,
+            include_inactive=include_inactive,
         )
         return PaginatedAssignmentsDTO(
             items=items,
@@ -339,8 +350,12 @@ class CatalogService:
         *,
         fields: dict[str, object],
     ) -> AssignmentDTO:
-        """fields содержит только те ключи, которые клиент реально прислал."""
-        current = self._repository.get_assignment(assignment_id)
+        """fields содержит только те ключи, которые клиент реально прислал.
+
+        Скрытое задание читаем и правим: этой же ручкой его возвращают обратно
+        (`is_active: true`), и 404 на «показать» был бы односторонней дверью.
+        """
+        current = self._repository.get_assignment(assignment_id, include_inactive=True)
         if current is None:
             raise CatalogNotFoundError("Задание не найдено.")
 
@@ -358,8 +373,15 @@ class CatalogService:
         self._repository.commit()
         return assignment
 
-    def get_assignment(self, assignment_id: str) -> AssignmentDTO:
-        assignment = self._repository.get_assignment(assignment_id)
+    def get_assignment(
+        self,
+        assignment_id: str,
+        *,
+        include_inactive: bool = False,
+    ) -> AssignmentDTO:
+        assignment = self._repository.get_assignment(
+            assignment_id, include_inactive=include_inactive
+        )
         if assignment is None:
             raise CatalogNotFoundError("Задание не найдено.")
         return assignment
@@ -471,38 +493,74 @@ class CatalogService:
             shootings=shootings,
         )
 
-    def get_route_summary(self, city_slug: str, route_slug: str) -> RouteSummaryDTO:
+    def get_route_summary(
+        self,
+        city_slug: str,
+        route_slug: str,
+        *,
+        shot_from: datetime | None = None,
+        shot_to: datetime | None = None,
+    ) -> RouteSummaryDTO:
         """Метрики маршрута — из съёмок напрямую, не из результатов заданий.
 
         Задание тут только подпись у съёмки: если усреднять по заданиям, кампания
         из двух проездов весила бы столько же, сколько кампания из двадцати.
         Поэтому единица учёта одна и та же на всех уровнях — одна съёмка.
 
+        Период ничего в этой модели не меняет: он лишь укорачивает список до
+        свёртки, а считает по нему та же `metrics_rollup`. Именно поэтому фильтр
+        живёт здесь, а не в браузере — вторая реализация правил усреднения
+        разошлась бы с первой, и цифра с периодом перестала бы сходиться с
+        цифрой без него. По той же причине период не может разрезать задание
+        «наполовину»: единица одна, это съёмка, и она либо в окне, либо нет.
+
+        Скрытое задание выпадает отсюда тем же способом и в том же месте — в
+        `list_route_runs`, рядом с периодом. Это единственный способ убрать
+        проезд из цифр: он требует явного действия человека в админке и
+        обратим, потому что «показать» возвращает съёмки в расчёт целиком.
+
         Цена честности: читаем tracks.csv каждой завершённой съёмки маршрута.
         На десятках терпимо, на сотнях понадобится кэш.
         """
+        if shot_from is not None and shot_to is not None and shot_to < shot_from:
+            raise InvalidPeriodError(
+                "Конец периода не может быть раньше его начала."
+            )
+
         route = self._repository.get_route(city_slug, route_slug)
         if route is None:
             raise CatalogNotFoundError("Маршрут не найден.")
 
-        runs = self._repository.list_route_runs(city_slug, route_slug)
+        runs = self._repository.list_route_runs(
+            city_slug,
+            route_slug,
+            shot_from=shot_from,
+            shot_to=shot_to,
+        )
         if runs is None:
             raise CatalogNotFoundError("Маршрут не найден.")
 
         shootings = [
             RouteShootingMetricsDTO(
                 **self._build_shooting(run).model_dump(),
+                # Задание загружено запросом и всегда есть: колонка обязательная,
+                # съёмок вне маршрута в системе не бывает.
                 assignment=run.assignment,
             )
             for run in runs
-            # Задание загружено запросом; None тут быть не может — съёмки без
-            # задания в выборку маршрута не попадают по самому join'у.
-            if run.status == PipelineRunStatus.COMPLETED and run.assignment is not None
+            if run.status == PipelineRunStatus.COMPLETED
         ]
 
         return RouteSummaryDTO(
             route=route,
-            assignments_total=route.assignment_count,
+            # Задания считаем по тем съёмкам, из которых собрана цифра, а не по
+            # маршруту целиком: подпись на экране читается «собрано из N заданий
+            # · M съёмок», и под периодом «всего заданий на маршруте» сделало бы
+            # её неправдой. Заодно честнее и без периода — задание, у которого
+            # нет ни одной обработанной съёмки, ни во что не вошло.
+            assignments_total=len(
+                {item.assignment.assignment_id for item in shootings}
+            ),
             totals=rollup_totals(shootings, shootings_total=len(runs)),
             brands=rollup_brands(shootings),
             shootings=shootings,

@@ -1,3 +1,5 @@
+import type { RoutePeriod } from './routing'
+import { isoFromDateInput, isoFromDateInputExclusiveEnd } from './utils/formatters'
 import type {
   AssignmentPayload,
   AssignmentsPage,
@@ -104,14 +106,20 @@ async function apiFetch<T>(
 }
 
 export interface CreateRunOptions {
-  /** null — «Без задания»: видео вне города и маршрута. */
-  assignmentId?: string | null
+  /** Обязательно: съёмка всегда принадлежит заданию, а через него — маршруту. */
+  assignmentId: string
   operatorUserId?: string | null
+  /**
+   * Когда снимали, ISO с зоной. Приходит из формы загрузки, где дату видно и
+   * можно поправить: метаданные файла — подсказка, а не истина, копия с карты
+   * памяти приносит время копирования. null — не указано.
+   */
+  shotStartedAt?: string | null
 }
 
 export function createRun(
   file: File,
-  { assignmentId = null, operatorUserId = null }: CreateRunOptions = {},
+  { assignmentId, operatorUserId = null, shotStartedAt = null }: CreateRunOptions,
 ): Promise<CreateRunResult> {
   return apiFetch('/runs', {
     method: 'POST',
@@ -120,9 +128,7 @@ export function createRun(
       content_type: file.type || 'application/octet-stream',
       size_bytes: file.size,
       assignment_id: assignmentId,
-      // Время съёмки берём из метаданных файла. Это подсказка, а не истина:
-      // копия с карты памяти принесёт время копирования — поэтому правится.
-      shot_started_at: new Date(file.lastModified).toISOString(),
+      shot_started_at: shotStartedAt,
       operator_user_id: operatorUserId,
     }),
   })
@@ -181,8 +187,6 @@ export interface ListRunsParams {
   cityId?: string
   routeId?: string
   assignmentId?: string
-  /** false — только видео без маршрута. */
-  assigned?: boolean
 }
 
 export function listRuns(params: ListRunsParams = {}): Promise<RunsPage> {
@@ -193,7 +197,6 @@ export function listRuns(params: ListRunsParams = {}): Promise<RunsPage> {
   if (params.cityId) query.set('city_id', params.cityId)
   if (params.routeId) query.set('route_id', params.routeId)
   if (params.assignmentId) query.set('assignment_id', params.assignmentId)
-  if (params.assigned !== undefined) query.set('assigned', String(params.assigned))
   return apiFetch(`/runs?${query.toString()}`)
 }
 
@@ -334,11 +337,20 @@ async function apiDelete(path: string): Promise<void> {
   }
 }
 
+/**
+ * Задания маршрута. `includeInactive` — только админ-панель: скрытое задание
+ * не должно попасться ни в списке маршрута, ни в выпадашке загрузки, иначе в
+ * него зальют видео. Вернуть его можно с той же страницы, где оно видно.
+ */
 export function getRouteAssignments(
   citySlug: string,
   routeSlug: string,
+  includeInactive = false,
 ): Promise<AssignmentsPage> {
-  return apiFetch(`/cities/${citySlug}/routes/${routeSlug}/assignments?page=1&page_size=50`)
+  const hidden = includeInactive ? '&include_inactive=true' : ''
+  return apiFetch(
+    `/cities/${citySlug}/routes/${routeSlug}/assignments?page=1&page_size=50${hidden}`,
+  )
 }
 
 export function createAssignment(
@@ -374,11 +386,26 @@ export function getAssignmentSummary(assignmentId: string): Promise<AssignmentSu
   return apiFetch(`/assignments/${assignmentId}/summary`)
 }
 
+/**
+ * Сводка маршрута, необязательно за период. Границы приходят календарными
+ * датами, а на сервер уходят моментами: часовой пояс знает браузер, и только он
+ * может сказать, где начинается «третье мая». Конец превращается в границу
+ * следующих суток — выбранный день входит в период целиком.
+ */
 export function getRouteSummary(
   citySlug: string,
   routeSlug: string,
+  period: RoutePeriod = {},
 ): Promise<RouteSummary> {
-  return apiFetch(`/cities/${citySlug}/routes/${routeSlug}/summary`)
+  const query = new URLSearchParams()
+  const from = period.from ? isoFromDateInput(period.from) : null
+  const to = period.to ? isoFromDateInputExclusiveEnd(period.to) : null
+  if (from) query.set('shot_from', from)
+  if (to) query.set('shot_to', to)
+  const suffix = query.toString()
+  return apiFetch(
+    `/cities/${citySlug}/routes/${routeSlug}/summary${suffix ? `?${suffix}` : ''}`,
+  )
 }
 
 export function getRouteGeozones(

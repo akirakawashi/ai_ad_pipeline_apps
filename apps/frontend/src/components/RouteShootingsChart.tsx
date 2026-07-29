@@ -8,6 +8,12 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
+import {
+  tooltipCursor,
+  tooltipItemStyle,
+  tooltipLabelStyle,
+  tooltipStyle,
+} from './common/chartTooltip'
 import type { RouteShootingMetrics } from '../types'
 import { formatDateTime, formatDuration } from '../utils/formatters'
 
@@ -20,13 +26,6 @@ const ASSIGNMENT_COLORS = [
   '#b78bff',
   '#7fd1a0',
 ]
-
-const tooltipStyle = {
-  background: '#151515',
-  border: '1px solid rgba(255,255,255,.14)',
-  borderRadius: 8,
-  color: '#f4f4f4',
-}
 
 function shortDate(value: string | null): string {
   if (!value) return '—'
@@ -84,7 +83,9 @@ export function RouteShootingsChart({
           <YAxis stroke="#8d9298" />
           <Tooltip
             contentStyle={tooltipStyle}
-            cursor={{ fill: 'rgba(255,255,255,.06)' }}
+            cursor={tooltipCursor}
+            itemStyle={tooltipItemStyle}
+            labelStyle={tooltipLabelStyle}
             labelFormatter={(_, series) => {
               const row = series?.[0]?.payload
               return row ? `${row.assignment} · ${row.moment}` : ''

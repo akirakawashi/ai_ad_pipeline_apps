@@ -115,6 +115,7 @@ def _assignment_to_dto(
         actual_end_at=actual_end_at,
         video_count=video_count,
         status_counts=status_counts or AssignmentStatusCountsDTO(),
+        is_active=assignment.is_active,
         created_at=assignment.created_at,
     )
 
@@ -125,19 +126,34 @@ class SqlCatalogRepository:
 
     # --- счётчики -------------------------------------------------------
 
-    def _assignment_counts_by_route(self) -> dict[str, int]:
-        rows = self._session.exec(
-            select(Assignment.routes_id, func.count(Assignment.assignments_id))
-            .group_by(Assignment.routes_id)
-        ).all()
+    def _assignment_counts_by_route(
+        self,
+        *,
+        include_inactive: bool = False,
+    ) -> dict[str, int]:
+        """Сколько заданий на каждом маршруте.
+
+        Скрытые считаются только для справочника: на карточке маршрута «3
+        задания» рядом с двумя видимыми — та же полускрытость, что и съёмка,
+        пропавшая из списка, но оставшаяся в метрике.
+        """
+        query = select(Assignment.routes_id, func.count(Assignment.assignments_id))
+        if not include_inactive:
+            query = query.where(Assignment.is_active.is_(True))
+        rows = self._session.exec(query.group_by(Assignment.routes_id)).all()
         return {routes_id: int(count) for routes_id, count in rows}
 
-    def _video_counts_by_route(self) -> dict[str, int]:
-        rows = self._session.exec(
-            select(Assignment.routes_id, func.count(PipelineRun.pipeline_runs_id))
-            .join(PipelineRun, PipelineRun.assignments_id == Assignment.assignments_id)
-            .group_by(Assignment.routes_id)
-        ).all()
+    def _video_counts_by_route(
+        self,
+        *,
+        include_inactive: bool = False,
+    ) -> dict[str, int]:
+        query = select(
+            Assignment.routes_id, func.count(PipelineRun.pipeline_runs_id)
+        ).join(PipelineRun, PipelineRun.assignments_id == Assignment.assignments_id)
+        if not include_inactive:
+            query = query.where(Assignment.is_active.is_(True))
+        rows = self._session.exec(query.group_by(Assignment.routes_id)).all()
         return {routes_id: int(count) for routes_id, count in rows}
 
     def _video_counts_by_assignment(self, assignment_ids: list[str]) -> dict[str, int]:
@@ -250,22 +266,27 @@ class SqlCatalogRepository:
         route_rows = self._session.exec(route_query.group_by(Route.cities_id)).all()
         route_counts = {cities_id: int(count) for cities_id, count in route_rows}
 
+        assignment_query = select(
+            Route.cities_id, func.count(Assignment.assignments_id)
+        ).join(Assignment, Assignment.routes_id == Route.routes_id)
+        if not include_inactive:
+            assignment_query = assignment_query.where(Assignment.is_active.is_(True))
         assignment_rows = self._session.exec(
-            select(Route.cities_id, func.count(Assignment.assignments_id))
-            .join(Assignment, Assignment.routes_id == Route.routes_id)
-            .group_by(Route.cities_id)
+            assignment_query.group_by(Route.cities_id)
         ).all()
         assignment_counts = {cities_id: int(count) for cities_id, count in assignment_rows}
 
-        video_rows = self._session.exec(
+        video_query = (
             select(Route.cities_id, func.count(PipelineRun.pipeline_runs_id))
             .join(Assignment, Assignment.routes_id == Route.routes_id)
             .join(
                 PipelineRun,
                 PipelineRun.assignments_id == Assignment.assignments_id,
             )
-            .group_by(Route.cities_id)
-        ).all()
+        )
+        if not include_inactive:
+            video_query = video_query.where(Assignment.is_active.is_(True))
+        video_rows = self._session.exec(video_query.group_by(Route.cities_id)).all()
         video_counts = {cities_id: int(count) for cities_id, count in video_rows}
 
         return [
@@ -312,8 +333,10 @@ class SqlCatalogRepository:
         if not include_inactive and not city.is_active:
             return None
 
-        assignment_counts = self._assignment_counts_by_route()
-        video_counts = self._video_counts_by_route()
+        assignment_counts = self._assignment_counts_by_route(
+            include_inactive=include_inactive
+        )
+        video_counts = self._video_counts_by_route(include_inactive=include_inactive)
         geometry_flags = self._route_geometry_flags(city.cities_id)
         routes = [
             route for route in city.routes if include_inactive or route.is_active
@@ -362,8 +385,12 @@ class SqlCatalogRepository:
             return None
         return _route_to_dto(
             route,
-            assignment_count=self._assignment_counts_by_route().get(route.routes_id, 0),
-            video_count=self._video_counts_by_route().get(route.routes_id, 0),
+            assignment_count=self._assignment_counts_by_route(
+                include_inactive=include_inactive
+            ).get(route.routes_id, 0),
+            video_count=self._video_counts_by_route(
+                include_inactive=include_inactive
+            ).get(route.routes_id, 0),
             has_geometry=self._route_geometry_flags(route.cities_id).get(
                 route.routes_id, False
             ),
@@ -537,7 +564,14 @@ class SqlCatalogRepository:
         route_slug: str,
         page: int,
         page_size: int,
+        include_inactive: bool = False,
     ) -> tuple[list[AssignmentDTO], int]:
+        """Задания маршрута, новые сверху. `include_inactive` — только админке.
+
+        Скрытые не показываем ни на маршруте, ни в выпадашке загрузки: попасть
+        в скрытое задание не должно быть возможно даже случайно. Вернуть их
+        можно с той единственной страницы, где они видны.
+        """
         route = self._get_route_model(city_slug, route_slug)
         if route is None:
             return [], 0
@@ -545,15 +579,17 @@ class SqlCatalogRepository:
         if city is None:
             return [], 0
 
+        visibility = [] if include_inactive else [Assignment.is_active.is_(True)]
+
         total = self._session.exec(
             select(func.count(Assignment.assignments_id)).where(
-                Assignment.routes_id == route.routes_id
+                Assignment.routes_id == route.routes_id, *visibility
             )
         ).one()
 
         assignments = self._session.exec(
             select(Assignment)
-            .where(Assignment.routes_id == route.routes_id)
+            .where(Assignment.routes_id == route.routes_id, *visibility)
             .options(selectinload(Assignment.author))
             .order_by(Assignment.sequence_number.desc())
             .offset((page - 1) * page_size)
@@ -630,7 +666,11 @@ class SqlCatalogRepository:
         *,
         fields: dict[str, object],
     ) -> AssignmentDTO | None:
-        """Перезаписывает только переданные ключи: PATCH, а не PUT."""
+        """Перезаписывает только переданные ключи: PATCH, а не PUT.
+
+        Скрытое задание читаем наравне с видимым: этим же запросом его и
+        возвращают обратно, а 404 на «показать» читался бы как поломка.
+        """
         assignment = self._get_assignment_model(assignment_id)
         if assignment is None or assignment.route is None or assignment.route.city is None:
             return None
@@ -667,9 +707,21 @@ class SqlCatalogRepository:
             ),
         )
 
-    def get_assignment(self, assignment_id: str) -> AssignmentDTO | None:
+    def get_assignment(
+        self,
+        assignment_id: str,
+        *,
+        include_inactive: bool = False,
+    ) -> AssignmentDTO | None:
+        """Карточка задания. Скрытое — 404, включая прямую ссылку.
+
+        Иначе «скрыто» означало бы лишь «убрано из списков», а сохранённая
+        вкладка обходила бы это молча — ровно та дыра, что была у городов.
+        """
         assignment = self._get_assignment_model(assignment_id)
         if assignment is None or assignment.route is None or assignment.route.city is None:
+            return None
+        if not include_inactive and not assignment.is_active:
             return None
         return self._assignment_dto(assignment)
 
@@ -690,21 +742,47 @@ class SqlCatalogRepository:
         self,
         city_slug: str,
         route_slug: str,
+        *,
+        shot_from: datetime | None = None,
+        shot_to: datetime | None = None,
     ) -> list[PipelineRunDTO] | None:
         """Съёмки всех заданий маршрута. None — маршрута нет.
 
         Задание загружаем (`with_refs`): на уровне маршрута надо показать, из
         какой кампании съёмка. Порядок — по времени съёмки, а не обработки: это
         ось графика. У съёмки без даты сортировка падает на created_at.
+
+        Период — полуинтервал [shot_from, shot_to): включающий обе календарные
+        даты конец фронт получает, прибавив сутки. Так у бэкенда нет своего
+        мнения о часовом поясе — границы приходят готовыми моментами, а чей
+        это был день, знает браузер. Съёмка без даты в период не попадает
+        никогда: поместить её во времени нечем, а SQL-сравнение с NULL ложно
+        само по себе — это ровно то поведение, которое нужно.
+
+        Скрытое задание отсекается здесь же, рядом с периодом, и по той же
+        причине: и то и другое лишь **укорачивает список** до расчёта. Считает
+        по-прежнему один metrics_rollup, который ни про скрытие, ни про даты
+        не знает, — иначе появилась бы вторая арифметика, и цифра под фильтром
+        разошлась бы с цифрой без него.
         """
         route = self._get_route_model(city_slug, route_slug)
         if route is None:
             return None
 
+        period = []
+        if shot_from is not None:
+            period.append(PipelineRun.shot_started_at >= shot_from)
+        if shot_to is not None:
+            period.append(PipelineRun.shot_started_at < shot_to)
+
         runs = self._session.exec(
             select(PipelineRun)
             .join(Assignment, Assignment.assignments_id == PipelineRun.assignments_id)
-            .where(Assignment.routes_id == route.routes_id)
+            .where(
+                Assignment.routes_id == route.routes_id,
+                Assignment.is_active.is_(True),
+                *period,
+            )
             .options(
                 selectinload(PipelineRun.artifacts),
                 selectinload(PipelineRun.assignment)
@@ -721,13 +799,18 @@ class SqlCatalogRepository:
         return [_run_to_dto(run, with_refs=True) for run in runs]
 
     def lock_assignment(self, assignment_id: str) -> bool:
-        """Блокирует строку задания. False, если задания нет."""
+        """Блокирует строку задания. False, если задания нет или оно скрыто.
+
+        Скрытое здесь неотличимо от несуществующего намеренно: в выпадашке его
+        уже нет, но идентификатор живёт в адресе страницы загрузки — открытая
+        со вчера вкладка иначе долила бы видео в спрятанную кампанию.
+        """
         assignment = self._session.exec(
             select(Assignment)
             .where(Assignment.assignments_id == assignment_id)
             .with_for_update()
         ).first()
-        return assignment is not None
+        return assignment is not None and assignment.is_active
 
     def count_assignment_runs(self, assignment_id: str) -> int:
         total = self._session.exec(

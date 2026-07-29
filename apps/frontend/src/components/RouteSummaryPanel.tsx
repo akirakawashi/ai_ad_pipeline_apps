@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { Metric } from './common/Metric'
 import { AggregateToggle } from './common/AggregateToggle'
+import { DateField } from './common/DateField'
 import { EmptyState } from './common/Feedback'
 import { RollupCharts } from './RollupCharts'
 import { RouteShootingsChart } from './RouteShootingsChart'
-import { navigate } from '../routing'
+import { navigate, type RoutePeriod } from '../routing'
 import type { Aggregate, RouteSummary } from '../types'
 import {
   formatDateTime,
@@ -16,31 +17,98 @@ import {
 } from '../utils/formatters'
 
 /**
+ * Окно отбора съёмок по дате. Обе границы включительно и обе необязательны:
+ * «с начала по 31 мая» и «с 1 июня и дальше» — законные периоды.
+ *
+ * Отбор уходит на сервер, а не считается здесь: там же, где живёт единственная
+ * реализация усреднения. Ради этого мы платим перезапросом на смену границы —
+ * зато цифра за период не может разойтись с цифрой без периода.
+ */
+function PeriodPicker({
+  period,
+  onChange,
+}: {
+  period: RoutePeriod
+  onChange: (period: RoutePeriod) => void
+}) {
+  const set = (patch: RoutePeriod) => onChange({ ...period, ...patch })
+
+  return (
+    <section className="charts-toolbar period-picker" aria-label="Период съёмок">
+      <span>Период съёмок</span>
+      {/* Границы ограничивают друг друга: конец не выбрать раньше начала.
+          Бэкенд ту же проверку делает заново — здесь она ради того, чтобы
+          неверный период нельзя было даже набрать. */}
+      <DateField
+        label="с"
+        ariaLabel="Начало периода"
+        placeholder="с начала"
+        value={period.from ?? ''}
+        max={period.to}
+        onChange={(next) => set({ from: next || undefined })}
+      />
+      <DateField
+        label="по"
+        ariaLabel="Конец периода"
+        placeholder="по сегодня"
+        value={period.to ?? ''}
+        min={period.from}
+        onChange={(next) => set({ to: next || undefined })}
+      />
+      {(period.from || period.to) && (
+        <button className="ghost-button" onClick={() => onChange({})}>
+          За всё время
+        </button>
+      )}
+    </section>
+  )
+}
+
+/**
  * Метрики маршрута. Считаются из съёмок напрямую, поэтому и показываем съёмки:
  * средняя цифра без списка, из чего она собрана, врёт по умолчанию — задание из
  * одного проезда выглядит в ней так же уверенно, как задание из двадцати.
  */
-export function RouteSummaryPanel({ summary }: { summary: RouteSummary }) {
+export function RouteSummaryPanel({
+  summary,
+  period,
+  onPeriodChange,
+}: {
+  summary: RouteSummary
+  period: RoutePeriod
+  onPeriodChange: (period: RoutePeriod) => void
+}) {
   const { totals, brands, shootings, assignments_total } = summary
   const waiting = totals.shootings_total - totals.shootings_completed
+  const filtered = Boolean(period.from || period.to)
   // Среднее по умолчанию: оно слышит каждый проезд. Медиана — чтобы посмотреть
   // на те же съёмки без влияния выбившегося проезда.
   const [aggregate, setAggregate] = useState<Aggregate>('mean')
 
+  const periodPicker = (
+    <PeriodPicker period={period} onChange={onPeriodChange} />
+  )
+
   if (totals.shootings_completed === 0) {
     return (
-      <EmptyState
-        text={
-          waiting > 0
-            ? `Метрики маршрута появятся, когда обработается первая съёмка. Сейчас в работе ${waiting}.`
-            : 'По маршруту ещё нет обработанных съёмок.'
-        }
-      />
+      <>
+        {periodPicker}
+        <EmptyState
+          text={
+            filtered
+              ? 'За выбранный период съёмок нет. Расширьте окно или сбросьте его.'
+              : waiting > 0
+                ? `Метрики маршрута появятся, когда обработается первая съёмка. Сейчас в работе ${waiting}.`
+                : 'По маршруту ещё нет обработанных съёмок.'
+          }
+        />
+      </>
     )
   }
 
   return (
     <>
+      {periodPicker}
       <section className="charts-toolbar" aria-label="Как считать показатели">
         <span>Показатели за съёмку</span>
         <AggregateToggle value={aggregate} onChange={setAggregate} />

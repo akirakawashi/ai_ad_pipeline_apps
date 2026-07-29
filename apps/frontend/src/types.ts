@@ -36,7 +36,7 @@ export interface RouteRef {
   color_hex: string | null
 }
 
-/** Ссылка на задание с карточки видео. null — «Без задания». */
+/** Ссылка на задание с карточки видео. */
 export interface RunAssignmentRef {
   assignment_id: string
   sequence_number: number
@@ -145,6 +145,8 @@ export interface Assignment {
   actual_end_at: string | null
   video_count: number
   status_counts: AssignmentStatusCounts
+  /** Скрытое задание видно только в админке — там же его и возвращают. */
+  is_active: boolean
   created_at: string
 }
 
@@ -155,6 +157,8 @@ export interface AssignmentPayload {
   planned_start_at?: string | null
   planned_end_at?: string | null
   author_user_id?: string | null
+  /** Только PATCH: «скрыть» и «показать». Удаления задания нет. */
+  is_active?: boolean
 }
 
 export interface AssignmentsPage {
@@ -263,7 +267,11 @@ export interface PipelineRun {
   shot_started_at: string | null
   /** Считает сервер: shot_started_at + duration_sec. Не хранится. */
   shot_finished_at: string | null
-  /** null — «Без задания» либо связь не запрашивали. */
+  /**
+   * null означает «связь не запрашивали», а не «задания нет»: съёмок вне
+   * маршрута не бывает. Так отвечает `/assignments/{id}/runs` — там задание и
+   * так известно из адреса, и грузить его к каждой съёмке незачем.
+   */
   assignment: RunAssignmentRef | null
   operator: User | null
   artifacts: Artifact[]

@@ -51,6 +51,39 @@ export function isoFromLocalInput(value: string): string | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString()
 }
 
+/**
+ * «ГГГГ-ММ-ДД» → ISO полуночи по МЕСТНОМУ времени, со сдвигом на dayOffset суток.
+ *
+ * Через `new Date('2026-05-03')` нельзя: такую строку стандарт велит понимать
+ * как UTC, и западнее Гринвича полученный момент попал бы на предыдущие сутки —
+ * человек выбрал бы третье, а на сервер уехало бы второе. Собираем из чисел,
+ * потому что конструктор с числами считает время местным.
+ *
+ * Сутки сдвигаем номером дня, а не миллисекундами: конструктор сам перекатывает
+ * месяц и год, а «плюс 86 400 000 мс» промахнулся бы в день перевода часов.
+ */
+function localMidnight(value: string, dayOffset: number): string | null {
+  if (!value) return null
+  const [year, month, day] = value.split('-').map(Number)
+  if (!year || !month || !day) return null
+  const parsed = new Date(year, month - 1, day + dayOffset)
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString()
+}
+
+/** Начало выбранного дня — включающая граница периода. */
+export function isoFromDateInput(value: string): string | null {
+  return localMidnight(value, 0)
+}
+
+/**
+ * Начало СЛЕДУЮЩЕГО дня — так включающий конец периода становится исключающей
+ * границей: «по 31 мая» значит «строго раньше 1 июня», и съёмка в 23:50
+ * последнего дня остаётся внутри окна.
+ */
+export function isoFromDateInputExclusiveEnd(value: string): string | null {
+  return localMidnight(value, 1)
+}
+
 /** Обратное преобразование: UTC-ISO с сервера → значение для поля ввода. */
 export function localInputFromIso(value: string | null): string {
   if (!value) return ''
@@ -58,6 +91,18 @@ export function localInputFromIso(value: string | null): string {
   if (Number.isNaN(parsed.getTime())) return ''
   const offset = parsed.getTimezoneOffset() * 60_000
   return new Date(parsed.getTime() - offset).toISOString().slice(0, 16)
+}
+
+/**
+ * ISO → «ГГГГ-ММ-ДД» для <input type="date"> по МЕСТНОЙ дате.
+ *
+ * Отрезаем от значения для datetime-local, а не считаем заново: перевод в
+ * местное время там уже сделан, и вторая его копия рано или поздно разошлась бы
+ * с первой. Резать сам ISO нельзя — там дата в UTC, и вечерняя съёмка по
+ * местному времени показалась бы вчерашней.
+ */
+export function dateInputFromIso(value: string | null): string {
+  return localInputFromIso(value).slice(0, 10)
 }
 
 export function formatDateTime(value: string | null): string {

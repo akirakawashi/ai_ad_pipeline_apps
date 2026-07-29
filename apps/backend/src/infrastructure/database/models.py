@@ -329,6 +329,16 @@ class Assignment(SQLModel, table=True):
             nullable=True,
         ),
     )
+    # Скрытие задания, удаления нет: снос утащил бы съёмки каскадом.
+    # Скрытое задание пропадает целиком — вместе со своими съёмками, и не только
+    # из списков, но и из метрики маршрута. В этом весь смысл: раз кампанию
+    # спрятали, её проезды не должны тянуть за собой средние по маршруту.
+    # Механизм тот же, что у периода дат: список съёмок укорачивается ДО
+    # metrics_rollup, сам расчёт про скрытие ничего не знает.
+    is_active: bool = Field(
+        default=True,
+        sa_column=Column(Boolean, default=True, nullable=False),
+    )
     created_at: datetime | None = Field(
         default=None,
         sa_column=Column(
@@ -689,17 +699,24 @@ class PipelineRun(SQLModel, table=True):
         ),
     )
 
-    # NULL означает «Без задания» — разовая загрузка вне города и маршрута.
-    assignments_id: str | None = Field(
-        default=None,
+    # Съёмка всегда принадлежит заданию, а через него — маршруту и городу.
+    # Загрузки «вне маршрута» нет: без маршрута у съёмки нет геозон, значит нет
+    # и значимости места, и в сводки её положить некуда. Такая съёмка занимала
+    # место в хранилище и не отвечала ни на один вопрос.
+    #
+    # CASCADE, а не SET NULL: обнулить нечего — колонка обязательная. Задания
+    # сегодня не удаляются вовсе, так что правило описывает намерение, а не
+    # рабочий путь: исчезнет задание — исчезнут и его съёмки, осиротеть они
+    # не могут.
+    assignments_id: str = Field(
         sa_column=Column(
             String(36),
             ForeignKey(
                 "assignments.assignments_id",
-                ondelete="SET NULL",
+                ondelete="CASCADE",
             ),
             index=True,
-            nullable=True,
+            nullable=False,
         ),
     )
 

@@ -26,12 +26,17 @@ export function RunCard({ run, showBadges = false, routePreview }: RunCardProps)
   })
 
   if (showBadges) {
+    // Задание есть всегда — съёмок вне маршрута не бывает. Но приехать оно
+    // может не всюду: `/assignments/{id}/runs` связи не грузит, и там `null`
+    // значит «не запрашивали». Экраны с бейджами читают списки, где оно есть,
+    // поэтому запасной текст здесь не про «нет маршрута», а про «нечего
+    // показать».
     const routeText = run.assignment
       ? `${run.assignment.city.name} · ${run.assignment.route.name}`
-      : 'Разовая загрузка без маршрута'
+      : ''
     const footerText = run.assignment
       ? `${run.assignment.title} · ${date}`
-      : `Без задания · ${date}`
+      : date
 
     return (
       <button
@@ -113,9 +118,7 @@ export function RunCard({ run, showBadges = false, routePreview }: RunCardProps)
                 </span>
                 <span className="run-badge muted">{run.assignment.title}</span>
               </>
-            ) : (
-              <span className="run-badge muted">Без задания</span>
-            )}
+            ) : null}
           </div>
         )}
         <p>{createdAt.toLocaleString('ru-RU')}</p>

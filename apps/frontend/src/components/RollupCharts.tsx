@@ -12,6 +12,12 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
+import {
+  tooltipCursor,
+  tooltipItemStyle,
+  tooltipLabelStyle,
+  tooltipStyle,
+} from './common/chartTooltip'
 import type { Aggregate, RollupBrand, ShootingMetrics } from '../types'
 import { formatDuration, statValue } from '../utils/formatters'
 
@@ -30,15 +36,6 @@ const BRAND_LABELS: Record<string, string> = {
 }
 
 const BRAND_ORDER = ['mts', 'plus7', 'miranda', 'other']
-
-const tooltipStyle = {
-  background: '#151515',
-  border: '1px solid rgba(255,255,255,.14)',
-  borderRadius: 8,
-  color: '#f4f4f4',
-}
-
-const tooltipCursor = { fill: 'rgba(255,255,255,.06)' }
 
 function brandColor(brand: string) {
   return BRAND_COLORS[brand] ?? '#e7c84d'
@@ -120,7 +117,12 @@ export function RollupCharts({
             <CartesianGrid stroke="rgba(255,255,255,.08)" vertical={false} />
             <XAxis dataKey="brand_label" stroke="#8d9298" />
             <YAxis stroke="#8d9298" />
-            <Tooltip contentStyle={tooltipStyle} cursor={tooltipCursor} />
+            <Tooltip
+              contentStyle={tooltipStyle}
+              cursor={tooltipCursor}
+              itemStyle={tooltipItemStyle}
+              labelStyle={tooltipLabelStyle}
+            />
             <Bar dataKey="objects" name="За съёмку" radius={[6, 6, 0, 0]}>
               {brandRows.map((row) => (
                 <Cell key={row.brand_key} fill={brandColor(row.brand_key)} />
@@ -163,6 +165,8 @@ export function RollupCharts({
             <Tooltip
               contentStyle={tooltipStyle}
               formatter={(value) => `${value}%`}
+              itemStyle={tooltipItemStyle}
+              labelStyle={tooltipLabelStyle}
             />
             <Legend />
           </PieChart>
@@ -185,6 +189,8 @@ export function RollupCharts({
             <Tooltip
               contentStyle={tooltipStyle}
               cursor={tooltipCursor}
+              itemStyle={tooltipItemStyle}
+              labelStyle={tooltipLabelStyle}
               labelFormatter={(_, payload) => {
                 const row = payload?.[0]?.payload
                 return row

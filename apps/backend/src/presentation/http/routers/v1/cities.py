@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, File, Path, Query, Request, Response, UploadFile
+from pydantic import AwareDatetime
 
 from application.services.catalog_service import CatalogService
 from presentation.http.dependencies import get_catalog_service
@@ -210,6 +211,7 @@ def list_route_assignments(
     route_slug: str = Path(description="Слаг маршрута в пределах города"),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=100),
+    include_inactive: bool = Depends(allow_hidden),
     service: CatalogService = Depends(get_catalog_service),
 ) -> OkResponse[PaginatedAssignmentsResponse]:
     result = service.list_assignments(
@@ -217,6 +219,7 @@ def list_route_assignments(
         route_slug=route_slug,
         page=page,
         page_size=page_size,
+        include_inactive=include_inactive,
     )
     return OkResponse(data=PaginatedAssignmentsResponse.model_validate(result))
 
@@ -228,9 +231,28 @@ def list_route_assignments(
 def get_route_summary(
     city_slug: str = Path(description="Слаг города"),
     route_slug: str = Path(description="Слаг маршрута в пределах города"),
+    shot_from: AwareDatetime | None = Query(
+        default=None,
+        description="Начало периода по времени съёмки, включительно",
+    ),
+    shot_to: AwareDatetime | None = Query(
+        default=None,
+        description="Конец периода по времени съёмки, исключительно",
+    ),
     service: CatalogService = Depends(get_catalog_service),
 ) -> OkResponse[RouteSummaryResponse]:
-    result = service.get_route_summary(city_slug, route_slug)
+    """Сводка маршрута; период по времени съёмки необязателен.
+
+    Границы — моменты, а не календарные даты: чей это был день, знает браузер,
+    у которого есть часовой пояс пользователя. Он же прибавляет сутки к концу,
+    чтобы окно включало последнюю выбранную дату целиком.
+    """
+    result = service.get_route_summary(
+        city_slug,
+        route_slug,
+        shot_from=shot_from,
+        shot_to=shot_to,
+    )
     return OkResponse(data=RouteSummaryResponse.model_validate(result))
 
 
@@ -238,6 +260,9 @@ def get_route_summary(
     "/{city_slug}/routes/{route_slug}/assignments",
     response_model=OkResponse[AssignmentResponse],
     status_code=201,
+    # Задание заводит ответственный, а не тот, кто в этот день сел за руль:
+    # кампания задаёт рамку, в которой потом считаются метрики маршрута.
+    dependencies=[Depends(require_admin)],
 )
 def create_route_assignment(
     payload: CreateAssignmentRequest,

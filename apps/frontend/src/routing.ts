@@ -1,10 +1,19 @@
+/**
+ * Период отбора съёмок на странице маршрута, «ГГГГ-ММ-ДД». Обе границы
+ * включительно и обе необязательны: можно задать только начало или только
+ * конец. Живёт в адресе, а не в состоянии страницы, — ссылку на «маршрут за
+ * 2025 год» можно послать, и она переживёт перезагрузку.
+ */
+export interface RoutePeriod {
+  from?: string
+  to?: string
+}
+
 export interface VideoFilters {
   cityId?: string
   routeId?: string
   assignmentId?: string
   status?: string
-  /** false — только видео без маршрута. */
-  assigned?: boolean
 }
 
 export type Route =
@@ -13,20 +22,18 @@ export type Route =
   | { page: 'catalog' }
   | { page: 'admin' }
   | { page: 'city'; citySlug: string }
-  | { page: 'route'; citySlug: string; routeSlug: string }
+  | { page: 'route'; citySlug: string; routeSlug: string; period: RoutePeriod }
   | { page: 'assignment'; assignmentId: string }
   | { page: 'videos'; filters: VideoFilters }
   | { page: 'upload'; citySlug?: string; routeSlug?: string; assignmentId?: string }
   | { page: 'run'; runId: string; seek?: number }
 
 function parseVideoFilters(search: URLSearchParams): VideoFilters {
-  const assigned = search.get('assigned')
   return {
     cityId: search.get('city') ?? undefined,
     routeId: search.get('route') ?? undefined,
     assignmentId: search.get('assignment') ?? undefined,
     status: search.get('status') ?? undefined,
-    assigned: assigned === null ? undefined : assigned === 'true',
   }
 }
 
@@ -51,7 +58,15 @@ export function currentRoute(): Route {
   // Порядок важен: маршрут матчится раньше города.
   const routeMatch = pathname.match(/^\/archive\/([^/]+)\/([^/]+)$/)
   if (routeMatch) {
-    return { page: 'route', citySlug: routeMatch[1], routeSlug: routeMatch[2] }
+    return {
+      page: 'route',
+      citySlug: routeMatch[1],
+      routeSlug: routeMatch[2],
+      period: {
+        from: search.get('from') ?? undefined,
+        to: search.get('to') ?? undefined,
+      },
+    }
   }
   const cityMatch = pathname.match(/^\/archive\/([^/]+)$/)
   if (cityMatch) return { page: 'city', citySlug: cityMatch[1] }
@@ -83,9 +98,21 @@ export function videosPath(filters: VideoFilters = {}): string {
   if (filters.routeId) query.set('route', filters.routeId)
   if (filters.assignmentId) query.set('assignment', filters.assignmentId)
   if (filters.status) query.set('status', filters.status)
-  if (filters.assigned !== undefined) query.set('assigned', String(filters.assigned))
   const suffix = query.toString()
   return suffix ? `/videos?${suffix}` : '/videos'
+}
+
+export function routePath(
+  citySlug: string,
+  routeSlug: string,
+  period: RoutePeriod = {},
+): string {
+  const query = new URLSearchParams()
+  if (period.from) query.set('from', period.from)
+  if (period.to) query.set('to', period.to)
+  const suffix = query.toString()
+  const base = `/archive/${citySlug}/${routeSlug}`
+  return suffix ? `${base}?${suffix}` : base
 }
 
 export function uploadPath(options: {

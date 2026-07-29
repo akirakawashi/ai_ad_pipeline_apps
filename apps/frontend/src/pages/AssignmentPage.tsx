@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
-import { getAssignmentRuns, getAssignmentSummary, updateAssignment } from '../api'
+import { getAssignmentRuns, getAssignmentSummary } from '../api'
 import { RollupCharts } from '../components/RollupCharts'
-import { AssignmentForm } from '../components/AssignmentForm'
 import { AggregateToggle } from '../components/common/AggregateToggle'
 import { EmptyState, ErrorBanner } from '../components/common/Feedback'
 import { Metric } from '../components/common/Metric'
@@ -9,12 +8,7 @@ import { PageHeader } from '../components/common/PageHeader'
 import { RunCard } from '../components/common/RunCard'
 import { RunsSkeleton } from '../components/common/Skeletons'
 import { navigate, uploadPath } from '../routing'
-import type {
-  Aggregate,
-  AssignmentPayload,
-  AssignmentSummary,
-  PipelineRun,
-} from '../types'
+import type { Aggregate, AssignmentSummary, PipelineRun } from '../types'
 import {
   formatDuration,
   formatPeriod,
@@ -36,25 +30,6 @@ export function AssignmentPage({ assignmentId }: { assignmentId: string }) {
   // Пока есть необработанные съёмки — опрашиваем. Все готовы — таймер снимаем,
   // иначе открытая вкладка вечно тянет CSV каждой съёмки из хранилища.
   const [pending, setPending] = useState(true)
-  const [editing, setEditing] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [formError, setFormError] = useState<string | null>(null)
-
-  const save = (payload: AssignmentPayload) => {
-    setSaving(true)
-    setFormError(null)
-    updateAssignment(assignmentId, payload)
-      .then((updated) => {
-        // Правим только шапку: метрики и съёмки от реквизитов не зависят,
-        // перезапрашивать сводку ради них незачем.
-        setSummary((current) =>
-          current ? { ...current, assignment: updated } : current,
-        )
-        setEditing(false)
-      })
-      .catch((reason) => setFormError(String(reason)))
-      .finally(() => setSaving(false))
-  }
 
   useEffect(() => {
     let disposed = false
@@ -123,27 +98,24 @@ export function AssignmentPage({ assignmentId }: { assignmentId: string }) {
           totals.duration_sec,
         )} · обработано ${totals.shootings_completed} из ${totals.shootings_total}`}
         actions={
-          editing ? undefined : (
-            <div className="page-actions">
-              <button
-                className="secondary"
-                onClick={() =>
-                  navigate(`/archive/${assignment.city.slug}/${assignment.route.slug}`)
-                }
-              >
-                К маршруту
-              </button>
-              <button className="secondary" onClick={() => setEditing(true)}>
-                Реквизиты
-              </button>
-              <button
-                className="primary"
-                onClick={() => navigate(uploadPath({ assignmentId: assignment.id }))}
-              >
-                Добавить съёмку
-              </button>
-            </div>
-          )
+          // Кнопки «Реквизиты» здесь нет: задание правят в админке, там же, где
+          // заводят. Загрузка съёмки осталась — это работа, а не справочник.
+          <div className="page-actions">
+            <button
+              className="secondary"
+              onClick={() =>
+                navigate(`/archive/${assignment.city.slug}/${assignment.route.slug}`)
+              }
+            >
+              К маршруту
+            </button>
+            <button
+              className="primary"
+              onClick={() => navigate(uploadPath({ assignmentId: assignment.id }))}
+            >
+              Добавить съёмку
+            </button>
+          </div>
         }
       />
 
@@ -157,44 +129,30 @@ export function AssignmentPage({ assignmentId }: { assignmentId: string }) {
 
       {error && <ErrorBanner text={error} />}
 
-      {editing ? (
-        <AssignmentForm
-          initial={assignment}
-          submitLabel="Сохранить"
-          busy={saving}
-          error={formError}
-          onSubmit={save}
-          onCancel={() => {
-            setEditing(false)
-            setFormError(null)
-          }}
-        />
-      ) : (
-        <dl className="assignment-facts">
-          <div>
-            <dt>Постановщик</dt>
-            <dd>{assignment.author?.full_name ?? '—'}</dd>
+      <dl className="assignment-facts">
+        <div>
+          <dt>Постановщик</dt>
+          <dd>{assignment.author?.full_name ?? '—'}</dd>
+        </div>
+        <div>
+          <dt>План</dt>
+          <dd>
+            {formatPeriod(assignment.planned_start_at, assignment.planned_end_at)}
+          </dd>
+        </div>
+        <div>
+          <dt>Факт</dt>
+          <dd>
+            {formatPeriod(assignment.actual_start_at, assignment.actual_end_at)}
+          </dd>
+        </div>
+        {assignment.description && (
+          <div className="assignment-facts-wide">
+            <dt>Описание</dt>
+            <dd>{assignment.description}</dd>
           </div>
-          <div>
-            <dt>План</dt>
-            <dd>
-              {formatPeriod(assignment.planned_start_at, assignment.planned_end_at)}
-            </dd>
-          </div>
-          <div>
-            <dt>Факт</dt>
-            <dd>
-              {formatPeriod(assignment.actual_start_at, assignment.actual_end_at)}
-            </dd>
-          </div>
-          {assignment.description && (
-            <div className="assignment-facts-wide">
-              <dt>Описание</dt>
-              <dd>{assignment.description}</dd>
-            </div>
-          )}
-        </dl>
-      )}
+        )}
+      </dl>
 
       {/* Пока нет ни одной готовой съёмки, переключать нечего: в плитках прочерки. */}
       {totals.shootings_completed > 0 && (

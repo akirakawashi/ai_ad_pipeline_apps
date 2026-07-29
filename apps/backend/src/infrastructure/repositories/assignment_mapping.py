@@ -43,10 +43,11 @@ def route_ref(route: Route) -> RouteRefDTO:
 
 
 def assignment_ref(run: PipelineRun) -> RunAssignmentRefDTO | None:
-    """Ссылка на задание для карточки видео. None — «Без задания».
+    """Ссылка на задание для карточки видео. None — связь не загружена.
 
     Требует, чтобы связь assignment → route → city была загружена заранее:
-    зовётся только при _run_to_dto(with_refs=True).
+    зовётся только при _run_to_dto(with_refs=True). Задание у съёмки есть
+    всегда, поэтому None здесь — про запрос, а не про данные.
     """
     assignment = run.assignment
     if assignment is None or assignment.route is None or assignment.route.city is None:

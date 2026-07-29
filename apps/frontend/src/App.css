@@ -668,11 +668,6 @@ main {
 }
 
 .city-card:focus-visible,
-.unassigned-videos-action:focus-visible {
-  outline: 3px solid rgba(5, 195, 161, 0.5);
-  outline-offset: 3px;
-}
-
 .city-card-visual {
   position: relative;
   overflow: hidden;
@@ -779,17 +774,6 @@ main {
 }
 
 .city-card-kicker,
-.unassigned-videos-kicker {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  color: var(--accent);
-  font-size: 10px;
-  font-weight: 900;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-}
-
 .city-card-live-dot {
   width: 7px;
   height: 7px;
@@ -862,98 +846,6 @@ main {
 }
 
 .city-card:hover .city-card-action span {
-  transform: translateX(3px);
-}
-
-.unassigned-videos {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 22px;
-  padding: 22px 24px;
-  border: 1px dashed rgba(255, 255, 255, 0.18);
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.025);
-}
-
-.unassigned-videos h2 {
-  margin: 7px 0 5px;
-  color: #ffffff;
-  font-size: 19px;
-  letter-spacing: -0.035em;
-}
-
-.unassigned-videos > div > p:last-child {
-  margin: 0;
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.unassigned-videos-action {
-  display: flex;
-  min-width: 268px;
-  align-items: center;
-  gap: 12px;
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: rgba(0, 0, 0, 0.22);
-  color: var(--text);
-  text-align: left;
-  cursor: pointer;
-  transition:
-    border-color 180ms ease,
-    background 180ms ease;
-}
-
-.unassigned-videos-action:hover {
-  border-color: rgba(5, 195, 161, 0.44);
-  background: rgba(5, 195, 161, 0.07);
-}
-
-.unassigned-videos-icon {
-  display: grid;
-  width: 38px;
-  height: 38px;
-  flex: 0 0 auto;
-  place-items: center;
-  border-radius: 10px;
-  background: rgba(5, 195, 161, 0.12);
-  color: var(--accent);
-}
-
-.unassigned-videos-icon svg {
-  width: 20px;
-  stroke: currentcolor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1.6;
-}
-
-.unassigned-videos-action strong,
-.unassigned-videos-action small {
-  display: block;
-}
-
-.unassigned-videos-action strong {
-  color: #ffffff;
-  font-size: 13px;
-}
-
-.unassigned-videos-action small {
-  margin-top: 3px;
-  color: var(--muted);
-  font-size: 11px;
-}
-
-.unassigned-videos-arrow {
-  margin-left: auto;
-  color: var(--accent);
-  font-size: 18px;
-  transition: transform 180ms ease;
-}
-
-.unassigned-videos-action:hover .unassigned-videos-arrow {
   transform: translateX(3px);
 }
 
@@ -1210,16 +1102,6 @@ main {
     height: 130px;
   }
 
-  .unassigned-videos {
-    display: grid;
-    gap: 17px;
-    padding: 18px;
-  }
-
-  .unassigned-videos-action {
-    width: 100%;
-    min-width: 0;
-  }
 }
 
 .run-card {
@@ -1438,12 +1320,15 @@ main {
   margin-top: 8px;
 }
 
+/* Ширину задаёт список, а не карточка: внутри .upload-file-list у неё своя
+   колонка, и фиксированные 560 px оставляли её прижатой к левому краю панели
+   шириной под 900. Отступы между карточками тоже у списка (gap). */
 .file-card {
   display: flex;
-  width: min(560px, 100%);
+  width: 100%;
   align-items: center;
   gap: 14px;
-  margin: 20px 0 10px;
+  margin: 0;
   padding: 14px;
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -1461,6 +1346,30 @@ main {
   border-radius: 11px;
   background: rgba(5, 195, 161, 0.14);
   color: var(--accent);
+}
+
+/* min-width: 0 обязателен: без него flex-элемент отказывается сжиматься ниже
+   своего содержимого, обрезание имени по многоточию не срабатывает, и длинное
+   имя вида «a5effe6b-1020-48b5-b598-bd1ad3cb27f1.webm» распирает карточку —
+   плашка статуса уезжает за край и переносится по слогам. */
+.file-card-content {
+  min-width: 0;
+  flex: 1;
+}
+
+/* Всё, что справа от имени, не сжимается и не переносится. */
+.file-card > .file-card-icon,
+.file-card > .status,
+.file-card > .ghost-button {
+  flex: 0 0 auto;
+}
+
+.file-card > .status {
+  white-space: nowrap;
+}
+
+.file-card .progress-block {
+  margin-top: 10px;
 }
 
 .file-card-content > strong,
@@ -1523,24 +1432,234 @@ main {
   margin-top: 14px;
 }
 
-.upload-file-item {
-  width: min(640px, 100%);
-  margin: 0;
+/* Поле даты со своим календарём. Нативный `input[type=date]` тут не годится:
+   его выпадашку рисует браузер, и до неё не достаёт ни один селектор. */
+
+.date-field {
+  position: relative;
+  display: inline-flex;
   align-items: center;
-  margin-inline: auto;
+  gap: 6px;
 }
 
-.upload-file-item > div:nth-child(2) {
-  min-width: 0;
-  flex: 1;
+.date-field-label {
+  color: var(--muted);
+  font-size: 13px;
 }
 
-.upload-file-item .progress-block {
-  margin-top: 10px;
+.date-field-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(21, 21, 21, 0.94);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease;
 }
 
-.upload-file-item .status {
+.date-field-trigger.is-empty {
+  color: var(--muted-2);
+}
+
+.date-field-trigger:hover:not(:disabled),
+.date-field-trigger.is-open {
+  border-color: rgba(5, 195, 161, 0.5);
+}
+
+.date-field-trigger.is-open {
+  box-shadow: 0 0 0 3px rgba(5, 195, 161, 0.16);
+}
+
+.date-field-trigger:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.date-field-icon {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.date-popover {
+  position: absolute;
+  z-index: 60;
+  top: calc(100% + 10px);
+  left: 0;
+  width: 332px;
+  padding: 20px;
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.62);
+  animation: panel-enter 160ms ease-out;
+}
+
+.date-popover-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.date-popover-title {
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.date-nav-group {
+  display: inline-flex;
   flex: 0 0 auto;
+  gap: 4px;
+}
+
+.date-nav {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background 140ms ease,
+    color 140ms ease;
+}
+
+.date-nav:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text);
+}
+
+.date-weekdays,
+.date-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.date-weekdays {
+  margin-bottom: 6px;
+}
+
+.date-weekdays > span {
+  padding: 6px 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.date-cell {
+  height: 38px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition:
+    background 140ms ease,
+    color 140ms ease;
+}
+
+/* Дни соседних месяцев видны, но приглушены: они держат неделю целой на стыке,
+   а не приглашают в них целиться. Нажать всё же можно — календарь сам уйдёт
+   в тот месяц. */
+.date-cell.is-outside {
+  color: var(--muted-2);
+}
+
+.date-cell:hover:not(:disabled):not(.is-selected) {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+/* Сегодня — обводкой, выбранный день — заливкой. Разными приёмами намеренно:
+   одинаковыми они читались бы как два выбранных дня. */
+.date-cell.is-today {
+  border-color: rgba(5, 195, 161, 0.6);
+  color: var(--accent);
+}
+
+.date-cell.is-selected {
+  background: var(--accent);
+  color: #04231d;
+  font-weight: 700;
+}
+
+.date-cell:disabled {
+  color: var(--muted-2);
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
+.date-popover-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.date-action {
+  padding: 4px 2px;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 140ms ease;
+}
+
+.date-action:hover:not(:disabled) {
+  color: var(--text);
+}
+
+.date-action:disabled {
+  color: var(--muted-2);
+  cursor: not-allowed;
+}
+
+.period-picker {
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.upload-file-date {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.upload-file-date > span {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.upload-file-date .text-input {
+  width: auto;
+  padding: 6px 10px;
+  font-size: 13px;
 }
 
 .upload-file-error {
@@ -3333,10 +3452,6 @@ button:disabled,
   flex-shrink: 0;
   border-radius: 999px;
   background: var(--muted);
-}
-
-.unassigned-card {
-  border-style: dashed;
 }
 
 .assignment-heading {

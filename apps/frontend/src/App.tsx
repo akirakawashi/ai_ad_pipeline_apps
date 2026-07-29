@@ -143,11 +143,15 @@ function App() {
           {route.page === 'city' && (
             <CityPage key={route.citySlug} citySlug={route.citySlug} />
           )}
+          {/* key без периода: смена окна не должна пересоздавать страницу —
+              иначе сбрасывался бы выбор «среднее/медиана» и мигал бы весь
+              экран. Период приезжает пропом, сводка перечитывается сама. */}
           {route.page === 'route' && (
             <RoutePage
               key={`${route.citySlug}/${route.routeSlug}`}
               citySlug={route.citySlug}
               routeSlug={route.routeSlug}
+              period={route.period}
             />
           )}
           {route.page === 'assignment' && (

@@ -46,7 +46,6 @@ export function UploadPage({ citySlug, routeSlug, assignmentId }: UploadPageProp
   const [selectedRoute, setSelectedRoute] = useState(routeSlug ?? '')
   const [selectedAssignment, setSelectedAssignment] = useState('')
   const [operatorId, setOperatorId] = useState('')
-  const [noAssignment, setNoAssignment] = useState(!citySlug && !assignmentId)
   const [catalogError, setCatalogError] = useState<string | null>(null)
 
   const pinned = Boolean(assignmentId)
@@ -127,54 +126,47 @@ export function UploadPage({ citySlug, routeSlug, assignmentId }: UploadPageProp
     ? selectedAssignment
     : ''
 
-  const targetAssignmentId = pinned
-    ? (assignmentId ?? null)
-    : noAssignment
-      ? null
-      : activeAssignment || null
+  // Задание обязательно: съёмки вне маршрута не бывает. Пока оно не выбрано,
+  // грузить некуда — кнопка выключена, и это единственное состояние «не готов».
+  //
+  // В режиме догрузки берём идентификатор загруженного задания, а не тот, что
+  // стоит в адресе. Разница видна, когда задание скрыли: ссылка из чужой
+  // вкладки ещё жива, `getAssignment` уже отвечает 404, и по адресному id
+  // кнопка осталась бы включённой — загрузка падала бы пофайлово на POST /runs
+  // вместо честного «грузить некуда».
+  const targetAssignmentId = pinned ? (pinnedAssignment?.id ?? '') : activeAssignment
 
   // Именно эта строка гасит «Загрузить» в окне рассинхрона: без неё выпадашка
   // была бы честной, а отправить в чужое задание всё равно можно.
-  const destinationReady = pinned || noAssignment || Boolean(activeAssignment)
+  const destinationReady = Boolean(targetAssignmentId)
   const routeChosen = Boolean(selectedCity && selectedRoute)
 
   const upload = useVideoUpload({
     maxFiles: MAX_FILES,
     assignmentId: targetAssignmentId,
     operatorUserId: operatorId || null,
-    onFinish: ({ runIds, failed }) => {
+    onFinish: ({ failed }) => {
       // При частичном сбое остаёмся на странице: «Повторить» дольёт туда же.
       if (failed > 0) return
-      if (targetAssignmentId) {
-        navigate(`/assignments/${targetAssignmentId}`)
-      } else if (runIds.length === 1) {
-        navigate(`/videos/${runIds[0]}`)
-      } else if (runIds.length > 0) {
-        navigate('/videos')
-      }
+      // Уходим всегда в задание: другого места для съёмки теперь нет.
+      navigate(`/assignments/${targetAssignmentId}`)
     },
   })
 
   const eyebrow = pinned
     ? (pinnedAssignment?.title ?? 'Догрузка в задание')
-    : noAssignment
-      ? 'Без задания'
-      : activeDetail && selectedRoute
-        ? `${activeDetail.name} · ${
-            activeDetail.routes.find((route) => route.slug === selectedRoute)?.name ?? ''
-          }`
-        : 'Загрузка'
+    : activeDetail && selectedRoute
+      ? `${activeDetail.name} · ${
+          activeDetail.routes.find((route) => route.slug === selectedRoute)?.name ?? ''
+        }`
+      : 'Загрузка'
 
   return (
     <div className="page narrow-page">
       <PageHeader
         eyebrow={eyebrow}
         title="Загрузка съёмок"
-        description={
-          noAssignment
-            ? 'Разовая загрузка — видео уйдёт в обработку вне города и маршрута.'
-            : `Съёмки попадут в выбранное задание. До ${MAX_FILES} штук.`
-        }
+        description={`Съёмки попадут в выбранное задание. До ${MAX_FILES} штук.`}
       />
 
       {catalogError && <ErrorBanner text={catalogError} />}
@@ -190,7 +182,7 @@ export function UploadPage({ citySlug, routeSlug, assignmentId }: UploadPageProp
                 <Select
                   ariaLabel="Город"
                   value={selectedCity}
-                  disabled={noAssignment || upload.busy}
+                  disabled={upload.busy}
                   placeholder="Выберите город"
                   options={cities.map((city) => ({
                     value: city.slug,
@@ -204,7 +196,7 @@ export function UploadPage({ citySlug, routeSlug, assignmentId }: UploadPageProp
                 <Select
                   ariaLabel="Маршрут"
                   value={selectedRoute}
-                  disabled={noAssignment || !activeDetail || upload.busy}
+                  disabled={!activeDetail || upload.busy}
                   placeholder={
                     activeDetail ? 'Выберите маршрут' : 'Сначала выберите город'
                   }
@@ -222,7 +214,7 @@ export function UploadPage({ citySlug, routeSlug, assignmentId }: UploadPageProp
                 <Select
                   ariaLabel="Задание"
                   value={activeAssignment}
-                  disabled={noAssignment || !assignments.length || upload.busy}
+                  disabled={!assignments.length || upload.busy}
                   placeholder={
                     !routeChosen
                       ? 'Сначала выберите маршрут'
@@ -241,20 +233,10 @@ export function UploadPage({ citySlug, routeSlug, assignmentId }: UploadPageProp
 
             {/* assignmentsReady обязателен: без него баннер мигал бы «нет
                 заданий» на каждой смене маршрута, пока список ещё грузится. */}
-            {!noAssignment && routeChosen && assignmentsReady && !assignments.length && (
+            {routeChosen && assignmentsReady && !assignments.length && (
               <InfoBanner text="На этом маршруте нет заданий. Заведите задание на странице маршрута: съёмки загружаются в готовое задание." />
             )}
 
-            <label className="destination-toggle">
-              <input
-                type="checkbox"
-                className="checkbox"
-                checked={noAssignment}
-                disabled={upload.busy}
-                onChange={(event) => setNoAssignment(event.target.checked)}
-              />
-              Без задания (разовая загрузка)
-            </label>
           </>
         )}
 
@@ -268,8 +250,9 @@ export function UploadPage({ citySlug, routeSlug, assignmentId }: UploadPageProp
           />
         </div>
         <p className="destination-hint">
-          Время съёмки подставится из метаданных каждого файла — поправить его
-          можно на странице съёмки.
+          Дата съёмки стоит у каждого файла отдельно — проверьте её под именем
+          файла. Она подставлена из метаданных, а те показывают дату копирования,
+          если видео переносили с карты памяти.
         </p>
       </section>
 
@@ -334,6 +317,22 @@ export function UploadPage({ citySlug, routeSlug, assignmentId }: UploadPageProp
                   ) : undefined
                 }
               >
+                {/* Дата у каждого файла своя: одна съёмка — один проезд, и
+                    партию нередко забирают с карты за несколько дней. Значение
+                    подставлено из метаданных, но метаданные врут после
+                    копирования — поэтому дату видно, а не прячем в подсказку. */}
+                <label className="upload-file-date">
+                  <span>Когда снято</span>
+                  <input
+                    type="date"
+                    className="text-input"
+                    value={item.shotDate}
+                    disabled={upload.busy || item.status === 'done'}
+                    onChange={(event) =>
+                      upload.setShotDate(item.key, event.target.value)
+                    }
+                  />
+                </label>
                 {item.status === 'uploading' && (
                   <ProgressBar progress={item.progress} label="Загружается" animated />
                 )}
@@ -366,7 +365,13 @@ export function UploadPage({ citySlug, routeSlug, assignmentId }: UploadPageProp
         </button>
 
         {!destinationReady && upload.items.length > 0 && (
-          <InfoBanner text="Выберите задание или отметьте «Без задания»." />
+          <InfoBanner
+            text={
+              pinned
+                ? 'Задание недоступно: возможно, его скрыли. Загрузить в него нельзя.'
+                : 'Выберите город, маршрут и задание — съёмка загружается только в задание.'
+            }
+          />
         )}
       </section>
     </div>

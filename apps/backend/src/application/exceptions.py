@@ -21,6 +21,10 @@ class InvalidAssignmentError(ValueError):
     """Реквизиты задания противоречивы — например, окончание раньше начала."""
 
 
+class InvalidPeriodError(ValueError):
+    """Период отбора противоречив — конец раньше начала."""
+
+
 class InvalidUserError(ValueError):
     """ФИО пустое или состоит из одних пробелов."""
 

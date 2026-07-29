@@ -24,6 +24,14 @@ def assignment(client, city_route) -> dict:
 
 
 @pytest.fixture
+def other_assignment(client, city_route) -> dict:
+    """Второе задание на том же маршруте — чтобы фильтру было из чего выбирать."""
+    city_slug, route_slug = city_route
+    url = f"/api/v1/cities/{city_slug}/routes/{route_slug}/assignments"
+    return payload(client.post(url, json={}))
+
+
+@pytest.fixture
 def operator(client) -> dict:
     return payload(client.post("/api/v1/users", json={"full_name": "Петров Пётр"}))
 
@@ -177,18 +185,90 @@ def test_unknown_assignment_is_404(client):
     assert response.status_code == 404
 
 
+class TestAssignmentIsMandatory:
+    """Съёмки вне маршрута не существует — ни завести, ни отфильтровать.
+
+    Это не только правило продукта: без маршрута у съёмки нет геозон, значит нет
+    и значимости места, и положить её в сводку задания или маршрута некуда.
+    Такое видео занимало место в хранилище и не отвечало ни на один вопрос.
+    """
+
+    def test_without_assignment_is_refused(self, client):
+        """Поле обязательное, поэтому отказ приходит от разбора запроса — 422."""
+        assert create_run(client, file_name="solo.mp4").status_code == 422
+
+    def test_explicit_null_is_refused_too(self, client):
+        """Явный null — та же дыра, что и пропущенное поле; закрыта тем же."""
+        response = create_run(client, file_name="solo.mp4", assignment_id=None)
+        assert response.status_code == 422
+
+    def test_empty_string_is_refused(self, client):
+        """Пустая строка прошла бы `str`, поэтому у поля есть min_length."""
+        response = create_run(client, file_name="solo.mp4", assignment_id="")
+        assert response.status_code == 422
+
+
+class TestHiddenAssignment:
+    """Скрыли задание — вместе с ним пропали и его съёмки.
+
+    Не косметика: съёмка скрытого задания не должна остаться ни в списке видео,
+    ни по прямой ссылке. Иначе карточка вела бы на страницу, которой нет, а
+    «скрыто» означало бы разное в разных местах.
+    """
+
+    def hide(self, client, assignment: dict) -> None:
+        response = client.patch(
+            f"/api/v1/assignments/{assignment['id']}", json={"is_active": False}
+        )
+        assert response.status_code == 200
+
+    def test_shootings_leave_the_list(self, client, assignment, other_assignment):
+        create_run(client, file_name="hidden.mp4", assignment_id=assignment["id"])
+        create_run(client, file_name="visible.mp4", assignment_id=other_assignment["id"])
+        self.hide(client, assignment)
+
+        items = payload(client.get("/api/v1/runs?page_size=50"))["items"]
+        assert [item["source_name"] for item in items] == ["visible.mp4"]
+
+    def test_direct_link_to_a_shooting_is_404(self, client, assignment):
+        run = payload(create_run(client, assignment_id=assignment["id"]))
+        self.hide(client, assignment)
+        assert client.get(f"/api/v1/runs/{run['run_id']}").status_code == 404
+
+    def test_uploading_into_it_is_refused(self, client, assignment):
+        """Идентификатор задания стоит в адресе страницы загрузки.
+
+        Из выпадашки скрытое уже не выбрать, но открытая со вчера вкладка
+        отправила бы видео по старой ссылке — отказ приходит с сервера.
+        """
+        self.hide(client, assignment)
+        assert create_run(client, assignment_id=assignment["id"]).status_code == 404
+
+    def test_restoring_brings_the_shootings_back(self, client, assignment):
+        run = payload(create_run(client, assignment_id=assignment["id"]))
+        self.hide(client, assignment)
+        client.patch(f"/api/v1/assignments/{assignment['id']}", json={"is_active": True})
+
+        assert client.get(f"/api/v1/runs/{run['run_id']}").status_code == 200
+
+    def test_upload_started_before_hiding_still_completes(self, client, assignment):
+        """Файл уже в хранилище: отказать здесь — оставить мусор и строку в `uploading`.
+
+        Дозагрузка — путь записи, а пути записи скрытия не знают: по ним же
+        ходит воркер. Видно съёмку всё равно не будет, пока задание не вернут.
+        """
+        run = payload(create_run(client, assignment_id=assignment["id"]))
+        self.hide(client, assignment)
+
+        response = client.post(f"/api/v1/runs/{run['run_id']}/upload-complete")
+        assert response.status_code == 200
+        assert payload(response)["status"] == "queued"
+
+
 class TestFilters:
-    def test_unassigned_only(self, client, assignment):
+    def test_by_assignment(self, client, assignment, other_assignment):
         create_run(client, file_name="in.mp4", assignment_id=assignment["id"])
-        create_run(client, file_name="solo.mp4")
-
-        items = payload(client.get("/api/v1/runs?assigned=false&page_size=50"))["items"]
-        assert len(items) == 1
-        assert items[0]["assignment"] is None
-
-    def test_by_assignment(self, client, assignment):
-        create_run(client, file_name="in.mp4", assignment_id=assignment["id"])
-        create_run(client, file_name="solo.mp4")
+        create_run(client, file_name="solo.mp4", assignment_id=other_assignment["id"])
 
         page = payload(
             client.get(f"/api/v1/runs?assignment_id={assignment['id']}&page_size=50")

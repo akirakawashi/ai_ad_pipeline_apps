@@ -1,15 +1,43 @@
 import { useCallback, useRef, useState, type DragEvent } from 'react'
 import { completeUpload, createRun, uploadVideo } from '../api'
+import { dateInputFromIso, isoFromDateInput } from '../utils/formatters'
 
 export type UploadItemStatus = 'queued' | 'uploading' | 'done' | 'error'
 
 export interface UploadItem {
   key: string
   file: File
+  /**
+   * Когда снимали, «ГГГГ-ММ-ДД». У каждого файла своя: партия из двадцати
+   * видео — это, как правило, двадцать разных проездов, иногда в разные дни,
+   * а график маршрута строится именно по этой дате. Общее на партию поле
+   * проставило бы всем одинаковую и молча свело бы проезды в одну точку.
+   */
+  shotDate: string
   status: UploadItemStatus
   progress: number
   error?: string
   runId?: string
+}
+
+function fileTimestamp(file: File): string {
+  return new Date(file.lastModified).toISOString()
+}
+
+/**
+ * Что уходит на сервер как время съёмки.
+ *
+ * Дату человек ставит сам, поля времени в форме нет — для отчётов нужен день.
+ * Но если дату не трогали, отдаём метку файла целиком: там есть часы, и по ним
+ * съёмки одного дня встают в правильном порядке. Как только дату поменяли,
+ * время из файла становится враньём — у копии с карты памяти это момент
+ * копирования, — поэтому отдаём полночь: «время не указано» честнее, чем
+ * правдоподобная выдумка.
+ */
+function shotStartedAt(item: UploadItem): string | null {
+  const fromFile = fileTimestamp(item.file)
+  if (item.shotDate === dateInputFromIso(fromFile)) return fromFile
+  return isoFromDateInput(item.shotDate)
 }
 
 export interface UploadResult {
@@ -20,13 +48,13 @@ export interface UploadResult {
 export interface UseVideoUploadOptions {
   maxFiles: number
   /**
-   * Задание, в которое кладём съёмки. null — «Без задания».
+   * Задание, в которое кладём съёмки. Обязательно: съёмок вне маршрута нет.
    *
    * Задание создаётся заранее, в форме на странице маршрута: съёмка
    * подгружается в готовое задание, а не рождает его по ходу загрузки.
    * Поэтому ретраю упавших файлов не нужен ref — id задания неизменен.
    */
-  assignmentId: string | null
+  assignmentId: string
   /** Оператор — один на всю партию: снимал её один человек. */
   operatorUserId: string | null
   onFinish?: (result: UploadResult) => void
@@ -61,6 +89,7 @@ export function useVideoUpload({
       const incoming = Array.from(fileList).map((file) => ({
         key: makeKey(file),
         file,
+        shotDate: dateInputFromIso(fileTimestamp(file)),
         status: 'queued' as UploadItemStatus,
         progress: 0,
       }))
@@ -92,6 +121,14 @@ export function useVideoUpload({
     [busy],
   )
 
+  const setShotDate = useCallback(
+    (key: string, value: string) => {
+      if (busy) return
+      patch(key, { shotDate: value })
+    },
+    [busy, patch],
+  )
+
   const clearAll = useCallback(() => {
     if (busy) return
     setItems([])
@@ -111,7 +148,11 @@ export function useVideoUpload({
       for (const item of queue) {
         patch(item.key, { status: 'uploading', progress: 0, error: undefined })
         try {
-          const run = await createRun(item.file, { assignmentId, operatorUserId })
+          const run = await createRun(item.file, {
+            assignmentId,
+            operatorUserId,
+            shotStartedAt: shotStartedAt(item),
+          })
           await uploadVideo(run.upload, item.file, (progress) =>
             patch(item.key, { progress }),
           )
@@ -180,6 +221,7 @@ export function useVideoUpload({
     canStart: items.length > 0 && !busy && doneCount < items.length,
     addFiles,
     removeItem,
+    setShotDate,
     clearAll,
     start,
     retryFailed,

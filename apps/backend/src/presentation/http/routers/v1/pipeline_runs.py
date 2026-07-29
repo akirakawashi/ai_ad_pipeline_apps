@@ -70,10 +70,6 @@ def list_runs(
     city_id: str | None = Query(default=None),
     route_id: str | None = Query(default=None),
     assignment_id: str | None = Query(default=None),
-    assigned: bool | None = Query(
-        default=None,
-        description="false — только видео без маршрута",
-    ),
     service: PipelineRunService = Depends(get_run_service),
 ) -> OkResponse[PaginatedRunsResponse]:
     result = service.list_runs(
@@ -83,7 +79,6 @@ def list_runs(
         city_id=city_id,
         route_id=route_id,
         assignment_id=assignment_id,
-        assigned=assigned,
     )
     return OkResponse(data=PaginatedRunsResponse.model_validate(result))
 

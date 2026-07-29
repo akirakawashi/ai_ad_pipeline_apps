@@ -1,17 +1,11 @@
 import { useEffect, useState } from 'react'
-import {
-  createAssignment,
-  getCity,
-  getRouteAssignments,
-  getRouteSummary,
-} from '../api'
-import { AssignmentForm } from '../components/AssignmentForm'
+import { getCity, getRouteAssignments, getRouteSummary } from '../api'
 import { RouteSummaryPanel } from '../components/RouteSummaryPanel'
 import { EmptyState, ErrorBanner } from '../components/common/Feedback'
 import { PageHeader } from '../components/common/PageHeader'
 import { RunsSkeleton } from '../components/common/Skeletons'
-import { navigate } from '../routing'
-import type { Assignment, AssignmentPayload, Route, RouteSummary } from '../types'
+import { navigate, routePath, type RoutePeriod } from '../routing'
+import type { Assignment, Route, RouteSummary } from '../types'
 import { formatPeriod, pluralAssignments } from '../utils/formatters'
 
 function assignmentProgressLabel(assignment: Assignment): string {
@@ -29,9 +23,11 @@ function assignmentProgressLabel(assignment: Assignment): string {
 export function RoutePage({
   citySlug,
   routeSlug,
+  period,
 }: {
   citySlug: string
   routeSlug: string
+  period: RoutePeriod
 }) {
   const [route, setRoute] = useState<Route | null>(null)
   const [cityName, setCityName] = useState('')
@@ -39,9 +35,6 @@ export function RoutePage({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [summary, setSummary] = useState<RouteSummary | null>(null)
-  const [creating, setCreating] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [formError, setFormError] = useState<string | null>(null)
 
   useEffect(() => {
     let disposed = false
@@ -80,10 +73,17 @@ export function RoutePage({
 
   // Сводка маршрута читает tracks.csv каждой готовой съёмки, поэтому её нельзя
   // тянуть на пятисекундном таймере вместе с заданиями. Перечитываем только
-  // когда обработалась ещё одна съёмка — этот момент виден по счётчикам заданий.
+  // когда обработалась ещё одна съёмка (это видно по счётчикам заданий) или
+  // когда поменяли период — там список съёмок другой, а считать его должен
+  // сервер: вторая реализация усреднения разошлась бы с первой.
+  // Границы разбираем на строки: объект периода приезжает из разбора адреса и
+  // при каждом переходе новый, даже если даты те же. По самим датам эффект
+  // срабатывает ровно тогда, когда окно действительно поменялось.
+  const { from: periodFrom, to: periodTo } = period
+
   useEffect(() => {
     let disposed = false
-    getRouteSummary(citySlug, routeSlug)
+    getRouteSummary(citySlug, routeSlug, { from: periodFrom, to: periodTo })
       .then((loaded) => {
         if (!disposed) setSummary(loaded)
       })
@@ -91,25 +91,7 @@ export function RoutePage({
     return () => {
       disposed = true
     }
-  }, [citySlug, routeSlug, completedVideos])
-
-  const submit = (payload: AssignmentPayload) => {
-    setSaving(true)
-    setFormError(null)
-    createAssignment(citySlug, routeSlug, payload)
-      // Сразу внутрь задания: следующий шаг — загрузить в него съёмки.
-      .then((assignment) => navigate(`/assignments/${assignment.id}`))
-      .catch((reason) => {
-        setFormError(String(reason))
-        setSaving(false)
-      })
-  }
-
-  const newAssignmentButton = (
-    <button className="primary" onClick={() => setCreating(true)}>
-      Новое задание
-    </button>
-  )
+  }, [citySlug, routeSlug, completedVideos, periodFrom, periodTo])
 
   return (
     <div className="page">
@@ -121,33 +103,19 @@ export function RoutePage({
             ? `${pluralAssignments(assignments.length)} · ${totalVideos} видео`
             : undefined
         }
-        actions={creating ? undefined : newAssignmentButton}
       />
 
       {error && <ErrorBanner text={error} />}
 
       {route?.description && <p className="route-description">{route.description}</p>}
 
-      {creating && (
-        <AssignmentForm
-          submitLabel="Создать задание"
-          busy={saving}
-          error={formError}
-          onSubmit={submit}
-          onCancel={() => {
-            setCreating(false)
-            setFormError(null)
-          }}
-        />
-      )}
-
       {loading && <RunsSkeleton />}
 
-      {!loading && !error && !creating && !assignments.length && (
-        <EmptyState
-          text="На этом маршруте ещё нет заданий. Создайте первое."
-          action={newAssignmentButton}
-        />
+      {/* Кнопки «Новое задание» здесь больше нет: задание заводят в админке.
+          Пустой маршрут поэтому не предлагает создать, а говорит, где это
+          делается, — иначе экран выглядел бы сломанным. */}
+      {!loading && !error && !assignments.length && (
+        <EmptyState text="На этом маршруте ещё нет заданий. Их заводят в админ-панели, на вкладке «Задания»." />
       )}
 
       {summary && (
@@ -160,7 +128,13 @@ export function RoutePage({
               двадцати.
             </p>
           </header>
-          <RouteSummaryPanel summary={summary} />
+          <RouteSummaryPanel
+            summary={summary}
+            period={period}
+            onPeriodChange={(next) =>
+              navigate(routePath(citySlug, routeSlug, next))
+            }
+          />
         </section>
       )}
 

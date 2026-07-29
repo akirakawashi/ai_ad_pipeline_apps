@@ -62,7 +62,8 @@ def _seed_shooting(
     *,
     run_id: str,
     assignment_id: str,
-    shot_started_at: str,
+    # None — съёмка без даты: законное состояние, и в период она не попадает.
+    shot_started_at: str | None,
     brands_visibility: dict[str, float],
     status: PipelineRunStatus = PipelineRunStatus.COMPLETED,
 ) -> None:
@@ -304,3 +305,228 @@ def test_geozone_changes_route_numbers(
 def test_unknown_route_is_404(client, city_route):
     city_slug, _ = city_route
     assert client.get(f"/api/v1/cities/{city_slug}/routes/nope/summary").status_code == 404
+
+
+class TestPeriod:
+    """Отбор съёмок по времени съёмки — «тот же список, только короче».
+
+    Период не заводит новой математики: он укорачивает список до свёртки, а
+    считает по нему та же `metrics_rollup`. Поэтому проверяем не формулы, а
+    границы окна и то, что подписи под цифрой следуют за отбором.
+
+    Фикстура `two_assignments` даёт три майские съёмки по 100 и одну июньскую
+    на 20 — среднее по всем 80. Числа выбраны так, что по одному среднему видно,
+    какие съёмки попали в окно.
+    """
+
+    def test_window_narrows_the_average(self, client, summary_url, two_assignments):
+        """Только май: 100, 100, 100 — среднее 100 вместо 80 по всему маршруту."""
+        data = payload(
+            client.get(
+                summary_url,
+                params={
+                    "shot_from": "2026-05-01T00:00:00+00:00",
+                    "shot_to": "2026-06-01T00:00:00+00:00",
+                },
+            )
+        )
+
+        assert data["totals"]["shootings_completed"] == 3
+        assert data["totals"]["visibility_per_shooting"]["mean"] == pytest.approx(100.0)
+
+    def test_end_is_exclusive(self, client, summary_url, two_assignments):
+        """Конец окна не включается: 1 июня как граница июньскую съёмку отсекает.
+
+        Фронт прибавляет сутки к последней выбранной дате, поэтому «по 31 мая»
+        приезжает сюда как конец 1 июня — и июньский проезд остаётся снаружи.
+        """
+        data = payload(
+            client.get(
+                summary_url,
+                params={"shot_to": "2026-06-01T00:00:00+00:00"},
+            )
+        )
+
+        assert [item["run_id"] for item in data["shootings"]] == [
+            "run-may-1",
+            "run-may-2",
+            "run-may-3",
+        ]
+
+    def test_start_is_inclusive(self, client, summary_url, two_assignments):
+        """Начало окна включается: съёмка ровно в этот момент остаётся внутри."""
+        data = payload(
+            client.get(
+                summary_url,
+                params={"shot_from": "2026-05-03T09:00:00+00:00"},
+            )
+        )
+
+        assert [item["run_id"] for item in data["shootings"]] == [
+            "run-may-3",
+            "run-jun-1",
+        ]
+
+    def test_one_sided_window(self, client, summary_url, two_assignments):
+        """Границы независимы: можно задать только начало."""
+        data = payload(
+            client.get(
+                summary_url,
+                params={"shot_from": "2026-06-01T00:00:00+00:00"},
+            )
+        )
+
+        assert data["totals"]["shootings_completed"] == 1
+        assert data["totals"]["visibility_per_shooting"]["mean"] == pytest.approx(20.0)
+
+    def test_assignments_total_follows_the_window(
+        self, client, summary_url, two_assignments
+    ):
+        """«Собрано из N заданий» — про попавшие съёмки, а не про маршрут.
+
+        Без периода заданий два, в майском окне — одно. Иначе подпись
+        «собрано из 2 заданий · 3 съёмок» врала бы прямо на экране.
+        """
+        assert payload(client.get(summary_url))["assignments_total"] == 2
+
+        may = payload(
+            client.get(
+                summary_url,
+                params={"shot_to": "2026-06-01T00:00:00+00:00"},
+            )
+        )
+        assert may["assignments_total"] == 1
+
+    def test_empty_window_is_not_an_error(self, client, summary_url, two_assignments):
+        """Период без съёмок — законный ответ, а не 404: экран скажет «пусто»."""
+        data = payload(
+            client.get(
+                summary_url,
+                params={"shot_from": "2027-01-01T00:00:00+00:00"},
+            )
+        )
+
+        assert data["totals"]["shootings_completed"] == 0
+        assert data["shootings"] == []
+        assert data["brands"] == []
+
+    def test_shooting_without_a_date_never_matches(
+        self, client, storage, summary_url, assignments_url
+    ):
+        """Съёмку без даты во времени не разместить — в окно она не попадает.
+
+        Без периода она считается как обычно: «дату не указали» не повод
+        выкидывать проезд из метрик маршрута.
+        """
+        assignment_id = payload(client.post(assignments_url, json={}))["id"]
+        _seed_shooting(
+            storage,
+            run_id="run-undated",
+            assignment_id=assignment_id,
+            shot_started_at=None,
+            brands_visibility={"mts": 50.0},
+        )
+
+        assert payload(client.get(summary_url))["totals"]["shootings_completed"] == 1
+
+        windowed = payload(
+            client.get(
+                summary_url,
+                params={"shot_from": "2000-01-01T00:00:00+00:00"},
+            )
+        )
+        assert windowed["totals"]["shootings_completed"] == 0
+
+    def test_end_before_start_is_refused(self, client, summary_url):
+        response = client.get(
+            summary_url,
+            params={
+                "shot_from": "2026-06-01T00:00:00+00:00",
+                "shot_to": "2026-05-01T00:00:00+00:00",
+            },
+        )
+
+        assert response.status_code == 400
+        assert "раньше" in response.json()["detail"]
+
+    def test_naive_bounds_are_refused(self, client, summary_url):
+        """Границы обязаны нести зону: без неё «первое мая» — разный момент.
+
+        Момент без зоны истолковался бы по зоне сервера, и вечерние съёмки на
+        краю окна попадали бы то внутрь, то наружу в зависимости от того, где
+        этот сервер стоит.
+        """
+        response = client.get(
+            summary_url, params={"shot_from": "2026-05-01T00:00:00"}
+        )
+
+        assert response.status_code == 422
+
+
+class TestHiddenAssignment:
+    """Скрытое задание выпадает из метрики маршрута вместе со своими съёмками.
+
+    Это и есть смысл кнопки: раз кампанию спрятали, её проезды не должны тянуть
+    за собой средние по маршруту. Механизм тот же, что у периода, — список
+    съёмок укорачивается **до** свёртки, а считает по нему та же
+    `metrics_rollup`. Второй арифметики не появляется: иначе цифра под скрытием
+    разошлась бы с цифрой без него, ровно как разошлась бы под периодом.
+
+    Фикстура `two_assignments`: три майские съёмки по 100 и одна июньская на 20,
+    среднее по всем — 80. По одному среднему видно, чьи съёмки остались.
+    """
+
+    def hide(self, client, assignment_id: str) -> None:
+        response = client.patch(
+            f"/api/v1/assignments/{assignment_id}", json={"is_active": False}
+        )
+        assert response.status_code == 200
+
+    def test_its_shootings_leave_the_average(
+        self, client, summary_url, two_assignments
+    ):
+        """Спрятали июнь — остаются три сотни, среднее 100 вместо 80."""
+        _, small = two_assignments
+        self.hide(client, small)
+
+        totals = payload(client.get(summary_url))["totals"]
+        assert totals["shootings_completed"] == 3
+        assert totals["visibility_per_shooting"]["mean"] == pytest.approx(100.0)
+        # Суммируемая величина тоже: 3 × 40 секунд вместо 4 × 40.
+        assert totals["duration_sec"] == pytest.approx(120.0)
+
+    def test_shootings_and_assignment_count_follow(
+        self, client, summary_url, two_assignments
+    ):
+        """Подпись «собрано из N заданий» считается по тем съёмкам, что дали цифру."""
+        _, small = two_assignments
+        self.hide(client, small)
+
+        data = payload(client.get(summary_url))
+        assert [item["run_id"] for item in data["shootings"]] == [
+            "run-may-1",
+            "run-may-2",
+            "run-may-3",
+        ]
+        assert data["assignments_total"] == 1
+
+    def test_restoring_returns_them(self, client, summary_url, two_assignments):
+        _, small = two_assignments
+        self.hide(client, small)
+        client.patch(f"/api/v1/assignments/{small}", json={"is_active": True})
+
+        totals = payload(client.get(summary_url))["totals"]
+        assert totals["shootings_completed"] == 4
+        assert totals["visibility_per_shooting"]["mean"] == pytest.approx(80.0)
+
+    def test_hiding_everything_is_not_an_error(
+        self, client, summary_url, two_assignments
+    ):
+        """Маршрут без единого видимого задания — пустая сводка, а не 404."""
+        for assignment_id in two_assignments:
+            self.hide(client, assignment_id)
+
+        data = payload(client.get(summary_url))
+        assert data["totals"]["shootings_total"] == 0
+        assert data["shootings"] == []
+        assert data["assignments_total"] == 0

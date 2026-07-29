@@ -118,6 +118,8 @@ class AssignmentDTO(ApplicationDTO):
     status_counts: AssignmentStatusCountsDTO = Field(
         default_factory=AssignmentStatusCountsDTO
     )
+    # Скрытое задание видно только в админке: там его и возвращают обратно.
+    is_active: bool = True
     created_at: datetime | None = None
 
 
@@ -214,7 +216,9 @@ class AssignmentSummaryDTO(ApplicationDTO):
 class RouteSummaryDTO(ApplicationDTO):
     """Свёртка маршрута: те же функции, что у задания, но список длиннее.
 
-    `assignments_total` — сколько заданий на маршруте вообще; съёмки в
+    `assignments_total` — из скольких заданий собрана эта цифра, то есть сколько
+    различных заданий среди попавших сюда съёмок (а не сколько их на маршруте
+    вообще: под фильтром по периоду это были бы разные числа). Съёмки в
     `shootings` идут плоским списком по времени съёмки, задания служат
     подписью, а не ступенькой усреднения.
     """

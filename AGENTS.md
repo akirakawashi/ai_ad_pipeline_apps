@@ -127,11 +127,15 @@ On the backend `visibility_value` means **S·α·β**. They are different number
 
 ## 6. End-to-end flow
 
+0. An assignment is created in the admin panel («Задания» tab, city-scoped) — it is the campaign a
+   shooting is uploaded into. Everything below is open to everyone; this step is not.
 1. `POST /api/v1/runs` → row in `pipeline_runs` (status `uploading`) + presigned PUT URL.
-   Optional `assignment_id`; the assignment row is locked and capped at
+   **`assignment_id` is mandatory** — a shooting always belongs to an assignment and through it to a
+   route; the assignment row is locked (a hidden one is refused as "not found") and capped at
    `MAX_ASSIGNMENT_SHOOTINGS = 20`.
 2. Browser PUTs the file straight to MinIO: `runs/{run_id}/source/{safe_name}`.
 3. `POST /runs/{run_id}/upload-complete` → registers the `source_video` artifact, status `queued`.
+   The one read that still answers for a hidden assignment: the file is already stored.
 4. Worker `claim_next` (`SELECT … FOR UPDATE SKIP LOCKED`) → status `processing`, downloads the
    video, runs the pipeline, reporting progress into `pipeline_runs` + `pipeline_run_events`.
 5. Pipeline stages: detection → tracking → classification → final aggregation → business rules →
@@ -147,8 +151,9 @@ On the backend `visibility_value` means **S·α·β**. They are different number
    Two entry points, one code path: `/assignments/{id}/summary` (shootings of one assignment) and
    `/cities/{c}/routes/{r}/summary` (all shootings of the route). **The route averages shootings
    directly — there is no mean-of-means step**, so a two-drive campaign cannot outweigh a
-   twenty-drive one; the route response also carries every shooting with its assignment. No
-   shooting is ever filtered out of a rollup.
+   twenty-drive one; the route response also carries every shooting with its assignment. Two things
+   can shorten the route's list before the rollup — the date period and a hidden assignment — and
+   neither changes how it computes (see §10).
 9. Route/city geometry lives in the DB (`routes.geometry`, `cities.roads_geometry`) and is served by
    `/cities/{c}/roads-geometry` and `/cities/{c}/routes/{r}/geometry` with weak `ETag`s. **The seeded
    cities and routes get their geometry from `0002_seed`**, which reads the nine geojson files in
@@ -175,15 +180,19 @@ only feed the pipeline's own `report.html`.
 | Change how zones are entered or edited | `apps/frontend/src/components/RouteGeozones.tsx` — one panel for both mounts (city page without video, shooting card with it); percent↔fraction lives in `toFraction`/`percentText` there |
 | Add an endpoint | router in `presentation/http/routers/v1/` → response DTO in `presentation/http/dto/response.py` → service → repository interface → SQL repository |
 | Add a DB table/column | `infrastructure/database/models.py`, then **the owner writes the migration** (existing convention) |
-| Change how an assignment **or a route** aggregates shootings | `application/services/metrics_rollup.py` — the only place that decides how shootings collapse (today: mean + median + std, no filtering), shared by both levels |
+| Change how an assignment **or a route** aggregates shootings | `application/services/metrics_rollup.py` — the only place that decides how shootings collapse (today: mean + median + std), shared by both levels. Which shootings reach it is decided earlier, in `list_route_runs`; do not move that decision here or the other way round |
+| Change how an assignment is created, edited or hidden | `components/AdminAssignments.tsx` (the only mount of `AssignmentForm.tsx` — route picker, create, edit, hide/show) → `createAssignment` / `updateAssignment` / `getRouteAssignments` in `api.ts` → `assignments.py` + `cities.py` routers (both writes behind `require_admin`) → `catalog_service` → `sql_catalog_repository`. `RoutePage.tsx` and `AssignmentPage.tsx` only display; do not put a form back into either |
+| Change what a hidden assignment hides | `is_active` threads through **eight** reads: `list_assignments`, `get_assignment`, `_assignment_counts_by_route`, `_video_counts_by_route`, the two city-level counters in `list_cities`, `list_route_runs` (this is the metric) and `lock_assignment`, plus `list_runs` and `get` in `sql_pipeline_run_repository.py`. Miss one and you get half-hidden: a card gone from the list but its video still counted — see §10 |
+| Change the route's date period | `list_route_runs` in `sql_catalog_repository.py` (the `[shot_from, shot_to)` window) → `get_route_summary` in `catalog_service.py` → `cities.py` router → `getRouteSummary` in `api.ts` → `PeriodPicker` in `RouteSummaryPanel.tsx`, with the window itself in the URL (`routePath`). Date↔instant conversion lives in `utils/formatters.ts`. **The filter stays on the server** — see §10 |
 | Change which centre estimate the UI shows, or add a third one | `MetricStatDTO` → `_stat()` in `metrics_rollup.py` → `MetricStat` in `types.ts` → `statValue`/`formatStat` in `utils/formatters.ts` → `AggregateToggle.tsx`. The choice itself never reaches the backend |
 | Add a city/route field, change geometry handling | `domain/geometry.py` (validation only) → `models.py` → `sql_catalog_repository` → `catalog_service` → `cities.py` router → `AdminPage.tsx`. Geometry must stay out of list responses |
-| Change who can see hidden cities/routes | `include_inactive` threads through `list_cities` / `get_city` (repository → service → router → `api.ts`). Only `AdminPage.tsx` passes `true` |
+| Change who can see hidden cities/routes/assignments | `include_inactive` threads through `list_cities` / `get_city` / `list_assignments` / `get_assignment` (repository → service → router → `api.ts`). Only the admin panel passes `true` |
 | Change catalogue parsing (new column, new format) | `infrastructure/catalog/parser.py` only; the row/point types live in `domain/catalog.py` |
 | Retune catalogue distance thresholds | `MERGE_DISTANCE_M` / `DIFF_DISTANCE_M` / `CITY_BOUNDS_MARGIN_M` in `domain/catalog.py` |
 | Change how a catalogue pack is uploaded or a revision rolled back | `components/CatalogImports.tsx` (admin only). `CatalogPage.tsx` is the read-only directory and must stay that way |
 | Add a section to the admin panel | a component under `components/`, mounted from `AdminPage.tsx`. City-scoped → a tab in `CITY_TABS`; not city-scoped → a page-level section in `AdminSection` (like `AdminUsers.tsx`). Keep the two switchers visually different — underlined text for sections, pill tabs inside a city — or they read as one level. Guard its writes with `require_admin` in the same change |
 | Change the people directory | `user_service.py` → `users.py` router → `AdminUsers.tsx` — creation, renaming and hiding all live there. `UserSelect.tsx` only selects; do not put a create form back into it (see §10) |
+| Change how the shooting date is entered | `useVideoUpload.ts` (`shotDate` per queued file, `shotStartedAt()` decides what is sent) → the date field in `UploadPage.tsx` → `createRun` in `api.ts`. Date↔ISO conversion belongs in `utils/formatters.ts` and nowhere else — see the timezone trap in §10. The backend needs nothing: `POST /runs` has always accepted `shot_started_at` |
 | Change what the overlay card shows | `viewer/payload.py` + `OverlayObjectPayload` in `pipeline_contracts/artifacts.py` + `VideoOverlayPlayer.tsx` |
 
 ---
@@ -226,25 +235,30 @@ is collected, and calls `pytest.exit` when postgres is unreachable. There is no 
   business there, inside a corporate network. The login form in the UI is convenience only; the
   guarantee is that the endpoints answer 401 on their own. **The password may be in any language** —
   see the UTF-8 trap in §10. What it guards:
-  * `require_admin` — every write on cities and routes, all four catalogue-revision writes
-    (upload / apply / restore / delete), and **both** writes on people (`POST /users`,
-    `PATCH /users/{id}`);
-  * `allow_hidden` — `include_inactive` on `GET /cities`, `GET /cities/{slug}` and `GET /users`.
-  * **The line is the cost of a mistake, not the difficulty.** Administration is what changes a
-    directory for everyone at once. Operational work — assignments, shootings, video upload,
-    geozones — stays open, or the product becomes unusable. What stays open on the directory side
-    is reads only: the catalogue list (a product screen) and `GET /users` (every upload form's
-    dropdown reads it).
+  * `require_admin` — every write on cities and routes, **both** writes on assignments
+    (`POST /cities/{c}/routes/{r}/assignments`, `PATCH /assignments/{id}`), all four
+    catalogue-revision writes (upload / apply / restore / delete), and **both** writes on people
+    (`POST /users`, `PATCH /users/{id}`);
+  * `allow_hidden` — `include_inactive` on `GET /cities`, `GET /cities/{slug}`, `GET /users`,
+    `GET /cities/{c}/routes/{r}/assignments` and `GET /assignments/{id}`.
+  * **The line is the cost of a mistake, not the difficulty.** Administration is what changes the
+    frame everyone works inside. An assignment is such a frame — it is the campaign whose shootings
+    a route's metrics are computed from — so creating and editing one moved behind the password on
+    29.07.2026. Operational work — shootings, video upload, geozones — stays open, or the product
+    becomes unusable: the driver picks a ready assignment, never invents one. What stays open on the
+    directory side is reads only: the catalogue list (a product screen), `GET /users` (every upload
+    form's dropdown) and the assignment list (the upload form reads it too).
 * **API envelope:** every success response is `{"data": …}` (`OkResponse[T]`). Errors are
   `{"detail": "<Russian sentence>"}` produced by handlers in `presentation/http/exception_handlers.py`.
   Domain errors are typed exceptions in `application/exceptions.py`, never raw `HTTPException`.
 * **PATCH semantics:** request models expose `changed_fields()` so only keys the client actually sent
   are updated; validation re-checks the whole invariant against stored values.
 * **DB naming:** table `things`, PK `things_id`, FK `<table>_id`, timestamps `created_at`/`updated_at`
-  with server defaults. Soft delete via `is_active` where history matters. **Cities and routes have
-  no delete at all** — `is_active` is an ordinary `PATCH` field meaning hide/show, and there is no
-  `DELETE` verb on either. Anything that hides must also be un-hideable from somewhere, or it is a
-  one-way door (see §10).
+  with server defaults. Soft delete via `is_active` where history matters. **Cities, routes and
+  assignments have no delete at all** — `is_active` is an ordinary `PATCH` field meaning hide/show,
+  and there is no `DELETE` verb on any of the three. The cascade is why: city → routes →
+  assignments → shootings, so a real delete anywhere up that chain takes the videos with it.
+  Anything that hides must also be un-hideable from somewhere, or it is a one-way door (see §10).
 * **Repositories** own transactions but do not commit; services call `commit()`/`rollback()`.
 * **Comments** explain *why*, in Russian, and are dense in this codebase — match that density and
   keep them truthful when you edit the code they describe.
@@ -305,8 +319,21 @@ is collected, and calls `pytest.exit` when postgres is unreachable. There is no 
 * α is derived from `final_brand_conf` only; the "brand stability across the track" input is a stub
   parameter (`detections` is accepted and ignored in `scoring/confidence.py`).
 * An object that was never classified still gets α = 0.5 (the floor) and counts as `other`.
-* β needs `duration_sec`; it exists only after `mark_completed`. Shootings without an assignment have
-  no route → no zones → β = 1 everywhere.
+* β needs `duration_sec`; it exists only after `mark_completed`. The only remaining way to get a
+  neutral β is an unmarked route — every shooting has a route now, so it always has zones, sometimes
+  none of them.
+* **A shooting cannot exist outside a route, and `pipeline_runs.assignments_id` is `NOT NULL`.**
+  Uploading "without an assignment" is gone: no route meant no geozones, so no significance and
+  nowhere to roll the shooting up — the video took storage and answered no question. The FK is
+  `CASCADE`, not `SET NULL`: there is nothing to null out. **`PipelineRunDTO.assignment` and its
+  frontend twin stay optional anyway** — there `None` means "the relation was not loaded", which is
+  how the worker (`with_refs=False`) and `GET /assignments/{id}/runs` both answer. Tightening that
+  field to non-optional breaks the worker.
+* **The upload page's target comes from the loaded assignment, not from the id in the URL.**
+  `UploadPage` in pinned mode (`/upload?assignment=…`) reads `pinnedAssignment?.id`, never
+  `assignmentId` — otherwise a tab opened before the assignment was hidden keeps a live "Начать
+  загрузку" and fails per file on `POST /runs`. Same shape as the dropdown case in §9: a target
+  derived from fetched data must be validated against what actually loaded, not merely stored.
 * Geozone validation is split: bounds (`0 ≤ start < end ≤ 1`) in `catalog_service`, overlap detection
   in `sql_catalog_repository` under a route row lock (`GeozoneOverlapError` → HTTP 409).
 * **`JSONB` needs `none_as_null=True`.** By default SQLAlchemy writes Python `None` into a JSONB
@@ -355,7 +382,10 @@ is collected, and calls `pytest.exit` when postgres is unreachable. There is no 
   stayed taken and no endpoint could flip it back: the owner "deleted" three cities and could
   neither see nor recreate them. Now `is_active` is a plain `PATCH` field and the admin page — and
   only it — passes `include_inactive=true`. **Any future soft-hide must ship its un-hide in the same
-  change, and the screen that can hide must be able to show.**
+  change, and the screen that can hide must be able to show.** The assignment's hide (29.07.2026)
+  followed that rule from the start: «Скрыть» and «Показать» are the same button in
+  `AdminAssignments.tsx`, and `update_assignment` reads the row with `include_inactive=True` on
+  purpose — a 404 on "показать" would be the one-way door all over again.
 * **Hidden means gone everywhere, including direct URLs.** `get_city` and `get_route` return `None`
   for inactive rows unless `include_inactive` is set, so a bookmarked `/archive/kerch` gives 404.
   The two admin write paths (`update_route`, `set_route_geometry`) pass `include_inactive=True` on
@@ -372,11 +402,58 @@ is collected, and calls `pytest.exit` when postgres is unreachable. There is no 
 * **σ is shown for both estimates on purpose.** It describes the sample of shootings — how far the
   drives spread apart — not the centre estimate, and "can I trust this number" is the same question
   either way.
-* **No shooting is ever filtered out of a rollup, and that rests on an unchecked assumption**: the
-  video covers the whole drive from A to B. A truncated upload is invisible to the system — the zones
-  simply shift, because β is a fraction of *this* video's duration, and the numbers go quietly wrong.
-  Rejected deliberately (owner: every drive is uploaded whole); if the assumption ever breaks,
+* **Exactly two things remove a shooting from a rollup, and both work the same way — by shortening
+  the list before `metrics_rollup`, never by changing how it computes.** They are the route's date
+  period and a hidden assignment. Anything else that ever needs to exclude shootings must join them
+  at that seam (`list_route_runs`), because a second implementation of mean/median/std would silently
+  drift from the first and the number under a filter would stop matching the number without one.
+  Hiding is the only *deliberate* exclusion: it takes an admin action, it takes the assignment's
+  shootings with it, and it is reversible — "показать" puts them back into the average. Note what
+  this costs: a route's history changes retroactively when someone hides a campaign, and that is
+  intended, not a bug to guard against.
+* **A shooting is still never dropped for being *bad*, and that rests on an unchecked assumption**:
+  the video covers the whole drive from A to B. A truncated upload is invisible to the system — the
+  zones simply shift, because β is a fraction of *this* video's duration, and the numbers go quietly
+  wrong. Rejected deliberately (owner: every drive is uploaded whole); if the assumption ever breaks,
   filtering belongs in `metrics_rollup.py` and nowhere else.
+* **Hiding an assignment is a product read filter, never a write filter — the worker must not see
+  it.** `SqlPipelineRunRepository.get` returns `None` for a shooting of a hidden assignment, so one
+  line covers the card, the summary, the objects, the timeline and the player at once; `list_runs`
+  excludes them through the same subquery that already resolves route and city. Write paths
+  (`_get_model` directly: `claim_next`, `mark_upload_complete`, `mark_completed`, `mark_failed`,
+  `add_artifact`) have no filter and must not grow one — a hidden assignment would otherwise mean a
+  queued video nobody claims and nobody hears about again. The one deliberate exception is
+  `complete_upload`, which passes `include_hidden=True`: the file is already in MinIO, and refusing
+  there would strand the row in `uploading` next to an orphaned object. Same reason `lock_assignment`
+  returns `False` for a hidden assignment — that check belongs to *starting* an upload, not
+  finishing one.
+* **A date-only string is UTC to `new Date()`, and that silently moves the day.** `new Date('2026-05-03')`
+  is parsed as UTC midnight by spec, while `new Date(2026, 4, 3)` is local midnight. West of Greenwich the
+  first one lands on the previous day, so a person picking the 3rd would store the 2nd — no error, no
+  warning, just a shooting on the wrong day. Hence `isoFromDateInput` in `utils/formatters.ts` builds the
+  date from numbers, and `dateInputFromIso` derives the field value from `localInputFromIso` instead of
+  slicing the ISO string (the ISO date is in UTC, so an evening drive would read as yesterday's).
+  **Both directions must stay in `formatters.ts`** — a second copy of this conversion is how the bug
+  comes back. `shot_started_at` is also the axis the route date filter will use, so a day off here is a
+  shooting that falls out of the wrong period.
+* **The route's date period is filtered on the server, and that is not an accident.** The route summary
+  already ships every shooting separately, so filtering it in the browser looks free — it is not. Mean,
+  median, std and the per-brand zero-fill ("a brand missing from a shooting is a zero, not a skip") would
+  need a second implementation in TypeScript, and the two would drift silently: the number under a period
+  would stop matching the number without one. §7 says `metrics_rollup.py` is the only place that decides
+  how shootings collapse; a period must therefore only **shorten the list before it**, never re-implement
+  it after. The price is a refetch per boundary change, which re-reads `tracks.csv` for every shooting.
+  Two consequences of the same rule: `assignments_total` counts the assignments **among the shootings
+  that fed the number**, not the route's total, or the caption "собрано из N заданий" lies under a
+  period; and the window travels as instants, not calendar dates — only the browser knows the user's
+  timezone, and it is the browser that adds a day to the end so the last selected date is included whole.
+* **The shooting date is per uploaded file, never per batch.** Twenty videos in one upload are usually
+  twenty separate drives, sometimes on different days, and the route chart is plotted by
+  `shot_started_at` — one shared field would collapse them onto a single point with nothing on screen
+  to reveal it. The field is prefilled from file metadata, which lies after a copy from a memory card
+  (it carries the copy time). If the date is left untouched the full file timestamp is sent, hours
+  included, because same-day drives order by it; once the date is edited the hours are fiction, so
+  midnight goes instead. Clearing the field sends `null` — and a `null` cannot match any date filter.
 * **Zones are stored as fractions, entered as percent.** The API only ever sees `[0,1]`; the ×100 is
   purely a UI affordance in `RouteGeozones.tsx`. Minutes were rejected on purpose — different drives
   have different durations, so "minute four" is a different place each time.

@@ -15,6 +15,7 @@ from application.exceptions import (
     InvalidCatalogFileError,
     InvalidGeometryError,
     InvalidGeozoneError,
+    InvalidPeriodError,
     InvalidUserError,
     InvalidVideoError,
     PipelineRunNotFoundError,
@@ -91,6 +92,16 @@ def setup_exception_handlers(app: FastAPI) -> None:
     async def invalid_assignment_handler(
         _: Request,
         exc: InvalidAssignmentError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=400,
+            content={"detail": str(exc)},
+        )
+
+    @app.exception_handler(InvalidPeriodError)
+    async def invalid_period_handler(
+        _: Request,
+        exc: InvalidPeriodError,
     ) -> JSONResponse:
         return JSONResponse(
             status_code=400,

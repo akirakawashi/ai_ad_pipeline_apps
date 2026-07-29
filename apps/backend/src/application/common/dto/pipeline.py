@@ -95,7 +95,9 @@ class PipelineRunDTO(ApplicationDTO):
     # Не хранится: shot_started_at + duration_sec. None, пока нет одного из двух.
     shot_finished_at: datetime | None = None
     # Заполняются только там, где связи загружены явно (_run_to_dto(with_refs=...)).
-    # None означает «Без задания» либо «связь не запрашивали».
+    # None означает «связь не запрашивали», и только это: задание у съёмки есть
+    # всегда — колонка обязательная. Поле остаётся необязательным именно ради
+    # такого ответа: так отдают воркер и `GET /assignments/{id}/runs`.
     assignment: RunAssignmentRefDTO | None = None
     operator: UserDTO | None = None
     artifacts: list[PipelineArtifactDTO] = Field(default_factory=list)

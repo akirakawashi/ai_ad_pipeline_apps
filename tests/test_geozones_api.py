@@ -82,15 +82,17 @@ def _route_id(city_slug: str, route_slug: str) -> str:
         return route.routes_id
 
 
-def _seed_completed_run(routes_id: str, *, with_assignment: bool) -> None:
-    """Завершённая съёмка с артефактом TRACKS. CSV кладём отдельно в storage."""
+def _seed_completed_run(routes_id: str) -> None:
+    """Завершённая съёмка с артефактом TRACKS. CSV кладём отдельно в storage.
+
+    Задание заводим всегда: съёмки вне маршрута в системе не бывает — колонка
+    обязательная, и такую строку база просто не примет.
+    """
     with Session(engine) as session:
-        assignment_id = None
-        if with_assignment:
-            assignment = Assignment(routes_id=routes_id, sequence_number=1)
-            session.add(assignment)
-            session.flush()
-            assignment_id = assignment.assignments_id
+        assignment = Assignment(routes_id=routes_id, sequence_number=1)
+        session.add(assignment)
+        session.flush()
+        assignment_id = assignment.assignments_id
         session.add(
             PipelineRun(
                 pipeline_runs_id=RUN_ID,
@@ -258,7 +260,7 @@ def test_summary_applies_beta_and_recalculates(client, storage, geozone_schema, 
             _track(2, 2, "mts", 4.0, 1.0, 0.8, 1),
         ]
     )
-    _seed_completed_run(routes_id, with_assignment=True)
+    _seed_completed_run(routes_id)
 
     created = client.post(
         _geozones_url(city_slug, route_slug),
@@ -274,18 +276,17 @@ def test_summary_applies_beta_and_recalculates(client, storage, geozone_schema, 
     assert _visibility_index(client, RUN_ID) == pytest.approx(2.8)  # 2.0 + 0.8
 
 
-def test_summary_without_assignment_uses_neutral_beta(
-    client, storage, geozone_schema, city_route
-):
+def test_unmarked_route_uses_neutral_beta(client, storage, geozone_schema, city_route):
+    """Маршрут без единой зоны — β = 1 у всех объектов.
+
+    Единственный оставшийся способ получить нейтральный β. Раньше их было два:
+    вторым была съёмка без задания, но съёмок вне маршрута больше не бывает —
+    задание обязательно, и зоны у съёмки есть всегда, пусть иногда пустые.
+    """
     city_slug, route_slug = city_route
     routes_id = _route_id(city_slug, route_slug)
-    # У маршрута есть зона, но съёмка без задания её не видит: β = 1 у всех.
-    client.post(
-        _geozones_url(city_slug, route_slug),
-        json={"name": "Центр", "start_fraction": 0.35, "end_fraction": 0.6, "coefficient": 1.5},
-    )
     storage.objects[TRACKS_KEY] = _tracks_csv([_track(1, 1, "mts", 20.0, 2.0, 0.5, 1)])
-    _seed_completed_run(routes_id, with_assignment=False)
+    _seed_completed_run(routes_id)
 
-    # V = 2.0·0.5·1.0 = 1.0 (β нейтральный, зоны съёмке недоступны).
+    # V = 2.0·0.5·1.0 = 1.0: множить не на что, размеченных участков нет.
     assert _visibility_index(client, RUN_ID) == pytest.approx(1.0)

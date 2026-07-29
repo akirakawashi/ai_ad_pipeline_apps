@@ -15,6 +15,12 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
+import {
+  tooltipCursor,
+  tooltipItemStyle,
+  tooltipLabelStyle,
+  tooltipStyle,
+} from './common/chartTooltip'
 import type { BrandSummary, RunObject, RunTimeline } from '../types'
 
 const BRAND_COLORS: Record<string, string> = {
@@ -26,26 +32,6 @@ const BRAND_COLORS: Record<string, string> = {
 
 const BRAND_ORDER = ['mts', 'miranda', 'plus7', 'other']
 const FALLBACK_COLORS = ['#e7c84d', '#a78bfa', '#fb923c', '#22d3ee']
-
-const tooltipStyle: CSSProperties = {
-  background: '#151515',
-  border: '1px solid rgba(255,255,255,.14)',
-  borderRadius: 8,
-  color: '#f4f4f4',
-}
-
-const tooltipLabelStyle: CSSProperties = {
-  color: '#f4f4f4',
-  fontWeight: 600,
-}
-
-const tooltipItemStyle: CSSProperties = {
-  color: '#f4f4f4',
-}
-
-const tooltipCursor = {
-  fill: 'rgba(255,255,255,.06)',
-}
 
 interface RunChartsProps {
   brands: BrandSummary[]

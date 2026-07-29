@@ -73,8 +73,8 @@ class CreateRunRequest(ApiModel):
     file_name: str = Field(min_length=1, max_length=512)
     content_type: str | None = Field(default=None, max_length=255)
     size_bytes: int = Field(gt=0)
-    # None означает «Без задания» — видео вне города и маршрута.
-    assignment_id: str | None = Field(default=None, max_length=36)
+    # Обязательно: съёмка всегда принадлежит заданию, а через него маршруту.
+    assignment_id: str = Field(min_length=1, max_length=36)
     # Реквизиты съёмки. Время подставляет браузер из метаданных файла,
     # оператор — общий на всю партию загрузки.
     shot_started_at: AwareDatetime | None = None
@@ -268,6 +268,10 @@ class UpdateAssignmentRequest(ApiModel):
 
     Отличить «не прислали» от «прислали null» позволяет model_fields_set —
     иначе описание нельзя было бы очистить.
+
+    `is_active` — «скрыть» и «показать». Тип строгий, без `| None`: колонка
+    NOT NULL, и присланный null дошёл бы до базы ошибкой вставки вместо
+    внятного 422.
     """
 
     title: str | None = Field(default=None, max_length=255)
@@ -275,6 +279,7 @@ class UpdateAssignmentRequest(ApiModel):
     planned_start_at: AwareDatetime | None = None
     planned_end_at: AwareDatetime | None = None
     author_user_id: str | None = Field(default=None, max_length=36)
+    is_active: bool = True
 
     def changed_fields(self) -> dict[str, object]:
         column_by_field = {"author_user_id": "author_users_id"}

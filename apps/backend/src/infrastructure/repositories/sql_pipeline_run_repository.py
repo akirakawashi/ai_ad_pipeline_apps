@@ -130,7 +130,7 @@ class SqlPipelineRunRepository:
         source_object_key: str,
         content_type: str | None,
         size_bytes: int,
-        assignment_id: str | None = None,
+        assignment_id: str,
         shot_started_at: datetime | None = None,
         operator_user_id: str | None = None,
     ) -> PipelineRunDTO:
@@ -168,29 +168,29 @@ class SqlPipelineRunRepository:
         city_id: str | None = None,
         route_id: str | None = None,
         assignment_id: str | None = None,
-        assigned: bool | None = None,
     ) -> tuple[list[PipelineRunDTO], int]:
         filters = []
         if status:
             filters.append(PipelineRun.status == _status_value(status))
         if assignment_id:
             filters.append(PipelineRun.assignments_id == assignment_id)
-        if assigned is not None:
-            if assigned:
-                filters.append(PipelineRun.assignments_id.is_not(None))
-            else:
-                filters.append(PipelineRun.assignments_id.is_(None))
+
+        # Маршрут и город достаём подзапросом по цепочке assignment → route → city,
+        # чтобы не денормализовать их в pipeline_runs. Скрытые задания отсекаются
+        # тем же подзапросом, и безусловно: съёмка спрятанной кампании не должна
+        # остаться в общем списке — карточка вела бы на страницу, дающую 404.
+        assignment_ids = select(Assignment.assignments_id).where(
+            Assignment.is_active.is_(True)
+        )
         if route_id or city_id:
-            # Маршрут и город достаём подзапросом по цепочке assignment → route → city,
-            # чтобы не денормализовать их в pipeline_runs.
-            assignment_ids = select(Assignment.assignments_id).join(
+            assignment_ids = assignment_ids.join(
                 Route, Route.routes_id == Assignment.routes_id
             )
             if route_id:
                 assignment_ids = assignment_ids.where(Route.routes_id == route_id)
             if city_id:
                 assignment_ids = assignment_ids.where(Route.cities_id == city_id)
-            filters.append(PipelineRun.assignments_id.in_(assignment_ids))
+        filters.append(PipelineRun.assignments_id.in_(assignment_ids))
 
         total = self._session.exec(
             select(func.count(PipelineRun.pipeline_runs_id)).where(*filters)
@@ -220,14 +220,33 @@ class SqlPipelineRunRepository:
         *,
         with_artifacts: bool = True,
         with_events: bool = False,
+        include_hidden: bool = False,
     ) -> PipelineRunDTO | None:
+        """Съёмка для показа. None — нет её или скрыто задание, в которое она сдана.
+
+        Единственная точка чтения съёмки продуктом: через неё идут и карточка,
+        и сводка, и объекты, и таймлайн, и плеер, — поэтому скрытие проверяется
+        здесь одной строкой, а не в семи местах.
+
+        `include_hidden` нужен ровно одному вызову — завершению загрузки. Между
+        созданием съёмки и «файл долит» проходят минуты, и если в эту щель
+        задание спрятали, отказ оставил бы строку навсегда в статусе `uploading`
+        и брошенный объект в MinIO. Дозагрузить начатое — запись, а пути записи
+        скрытия не знают: по ним же ходит воркер.
+        """
         run = self._get_model(
             run_id,
             with_artifacts=with_artifacts,
             with_events=with_events,
             with_refs=True,
         )
-        return _run_to_dto(run, with_refs=True) if run else None
+        if run is None:
+            return None
+        if not include_hidden and (
+            run.assignment is None or not run.assignment.is_active
+        ):
+            return None
+        return _run_to_dto(run, with_refs=True)
 
     def get_geozone_intervals(self, run_id: str) -> list[GeozoneInterval]:
         """Участки значимости маршрута этой съёмки — вход для расчёта β.
