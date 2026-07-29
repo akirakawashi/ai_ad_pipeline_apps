@@ -20,10 +20,9 @@ from .html_viewer import write_html_overlay_viewer
 from .io import iter_frames, load_frames, load_metadata
 from .quality import evaluate_crop_quality
 from .reports import write_pipeline_outputs
-from .schemas import DetectionRecord, FrameRecord, InputMetadata, TrackRecord
+from .schemas import DetectionRecord, InputMetadata, TrackRecord
 from .track_groups import assign_object_groups, stabilize_object_brands
 from .tracking import assign_track_ids
-from .visualization import write_annotated_media
 
 logger = logging.getLogger(__name__)
 
@@ -60,9 +59,12 @@ class PipelineModels:
 
 @dataclass
 class PipelineContext:
+    # Кадров здесь нет намеренно: единственным их читателем была сборка копии
+    # видео с вписанными рамками, а её больше нет. Держать разобранные кадры до
+    # конца прогона только ради того, чтобы никто их не прочитал, незачем —
+    # на картиночном входе это весь вход целиком в памяти.
     config: PipelineConfig
     metadata: InputMetadata
-    frames: list[FrameRecord] | None
     detections: list[DetectionRecord]
     tracks: list[TrackRecord] = field(default_factory=list)
 
@@ -165,7 +167,6 @@ def run_detection_stage(
         return PipelineContext(
             config=config,
             metadata=metadata,
-            frames=None,
             detections=detections,
         )
 
@@ -193,7 +194,6 @@ def run_detection_stage(
     return PipelineContext(
         config=config,
         metadata=metadata,
-        frames=frames,
         detections=detections,
     )
 
@@ -262,14 +262,6 @@ def write_artifacts_stage(context: PipelineContext) -> None:
         context.detections,
         tracks_by_id,
         context.config.output_dir / "crops",
-    )
-    write_annotated_media(
-        context.config.output_dir,
-        context.frames,
-        context.detections,
-        context.tracks,
-        context.metadata,
-        context.config,
     )
     write_html_overlay_viewer(
         context.config.output_dir,

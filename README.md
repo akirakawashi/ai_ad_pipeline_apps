@@ -291,7 +291,6 @@ frame_summary.csv
 overlay.json
 viewer.html
 report.html
-annotated_video.mp4
 crops/
 charts/
 ```

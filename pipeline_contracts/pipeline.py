@@ -38,7 +38,6 @@ class PipelineArtifactType(StrEnum):
     FRAME_SUMMARY = "frame_summary"
     REPORT = "report"
     VIEWER = "viewer"
-    ANNOTATED_VIDEO = "annotated_video"
     CROP = "crop"
     ARTIFACT = "artifact"
 
@@ -53,7 +52,6 @@ PIPELINE_ARTIFACT_TYPES_BY_FILE_NAME: dict[str, PipelineArtifactType] = {
     "frame_summary.csv": PipelineArtifactType.FRAME_SUMMARY,
     "report.html": PipelineArtifactType.REPORT,
     "viewer.html": PipelineArtifactType.VIEWER,
-    "annotated_video.mp4": PipelineArtifactType.ANNOTATED_VIDEO,
 }
 
 

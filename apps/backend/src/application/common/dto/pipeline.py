@@ -122,7 +122,6 @@ class ArtifactUrlDTO(ApplicationDTO):
 
 class PlaybackDTO(ApplicationDTO):
     source_url: str | None
-    annotated_url: str | None
 
 
 class BrandSummaryDTO(BrandTrackSummaryRow):

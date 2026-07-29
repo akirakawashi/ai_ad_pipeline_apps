@@ -346,7 +346,6 @@ export interface RunTimeline {
 
 export interface Playback {
   source_url: string | null
-  annotated_url: string | null
 }
 
 /** Участок значимости маршрута: доля [start, end) времени видео и множитель β. */

@@ -243,18 +243,18 @@ class PipelineRunService:
         )
 
     def get_playback(self, run_id: str) -> PlaybackDTO:
+        """Ссылка на исходное видео — рамки плеер рисует сам.
+
+        Второй копии видео с вписанными рамками нет намеренно: она весила
+        столько же, сколько оригинал, а поверх исходника рамки рисуются из
+        `overlay.json` — по ним ещё и кликать можно.
+        """
         run = self._require_run(run_id)
         by_type = {item.artifact_type: item for item in run.artifacts}
         source = by_type.get(PipelineArtifactType.SOURCE_VIDEO)
-        annotated = by_type.get(PipelineArtifactType.ANNOTATED_VIDEO)
         return PlaybackDTO(
             source_url=(
                 self._storage.presigned_get(source.object_key) if source else None
-            ),
-            annotated_url=(
-                self._storage.presigned_get(annotated.object_key)
-                if annotated
-                else None
             ),
         )
 

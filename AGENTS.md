@@ -60,7 +60,7 @@ Three target brands: `mts`, `plus7`, `miranda`. Everything else collapses to `ot
 | `ml/pipeline/run_pipeline.py` | CLI entry point (argparse → `PipelineConfig` → `run_pipeline`). |
 | `ml/pipeline/scripts/runner.py` | Stage orchestration. The one file that shows the whole ML flow. |
 | `ml/pipeline/scripts/scoring/` | The metric: `area`, `position`, `contrast`, `intensity`, `attention`, `confidence`, `geometry`, `interpolation`. Feature extraction is separate from assembly. |
-| `ml/pipeline/scripts/` (rest) | `detection`, `crops`, `quality`, `classification`, `tracking`, `track_groups`, `aggregation`, `io`, `schemas`, `config`, `visualization`. |
+| `ml/pipeline/scripts/` (rest) | `detection`, `crops`, `quality`, `classification`, `tracking`, `track_groups`, `aggregation`, `io`, `schemas`, `config`, `visualization` (**despite the name it draws nothing** — it works out which boxes are visible in which frame, with gap interpolation, and its only consumer is `viewer/payload.py`). |
 | `ml/pipeline/scripts/reporting/` | CSV + charts + `report.html` (standalone pipeline reports, **not** the product UI). |
 | `ml/pipeline/scripts/viewer/` | `overlay.json` + `viewer.html` (standalone player with cards). |
 | `apps/backend/src/domain/` | Pure logic, no I/O: `geozones.py` (`beta`, `overlaps`), `catalog.py` (point collapsing, revision diff, city bounds), `geometry.py` (geojson validation, bbox) + entity facades. |
@@ -336,6 +336,14 @@ is collected, and calls `pytest.exit` when postgres is unreachable. There is no 
   that is not redundant, it is the other half; and every rejection must reach `_verify`, so
   `_Utf8HTTPBasic` returns `None` on anything malformed and never raises — otherwise the library's
   English "Not authenticated" leaks out in place of the Russian sentence.
+* **There is exactly one video per shooting, and the pipeline never writes a second one.** The player
+  draws boxes over the *source* video from `overlay.json` — see `VideoOverlayPlayer.tsx`, which is
+  handed `playback.source_url`. Until 29.07.2026 the pipeline also burned the boxes into a full copy
+  (`annotated_video.mp4`): on a 7.7-minute 1080p drive that was 1.01 GB next to a 1.07 GB original —
+  **46 % of all storage** — and for video input it was produced by decoding and re-encoding the whole
+  source a second time. Nothing read it: no component touched `annotated_url`, and `api.ts` has no
+  artifact functions at all, so it was not even downloadable. If you find yourself wanting to render
+  boxes into a file, the answer is almost certainly `overlay.json` plus the player instead.
 * **Uploading a city's road layer recomputes `bounds_*` in the same operation.** The catalogue parser
   uses that box to drop out-of-town points; a new layer with a stale box silently discards good rows.
 * **`ShootingMetricsDTO` is the unit of account at every level.** Assignment and route both read it;
