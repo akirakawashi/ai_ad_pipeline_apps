@@ -333,6 +333,27 @@ def upload(client, uploader):
     return do
 
 
+# Готовый пригодный файл: пределы проверяются на количестве и размере, поэтому
+# содержимое должно быть законным — иначе непонятно, кто именно отказал.
+SEVASTOPOL_CSV = (
+    "Трасса/Город;Адрес;Координаты\nСевастополь;адрес;44.605398, 33.527134\n"
+).encode("utf-8")
+
+
+@pytest.fixture
+def pack(client, uploader):
+    """Отправка произвольного набора файлов — для проверок пределов."""
+
+    def do(files: list[tuple[str, bytes]]):
+        return client.post(
+            "/api/v1/cities/sevastopol/catalog/imports",
+            files=[("files", (name, content, "text/csv")) for name, content in files],
+            data={"uploaded_by_user_id": uploader["id"]},
+        )
+
+    return do
+
+
 def structures(client, city: str = "sevastopol") -> dict:
     return payload(client.get(f"/api/v1/cities/{city}/ad-structures"))
 
@@ -342,6 +363,10 @@ LENINA_ROWS = [
     ("Севастополь", "ул. Ленина, д. 54", "44.605398, 33.527134"),
     ("Севастополь", "ул. Ленина, д. 64", "44.604132, 33.526755"),
 ]
+
+# Адреса свободные, и процент в них попадается — на нём и проверяем, что поиск
+# ищет символ, а не толкует его как шаблон.
+PERCENT_ROW = ("Севастополь", "ТЦ «Скидка 50%»", "44.548442, 33.438264")
 
 
 class TestUpload:
@@ -382,6 +407,52 @@ class TestUpload:
 
     def test_unknown_city_is_404(self, client, upload):
         assert upload(LENINA_ROWS, city="atlantis").status_code == 404
+
+
+class TestUploadLimits:
+    """Пределы пака: 20 файлов, 10 МБ на файл, 50 МБ на всё.
+
+    Это правила продукта, а не схемы, и комментарий над ними прямо зовёт их
+    править — значит, они должны быть под тестом, иначе промах в единицах никто
+    не заметит до первого пака.
+
+    Сверяем не статус, а сообщение. Отказать 400-м может и разбор: пак из
+    мусорных байт он завернёт с тем же кодом, и тест прошёл бы, даже если предел
+    перестал срабатывать вовсе. Различает их только текст.
+    """
+
+    def test_more_than_twenty_files_is_refused(self, client, pack):
+        response = pack([(f"p{index}.csv", b"garbage") for index in range(21)])
+
+        assert response.status_code == 400
+        assert "не более 20 файлов" in response.json()["detail"]
+
+    def test_exactly_twenty_files_pass(self, client, pack):
+        """Граница включительная: двадцать — это ещё можно, а не «уже нельзя»."""
+        response = pack([(f"p{index}.csv", SEVASTOPOL_CSV) for index in range(20)])
+
+        assert response.status_code == 201
+
+    def test_single_file_over_ten_megabytes_is_refused(self, client, pack):
+        response = pack([("big.csv", b"\0" * (11 * 1024 * 1024))])
+
+        assert response.status_code == 400
+        # Имя в сообщении обязательно: из пака в двадцать файлов иначе не понять,
+        # какой именно перекладывать.
+        assert "«big.csv»" in response.json()["detail"]
+        assert "больше 10 МБ" in response.json()["detail"]
+
+    def test_total_size_is_checked_on_top_of_per_file(self, client, pack):
+        """Каждый файл законен по отдельности, а сумма — нет.
+
+        Отдельное правило именно поэтому и нужно: шесть девятимегабайтных
+        файлов проходят проверку по одному и валят процесс вместе.
+        """
+        blob = b"\0" * (9 * 1024 * 1024)
+        response = pack([(f"p{index}.csv", blob) for index in range(6)])
+
+        assert response.status_code == 400
+        assert "Суммарный размер" in response.json()["detail"]
 
 
 class TestRevisions:
@@ -532,6 +603,53 @@ class TestStructuresList:
 
         assert found["total"] == 1
         assert found["items"][0]["address"] == "ул. Ленина, д. 64"
+
+    def test_percent_is_a_character_not_a_wildcard(self, client, upload):
+        """В поле написано «поиск по адресу» — значит `%` ищется как символ.
+
+        Без экранирования шаблон становился `%%%` и возвращал весь город: человек
+        видел не «ничего не нашлось», а полный каталог.
+        """
+        report = payload(upload([*LENINA_ROWS, PERCENT_ROW]))
+        client.post(f"/api/v1/catalog/imports/{report['catalog_import']['id']}/apply")
+
+        found = payload(
+            client.get("/api/v1/cities/sevastopol/ad-structures", params={"search": "%"})
+        )
+
+        # Ровно вывеска со скидкой, а не все три точки.
+        assert found["total"] == 1
+        assert found["items"][0]["address"] == PERCENT_ROW[1]
+
+    def test_underscore_does_not_match_any_character(self, client, upload):
+        """«ул_» не должно находить «ул.»: подчёркивание — не «любой символ»."""
+        report = payload(upload(LENINA_ROWS))
+        client.post(f"/api/v1/catalog/imports/{report['catalog_import']['id']}/apply")
+
+        found = payload(
+            client.get(
+                "/api/v1/cities/sevastopol/ad-structures", params={"search": "ул_"}
+            )
+        )
+
+        assert found["total"] == 0
+
+    def test_backslash_does_not_escape_the_next_character(self, client, upload):
+        """Слэш у LIKE служебный, поэтому удваивается первым.
+
+        Без удвоения `\\Ленина` превращалось в `Ленина` и находило две точки —
+        то есть служебный символ пользователя менял смысл его же запроса.
+        """
+        report = payload(upload(LENINA_ROWS))
+        client.post(f"/api/v1/catalog/imports/{report['catalog_import']['id']}/apply")
+
+        found = payload(
+            client.get(
+                "/api/v1/cities/sevastopol/ad-structures", params={"search": "\\Ленина"}
+            )
+        )
+
+        assert found["total"] == 0
 
     def test_surfaces_count_is_visible(self, client, upload):
         report = payload(upload(LENINA_ROWS))

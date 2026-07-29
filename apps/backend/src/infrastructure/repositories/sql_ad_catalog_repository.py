@@ -13,6 +13,22 @@ from infrastructure.database.models import AdStructure, CatalogImport, City
 from infrastructure.repositories.assignment_mapping import user_ref
 
 
+# В поле написано «Поиск по адресу», а не «шаблон LIKE»: `%` и `_` там значат
+# сами себя. Без этого `%` возвращал весь каталог вместо «ничего не нашлось», а
+# «ул_» находило «ул.» — подчёркивание подходило к точке.
+LIKE_ESCAPE = "\\"
+
+
+def _escape_like(value: str) -> str:
+    # Слэш первым: иначе следующие две замены заэкранируют слэши, которые сами
+    # же и поставили, и `%` превратился бы в литерал обратного слэша с процентом.
+    return (
+        value.replace(LIKE_ESCAPE, LIKE_ESCAPE * 2)
+        .replace("%", f"{LIKE_ESCAPE}%")
+        .replace("_", f"{LIKE_ESCAPE}_")
+    )
+
+
 def _bounds(city: City) -> CityBounds | None:
     values = (
         city.bounds_min_latitude,
@@ -238,7 +254,13 @@ class SqlAdCatalogRepository:
             CatalogImport.is_current.is_(True),  # type: ignore[attr-defined]
         ]
         if search:
-            conditions.append(AdStructure.address.ilike(f"%{search}%"))  # type: ignore[attr-defined]
+            # escape указан явно, хотя у PostgreSQL слэш и так по умолчанию:
+            # правильность поиска не должна зависеть от настройки диалекта.
+            conditions.append(
+                AdStructure.address.ilike(  # type: ignore[attr-defined]
+                    f"%{_escape_like(search)}%", escape=LIKE_ESCAPE
+                )
+            )
 
         total = self._session.exec(
             select(func.count(AdStructure.ad_structures_id))
