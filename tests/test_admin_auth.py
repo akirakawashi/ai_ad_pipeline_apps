@@ -258,6 +258,7 @@ def test_assignment_reads_and_uploading_stay_open(anonymous_client, client):
                 "content_type": "video/mp4",
                 "size_bytes": 1024,
                 "assignment_id": created["id"],
+                "shot_started_at": "2026-08-02T09:30:00Z",
             },
         ).status_code
         == 201

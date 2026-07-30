@@ -77,7 +77,7 @@ def _shot_finished_at(run: PipelineRun) -> datetime | None:
     Так поле физически не может разойтись с файлом. Пока видео не обработано,
     длительность неизвестна — возвращаем None, интерфейс покажет прочерк.
     """
-    if run.shot_started_at is None or not run.duration_sec:
+    if not run.duration_sec:
         return None
     return run.shot_started_at + timedelta(seconds=run.duration_sec)
 
@@ -131,7 +131,7 @@ class SqlPipelineRunRepository:
         content_type: str | None,
         size_bytes: int,
         assignment_id: str,
-        shot_started_at: datetime | None = None,
+        shot_started_at: datetime,
         operator_user_id: str | None = None,
     ) -> PipelineRunDTO:
         run = PipelineRun(

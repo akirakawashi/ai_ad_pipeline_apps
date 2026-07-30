@@ -121,12 +121,11 @@ export function AdminAssignments({ citySlug, routes }: AdminAssignmentsProps) {
   const editing = current?.items.find((item) => item.id === editingId) ?? null
 
   return (
-    <section className="panel catalog-panel">
-      <h2>Задания</h2>
-      <p className="catalog-hint">
-        Кампания на маршруте: серия проездов с плановым окном и постановщиком.
-        Видео грузят внутрь задания, и метрики маршрута считаются по его съёмкам.
-      </p>
+    <section className="panel catalog-panel admin-assignments">
+      <div className="admin-section-intro">
+        <h2>Задания</h2>
+        <p>Серии проездов по выбранному маршруту.</p>
+      </div>
 
       {error && <ErrorBanner text={error} />}
 

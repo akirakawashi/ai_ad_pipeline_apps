@@ -3,7 +3,14 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Generic, TypeVar
 
-from pydantic import AliasChoices, AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import (
+    AliasChoices,
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+)
 
 from application.common.dto import (
     AdStructureDTO,
@@ -75,9 +82,10 @@ class CreateRunRequest(ApiModel):
     size_bytes: int = Field(gt=0)
     # Обязательно: съёмка всегда принадлежит заданию, а через него маршруту.
     assignment_id: str = Field(min_length=1, max_length=36)
-    # Реквизиты съёмки. Время подставляет браузер из метаданных файла,
-    # оператор — общий на всю партию загрузки.
-    shot_started_at: AwareDatetime | None = None
+    # Дата обязательна: это ось графика и серверного фильтра маршрута. Браузер
+    # подставляет метку файла, но человек подтверждает или исправляет её.
+    shot_started_at: AwareDatetime
+    # Оператор общий на всю партию загрузки.
     operator_user_id: str | None = Field(default=None, max_length=36)
 
 
@@ -86,6 +94,17 @@ class UpdateShootingRequest(ApiModel):
 
     shot_started_at: AwareDatetime | None = None
     operator_user_id: str | None = Field(default=None, max_length=36)
+
+    @field_validator("shot_started_at")
+    @classmethod
+    def refuse_empty_shooting_date(
+        cls,
+        value: AwareDatetime | None,
+    ) -> AwareDatetime:
+        """Поле можно не менять, но очистить обязательную дату нельзя."""
+        if value is None:
+            raise ValueError("Дата съёмки обязательна.")
+        return value
 
     def changed_fields(self) -> dict[str, object]:
         column_by_field = {"operator_user_id": "operator_users_id"}
@@ -358,7 +377,7 @@ class PipelineRunResponse(ApiModel):
     started_at: datetime | None
     completed_at: datetime | None
     updated_at: datetime | None
-    shot_started_at: datetime | None = None
+    shot_started_at: datetime
     shot_finished_at: datetime | None = None
     assignment: RunAssignmentRefResponse | None = None
     operator: UserResponse | None = None

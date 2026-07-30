@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { formatDateInput } from '../../utils/formatters'
 
 /**
  * Поле даты со своим календарём.
@@ -61,15 +62,6 @@ function format(value: Ymd): string {
   const month = String(value.month).padStart(2, '0')
   const day = String(value.day).padStart(2, '0')
   return `${value.year}-${month}-${day}`
-}
-
-/** Для показа человеку: ДД.ММ.ГГГГ. */
-function human(value: string): string {
-  const parsed = parse(value)
-  if (parsed === null) return ''
-  const month = String(parsed.month).padStart(2, '0')
-  const day = String(parsed.day).padStart(2, '0')
-  return `${day}.${month}.${parsed.year}`
 }
 
 function todayYmd(): Ymd {
@@ -244,7 +236,7 @@ export function DateField({
         aria-label={ariaLabel ?? label}
         onClick={toggle}
       >
-        <span>{value ? human(value) : placeholder}</span>
+        <span>{value ? formatDateInput(value) : placeholder}</span>
         <span className="date-field-icon" aria-hidden="true">
           ▤
         </span>

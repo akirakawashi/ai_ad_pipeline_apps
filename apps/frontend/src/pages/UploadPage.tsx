@@ -140,6 +140,21 @@ export function UploadPage({ citySlug, routeSlug, assignmentId }: UploadPageProp
   // была бы честной, а отправить в чужое задание всё равно можно.
   const destinationReady = Boolean(targetAssignmentId)
   const routeChosen = Boolean(selectedCity && selectedRoute)
+  // Файлы выбирают только после реквизитов партии. Кроме честного порядка
+  // действий это закрывает двусмысленное состояние: зелёная, но disabled
+  // кнопка раньше выглядела как разрешение грузить без задания.
+  const uploadReady = destinationReady && Boolean(operatorId)
+  const missingUploadFields: string[] = []
+  if (!pinned && !selectedCity) missingUploadFields.push('город')
+  if (!pinned && !selectedRoute) missingUploadFields.push('маршрут')
+  if (!destinationReady) missingUploadFields.push('задание')
+  if (!operatorId) missingUploadFields.push('оператора')
+  const missingUploadLabel =
+    missingUploadFields.length > 1
+      ? `${missingUploadFields.slice(0, -1).join(', ')} и ${
+          missingUploadFields[missingUploadFields.length - 1]
+        }`
+      : missingUploadFields[0]
 
   const upload = useVideoUpload({
     maxFiles: MAX_FILES,
@@ -249,131 +264,142 @@ export function UploadPage({ citySlug, routeSlug, assignmentId }: UploadPageProp
             onChange={setOperatorId}
           />
         </div>
-        <p className="destination-hint">
-          Дата съёмки стоит у каждого файла отдельно — проверьте её под именем
-          файла. Она подставлена из метаданных, а те показывают дату копирования,
-          если видео переносили с карты памяти.
-        </p>
       </section>
 
-      <section
-        className={`upload-panel${upload.busy ? ' busy' : ''}${
-          upload.dragActive ? ' drag-active' : ''
-        }`}
-        {...upload.dragHandlers}
-      >
-        <div className="upload-icon">↑</div>
-        <h2>
-          {upload.items.length
-            ? `Выбрано видео: ${upload.items.length} из ${MAX_FILES}`
-            : 'Перетащите видео сюда'}
-        </h2>
-        <p>
-          {upload.items.length
-            ? 'Можно добавить ещё или начать загрузку.'
-            : 'Подойдут MP4, MOV, MKV и WebM'}
-        </p>
-
-        <div className="upload-actions">
-          <label className="secondary file-button">
-            Выбрать файлы
-            <input
-              type="file"
-              accept="video/*,.mkv"
-              multiple
-              disabled={upload.busy || upload.items.length >= MAX_FILES}
-              onChange={(event) => {
-                upload.addFiles(event.target.files)
-                event.target.value = ''
-              }}
-            />
-          </label>
-        </div>
-
-        {upload.limitNotice && <InfoBanner text={upload.limitNotice} />}
-        {upload.error && <ErrorBanner text={upload.error} />}
-
-        {upload.items.length > 0 && (
-          <div className="upload-file-list">
-            {upload.items.map((item) => (
-              <FileCard
-                key={item.key}
-                file={item.file}
-                status={
-                  <div className={`status status-${STATUS_CLASS[item.status]}`}>
-                    {item.status === 'uploading'
-                      ? `${item.progress}%`
-                      : STATUS_TEXT[item.status]}
-                  </div>
-                }
-                actions={
-                  !upload.busy && item.status !== 'done' ? (
-                    <button
-                      className="ghost-button"
-                      onClick={() => upload.removeItem(item.key)}
-                    >
-                      Убрать
-                    </button>
-                  ) : undefined
-                }
-              >
-                {/* Дата у каждого файла своя: одна съёмка — один проезд, и
-                    партию нередко забирают с карты за несколько дней. Значение
-                    подставлено из метаданных, но метаданные врут после
-                    копирования — поэтому дату видно, а не прячем в подсказку. */}
-                <label className="upload-file-date">
-                  <span>Когда снято</span>
-                  <input
-                    type="date"
-                    className="text-input"
-                    value={item.shotDate}
-                    disabled={upload.busy || item.status === 'done'}
-                    onChange={(event) =>
-                      upload.setShotDate(item.key, event.target.value)
-                    }
-                  />
-                </label>
-                {item.status === 'uploading' && (
-                  <ProgressBar progress={item.progress} label="Загружается" animated />
-                )}
-                {item.status === 'error' && (
-                  <span className="upload-file-error">{item.error}</span>
-                )}
-              </FileCard>
-            ))}
-          </div>
-        )}
-
-        {upload.items.length > 0 && (
-          <p className="upload-file-summary">
-            Загружено {upload.doneCount} из {upload.items.length}
-          </p>
-        )}
-
-        {upload.failedCount > 0 && !upload.busy && (
-          <button className="secondary action-button" onClick={upload.retryFailed}>
-            Повторить ({upload.failedCount})
-          </button>
-        )}
-
-        <button
-          className="primary action-button"
-          disabled={!upload.canStart || !destinationReady}
-          onClick={upload.start}
+      {!uploadReady ? (
+        <section className="upload-panel is-locked" aria-disabled="true">
+          <span className="upload-lock-icon" aria-hidden="true" />
+          <h2>Загрузка пока недоступна</h2>
+          <p>Осталось выбрать: {missingUploadLabel}.</p>
+          <span className="upload-lock-note">
+            После этого откроются выбор файлов и перетаскивание.
+          </span>
+        </section>
+      ) : (
+        <section
+          className={`upload-panel${upload.busy ? ' busy' : ''}${
+            upload.dragActive ? ' drag-active' : ''
+          }`}
+          {...upload.dragHandlers}
         >
-          {upload.busy ? 'Загружаем…' : 'Начать загрузку'}
-        </button>
+          <div className="upload-icon">↑</div>
+          <h2>
+            {upload.items.length
+              ? `Выбрано видео: ${upload.items.length} из ${MAX_FILES}`
+              : 'Перетащите видео сюда'}
+          </h2>
+          <p>
+            {upload.items.length
+              ? 'Можно добавить ещё или начать загрузку.'
+              : 'Подойдут MP4, MOV, MKV и WebM'}
+          </p>
 
-        {!destinationReady && upload.items.length > 0 && (
-          <InfoBanner
-            text={
-              pinned
-                ? 'Задание недоступно: возможно, его скрыли. Загрузить в него нельзя.'
-                : 'Выберите город, маршрут и задание — съёмка загружается только в задание.'
-            }
-          />
-        )}
-      </section>
+          <div className="upload-actions">
+            <label className="secondary file-button">
+              Выбрать файлы
+              <input
+                type="file"
+                accept="video/*,.mkv"
+                multiple
+                disabled={upload.busy || upload.items.length >= MAX_FILES}
+                onChange={(event) => {
+                  upload.addFiles(event.target.files)
+                  event.target.value = ''
+                }}
+              />
+            </label>
+          </div>
+
+          {upload.limitNotice && <InfoBanner text={upload.limitNotice} />}
+          {upload.error && <ErrorBanner text={upload.error} />}
+
+          {upload.items.length > 0 && (
+            <div className="upload-file-list">
+              {upload.items.map((item) => (
+                <FileCard
+                  key={item.key}
+                  file={item.file}
+                  status={
+                    <div className={`status status-${STATUS_CLASS[item.status]}`}>
+                      {item.status === 'uploading'
+                        ? `${item.progress}%`
+                        : STATUS_TEXT[item.status]}
+                    </div>
+                  }
+                  actions={
+                    !upload.busy && item.status !== 'done' ? (
+                      <button
+                        className="ghost-button"
+                        onClick={() => upload.removeItem(item.key)}
+                      >
+                        Убрать
+                      </button>
+                    ) : undefined
+                  }
+                >
+                  {/* Дата у каждого файла своя: одна съёмка — один проезд, и
+                      партию нередко забирают с карты за несколько дней. Значение
+                      подставлено из метаданных, но метаданные врут после
+                      копирования — поэтому дату видно, а не прячем в подсказку. */}
+                  <label className="upload-file-date">
+                    <span>
+                      Когда снято <b aria-hidden="true">*</b>
+                    </span>
+                    <input
+                      type="date"
+                      className={`text-input${item.shotDate ? '' : ' is-invalid'}`}
+                      value={item.shotDate}
+                      required
+                      aria-invalid={!item.shotDate}
+                      disabled={upload.busy || item.status === 'done'}
+                      onChange={(event) =>
+                        upload.setShotDate(item.key, event.target.value)
+                      }
+                    />
+                  </label>
+                  {!item.shotDate && (
+                    <span className="upload-file-error">Укажите дату съёмки.</span>
+                  )}
+                  {item.status === 'uploading' && (
+                    <ProgressBar
+                      progress={item.progress}
+                      label="Загружается"
+                      animated
+                    />
+                  )}
+                  {item.status === 'error' && (
+                    <span className="upload-file-error">{item.error}</span>
+                  )}
+                </FileCard>
+              ))}
+            </div>
+          )}
+
+          {upload.items.length > 0 && (
+            <p className="upload-file-summary">
+              Загружено {upload.doneCount} из {upload.items.length}
+            </p>
+          )}
+
+          {upload.failedCount > 0 && !upload.busy && (
+            <button
+              className="secondary action-button"
+              disabled={!upload.datesReady}
+              onClick={upload.retryFailed}
+            >
+              Повторить ({upload.failedCount})
+            </button>
+          )}
+
+          <button
+            className="primary action-button"
+            disabled={!upload.canStart || !uploadReady}
+            onClick={upload.start}
+          >
+            {upload.busy ? 'Загружаем…' : 'Начать загрузку'}
+          </button>
+        </section>
+      )}
     </div>
   )
 }

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import csv
 import io
+from datetime import UTC, datetime
 
 import pytest
 from sqlmodel import Session, select
@@ -100,6 +101,7 @@ def _seed_completed_run(routes_id: str) -> None:
                 source_object_key=f"runs/{RUN_ID}/source/in.mp4",
                 source_size_bytes=1,
                 duration_sec=40.0,
+                shot_started_at=datetime(2026, 8, 2, 9, 30, tzinfo=UTC),
                 status=PipelineRunStatus.COMPLETED.value,
                 assignments_id=assignment_id,
             )

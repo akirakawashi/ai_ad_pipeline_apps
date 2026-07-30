@@ -724,9 +724,8 @@ class PipelineRun(SQLModel, table=True):
     # Не путать со started_at / completed_at ниже: те — про обработку видео,
     # эти — про то, когда снимали. Финиш не храним: он выводится как
     # shot_started_at + duration_sec и потому не может разойтись с видео.
-    shot_started_at: datetime | None = Field(
-        default=None,
-        sa_column=Column(DateTime(timezone=True), nullable=True),
+    shot_started_at: datetime = Field(
+        sa_column=Column(DateTime(timezone=True), nullable=False),
     )
     operator_users_id: str | None = Field(
         default=None,

@@ -59,7 +59,7 @@ class PipelineRunRepository(Protocol):
         content_type: str | None,
         size_bytes: int,
         assignment_id: str,
-        shot_started_at: datetime | None = None,
+        shot_started_at: datetime,
         operator_user_id: str | None = None,
     ) -> PipelineRunDTO: ...
 

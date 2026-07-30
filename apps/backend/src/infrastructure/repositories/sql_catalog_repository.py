@@ -183,10 +183,7 @@ class SqlCatalogRepository:
                 PipelineRun.assignments_id,
                 PipelineRun.shot_started_at,
                 PipelineRun.duration_sec,
-            ).where(
-                PipelineRun.assignments_id.in_(assignment_ids),
-                PipelineRun.shot_started_at.is_not(None),
-            )
+            ).where(PipelineRun.assignments_id.in_(assignment_ids))
         ).all()
 
         result: dict[str, ShotWindow] = {}
@@ -750,14 +747,12 @@ class SqlCatalogRepository:
 
         Задание загружаем (`with_refs`): на уровне маршрута надо показать, из
         какой кампании съёмка. Порядок — по времени съёмки, а не обработки: это
-        ось графика. У съёмки без даты сортировка падает на created_at.
+        ось графика, и дата обязательна у каждой съёмки.
 
         Период — полуинтервал [shot_from, shot_to): включающий обе календарные
         даты конец фронт получает, прибавив сутки. Так у бэкенда нет своего
         мнения о часовом поясе — границы приходят готовыми моментами, а чей
-        это был день, знает браузер. Съёмка без даты в период не попадает
-        никогда: поместить её во времени нечем, а SQL-сравнение с NULL ложно
-        само по себе — это ровно то поведение, которое нужно.
+        это был день, знает браузер.
 
         Скрытое задание отсекается здесь же, рядом с периодом, и по той же
         причине: и то и другое лишь **укорачивает список** до расчёта. Считает
@@ -792,9 +787,7 @@ class SqlCatalogRepository:
                 .defer(City.roads_geometry),
                 noload(PipelineRun.events),
             )
-            .order_by(
-                func.coalesce(PipelineRun.shot_started_at, PipelineRun.created_at)
-            )
+            .order_by(PipelineRun.shot_started_at)
         ).all()
         return [_run_to_dto(run, with_refs=True) for run in runs]
 

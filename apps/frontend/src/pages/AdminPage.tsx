@@ -55,6 +55,7 @@ const CITY_TABS = [
   { value: 'assignments', label: 'Задания' },
   { value: 'catalog', label: 'Каталог' },
 ]
+const CITY_TAB_WEIGHTS = [1.45, 1, 0.9, 0.9]
 
 const EMPTY_CITY: CityDraft = { slug: '', name: '', region: '' }
 const EMPTY_ROUTE: RouteDraft = {
@@ -113,6 +114,7 @@ export function AdminPage() {
   const [detail, setDetail] = useState<CityDetail | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [copiedCityPath, setCopiedCityPath] = useState('')
   const [busy, setBusy] = useState(false)
 
   const [cityDraft, setCityDraft] = useState<CityDraft>(EMPTY_CITY)
@@ -272,6 +274,16 @@ export function AdminPage() {
     })
   }
 
+  const copyCityPath = async (slug: string) => {
+    const path = `/archive/${slug}`
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}${path}`)
+      setCopiedCityPath(path)
+    } catch {
+      setError('Не удалось скопировать адрес города.')
+    }
+  }
+
   if (!signedIn) {
     return <AdminLogin onSuccess={() => setSignedIn(true)} />
   }
@@ -383,6 +395,7 @@ export function AdminPage() {
                   ariaLabel="Раздел города"
                   value={tab}
                   options={CITY_TABS}
+                  optionWeights={CITY_TAB_WEIGHTS}
                   onChange={(value) => setTab(value as CityTab)}
                 />
               </div>
@@ -394,18 +407,25 @@ export function AdminPage() {
               <div className="geozone-fields">
                 {/* Не «слаг»: это жаргон, а панелью пользуется маркетинг.
                     Называем тем, чем оно и является, — куском адреса. */}
-                <label className="field">
-                  Имя в ссылке
-                  <input
-                    className="text-input"
-                    autoFocus
-                    placeholder="kerch"
-                    value={cityDraft.slug}
-                    disabled={busy}
-                    onChange={(event) =>
-                      setCityDraft({ ...cityDraft, slug: event.target.value })
-                    }
-                  />
+                <label className="field geozone-field-wide">
+                  Адрес города
+                  <span className="admin-url-control">
+                    <span className="admin-url-prefix">/archive/</span>
+                    <input
+                      className="text-input"
+                      autoFocus
+                      aria-label="Имя города в ссылке"
+                      placeholder="kerch"
+                      value={cityDraft.slug}
+                      disabled={busy}
+                      onChange={(event) =>
+                        setCityDraft({ ...cityDraft, slug: event.target.value })
+                      }
+                    />
+                  </span>
+                  <span className="admin-field-hint">
+                    Латиница, цифры и дефисы. После создания изменить нельзя.
+                  </span>
                 </label>
                 <label className="field">
                   Название
@@ -432,11 +452,6 @@ export function AdminPage() {
                   />
                 </label>
               </div>
-              <p className="catalog-hint">
-                Имя в ссылке — латиницей, без пробелов: город со ссылкой «kerch»
-                открывается по адресу /archive/kerch. Задаётся один раз и потом
-                не меняется, иначе сохранённые ссылки перестанут работать.
-              </p>
               <div className="geozone-form-actions">
                 <button
                   className="primary"
@@ -463,9 +478,22 @@ export function AdminPage() {
             <div className="city-scope-body">
               {tab === 'city' && (cityEdit === null ? (
                 <>
-                  <p className="catalog-hint">
-                    Имя в ссылке: {detail.slug} · регион: {detail.region ?? '—'}
-                  </p>
+                  <div className="city-identity">
+                    <span className="city-identity-region">
+                      {detail.region ?? 'Регион не указан'}
+                    </span>
+                    <span className="city-identity-path">
+                      <code>/archive/{detail.slug}</code>
+                      <button
+                        type="button"
+                        onClick={() => void copyCityPath(detail.slug)}
+                      >
+                        {copiedCityPath === `/archive/${detail.slug}`
+                          ? 'Скопировано'
+                          : 'Копировать'}
+                      </button>
+                    </span>
+                  </div>
                   <div className="geozone-form-actions">
                     <button
                       className="secondary"
@@ -518,11 +546,6 @@ export function AdminPage() {
                       иначе вместе с ним ушли бы его задания и съёмки.
                     </p>
                   )}
-                  <p className="catalog-hint">
-                    Дорожный слой задаёт рамку города: ею каталог конструкций
-                    отсекает точки, попавшие из другого города. При загрузке слоя
-                    рамка пересчитывается.
-                  </p>
                 </>
               ) : (
                 <>
@@ -570,17 +593,29 @@ export function AdminPage() {
                   <div className="city-scope-block">
                     <h3>Новый маршрут</h3>
                     <div className="geozone-fields">
-                      <label className="field">
-                        Имя в ссылке
-                        <input
-                          className="text-input"
-                          placeholder="route-1"
-                          value={routeDraft.slug}
-                          disabled={busy}
-                          onChange={(event) =>
-                            setRouteDraft({ ...routeDraft, slug: event.target.value })
-                          }
-                        />
+                      <label className="field geozone-field-wide">
+                        Адрес маршрута
+                        <span className="admin-url-control">
+                          <span className="admin-url-prefix">
+                            /archive/{citySlug}/
+                          </span>
+                          <input
+                            className="text-input"
+                            aria-label="Имя маршрута в ссылке"
+                            placeholder="route-1"
+                            value={routeDraft.slug}
+                            disabled={busy}
+                            onChange={(event) =>
+                              setRouteDraft({
+                                ...routeDraft,
+                                slug: event.target.value,
+                              })
+                            }
+                          />
+                        </span>
+                        <span className="admin-field-hint">
+                          Латиница, цифры и дефисы. После создания изменить нельзя.
+                        </span>
                       </label>
                       <label className="field">
                         Название
@@ -631,11 +666,6 @@ export function AdminPage() {
                         />
                       </label>
                     </div>
-                    <p className="catalog-hint">
-                      Имя в ссылке — латиницей, без пробелов: маршрут «route-1»
-                      открывается по адресу /archive/{citySlug}/route-1. Задаётся
-                      один раз и потом не меняется.
-                    </p>
                     <div className="geozone-form-actions">
                       <button
                         className="primary"

@@ -196,7 +196,7 @@ export interface ShootingMetrics {
   run_id: string
   source_name: string
   /** Когда снимали, а не когда обрабатывали. */
-  shot_started_at: string | null
+  shot_started_at: string
   duration_sec: number
   objects_count: number
   visibility_index: number
@@ -264,7 +264,7 @@ export interface PipelineRun {
   completed_at: string | null
   updated_at: string
   /** Когда снимали. Не путать со started_at выше — там начало обработки. */
-  shot_started_at: string | null
+  shot_started_at: string
   /** Считает сервер: shot_started_at + duration_sec. Не хранится. */
   shot_finished_at: string | null
   /**
@@ -280,7 +280,7 @@ export interface PipelineRun {
 
 /** Тело PATCH съёмки. Ход обработки этим не меняется. */
 export interface ShootingPayload {
-  shot_started_at?: string | null
+  shot_started_at?: string
   operator_user_id?: string | null
 }
 

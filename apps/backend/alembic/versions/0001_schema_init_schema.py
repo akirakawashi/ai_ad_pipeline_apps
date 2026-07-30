@@ -160,7 +160,7 @@ def upgrade() -> None:
     sa.Column('source_content_type', sa.String(length=255), nullable=True),
     sa.Column('source_size_bytes', sa.BigInteger(), nullable=False),
     sa.Column('assignments_id', sa.String(length=36), nullable=False),
-    sa.Column('shot_started_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('shot_started_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('operator_users_id', sa.String(length=36), nullable=True),
     sa.Column('status', sa.String(length=32), nullable=False),
     sa.Column('stage', sa.String(length=64), nullable=False),

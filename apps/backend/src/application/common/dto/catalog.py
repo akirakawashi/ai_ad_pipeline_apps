@@ -152,7 +152,7 @@ class ShootingMetricsDTO(ApplicationDTO):
     run_id: str
     source_name: str
     # Когда снимали, а не когда обрабатывали: ось времени в графиках маршрута.
-    shot_started_at: datetime | None = None
+    shot_started_at: datetime
     duration_sec: float = 0.0
     objects_count: int = 0
     visibility_index: float = 0.0

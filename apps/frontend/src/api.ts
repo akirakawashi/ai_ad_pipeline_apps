@@ -112,14 +112,14 @@ export interface CreateRunOptions {
   /**
    * Когда снимали, ISO с зоной. Приходит из формы загрузки, где дату видно и
    * можно поправить: метаданные файла — подсказка, а не истина, копия с карты
-   * памяти приносит время копирования. null — не указано.
+   * памяти приносит время копирования.
    */
-  shotStartedAt?: string | null
+  shotStartedAt: string
 }
 
 export function createRun(
   file: File,
-  { assignmentId, operatorUserId = null, shotStartedAt = null }: CreateRunOptions,
+  { assignmentId, operatorUserId = null, shotStartedAt }: CreateRunOptions,
 ): Promise<CreateRunResult> {
   return apiFetch('/runs', {
     method: 'POST',

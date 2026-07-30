@@ -132,7 +132,9 @@ On the backend `visibility_value` means **S·α·β**. They are different number
 1. `POST /api/v1/runs` → row in `pipeline_runs` (status `uploading`) + presigned PUT URL.
    **`assignment_id` is mandatory** — a shooting always belongs to an assignment and through it to a
    route; the assignment row is locked (a hidden one is refused as "not found") and capped at
-   `MAX_ASSIGNMENT_SHOOTINGS = 20`.
+   `MAX_ASSIGNMENT_SHOOTINGS = 20`. **`shot_started_at` is mandatory too** — it is the route chart
+   and date-filter axis; the frontend pre-fills it from file metadata but both the API and the
+   `NOT NULL` database column refuse an undated shooting.
 2. Browser PUTs the file straight to MinIO: `runs/{run_id}/source/{safe_name}`.
 3. `POST /runs/{run_id}/upload-complete` → registers the `source_video` artifact, status `queued`.
    The one read that still answers for a hidden assignment: the file is already stored.
@@ -192,7 +194,7 @@ only feed the pipeline's own `report.html`.
 | Change how a catalogue pack is uploaded or a revision rolled back | `components/CatalogImports.tsx` (admin only). `CatalogPage.tsx` is the read-only directory and must stay that way |
 | Add a section to the admin panel | a component under `components/`, mounted from `AdminPage.tsx`. City-scoped → a tab in `CITY_TABS`; not city-scoped → a page-level section in `AdminSection` (like `AdminUsers.tsx`). Keep the two switchers visually different — underlined text for sections, pill tabs inside a city — or they read as one level. Guard its writes with `require_admin` in the same change |
 | Change the people directory | `user_service.py` → `users.py` router → `AdminUsers.tsx` — creation, renaming and hiding all live there. `UserSelect.tsx` only selects; do not put a create form back into it (see §10) |
-| Change how the shooting date is entered | `useVideoUpload.ts` (`shotDate` per queued file, `shotStartedAt()` decides what is sent) → the date field in `UploadPage.tsx` → `createRun` in `api.ts`. Date↔ISO conversion belongs in `utils/formatters.ts` and nowhere else — see the timezone trap in §10. The backend needs nothing: `POST /runs` has always accepted `shot_started_at` |
+| Change how the shooting date is entered | `useVideoUpload.ts` (`shotDate` per queued file, `shotStartedAt()` decides what is sent) → the date field in `UploadPage.tsx` → `createRun` in `api.ts` → `CreateRunRequest` / `UpdateShootingRequest` → `pipeline_run_service` → repository → the `PipelineRun` model and `0001_schema`. Date↔ISO conversion belongs in `utils/formatters.ts` and nowhere else — see the timezone trap in §10. Preserve the invariant at every layer: create requires `shot_started_at`, PATCH may omit it but may not send `null`, and the database column is `NOT NULL` |
 | Change what the overlay card shows | `viewer/payload.py` + `OverlayObjectPayload` in `pipeline_contracts/artifacts.py` + `VideoOverlayPlayer.tsx` |
 
 ---
@@ -442,7 +444,8 @@ is collected, and calls `pytest.exit` when postgres is unreachable. There is no 
   need a second implementation in TypeScript, and the two would drift silently: the number under a period
   would stop matching the number without one. §7 says `metrics_rollup.py` is the only place that decides
   how shootings collapse; a period must therefore only **shorten the list before it**, never re-implement
-  it after. The price is a refetch per boundary change, which re-reads `tracks.csv` for every shooting.
+  it after. The picker keeps both boundaries in a local draft and refetches only on **Apply**; that
+  request still re-reads `tracks.csv` for every shooting.
   Two consequences of the same rule: `assignments_total` counts the assignments **among the shootings
   that fed the number**, not the route's total, or the caption "собрано из N заданий" lies under a
   period; and the window travels as instants, not calendar dates — only the browser knows the user's
@@ -453,7 +456,10 @@ is collected, and calls `pytest.exit` when postgres is unreachable. There is no 
   to reveal it. The field is prefilled from file metadata, which lies after a copy from a memory card
   (it carries the copy time). If the date is left untouched the full file timestamp is sent, hours
   included, because same-day drives order by it; once the date is edited the hours are fiction, so
-  midnight goes instead. Clearing the field sends `null` — and a `null` cannot match any date filter.
+  midnight goes instead. **The date cannot be cleared:** the upload button is disabled while any
+  file has an empty date, `POST /runs` requires an aware `shot_started_at`, PATCH refuses an explicit
+  `null`, and `pipeline_runs.shot_started_at` is `NOT NULL`. An undated shooting has no legal state
+  because it cannot be placed on the route chart or in a date window.
 * **Zones are stored as fractions, entered as percent.** The API only ever sees `[0,1]`; the ×100 is
   purely a UI affordance in `RouteGeozones.tsx`. Minutes were rejected on purpose — different drives
   have different durations, so "minute four" is a different place each time.

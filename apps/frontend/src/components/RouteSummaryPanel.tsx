@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Metric } from './common/Metric'
 import { AggregateToggle } from './common/AggregateToggle'
 import { DateField } from './common/DateField'
@@ -8,6 +8,7 @@ import { RouteShootingsChart } from './RouteShootingsChart'
 import { navigate, type RoutePeriod } from '../routing'
 import type { Aggregate, RouteSummary } from '../types'
 import {
+  formatDateInput,
   formatDateTime,
   formatDuration,
   formatNumber,
@@ -21,8 +22,9 @@ import {
  * «с начала по 31 мая» и «с 1 июня и дальше» — законные периоды.
  *
  * Отбор уходит на сервер, а не считается здесь: там же, где живёт единственная
- * реализация усреднения. Ради этого мы платим перезапросом на смену границы —
- * зато цифра за период не может разойтись с цифрой без периода.
+ * реализация усреднения. Обе границы сначала меняются в черновике и уходят
+ * одним запросом по «Применить», поэтому цифра за период не может разойтись с
+ * цифрой без периода, а хранилище не перечитывается дважды.
  */
 function PeriodPicker({
   period,
@@ -31,36 +33,145 @@ function PeriodPicker({
   period: RoutePeriod
   onChange: (period: RoutePeriod) => void
 }) {
-  const set = (patch: RoutePeriod) => onChange({ ...period, ...patch })
+  const [open, setOpen] = useState(false)
+  const [draft, setDraft] = useState<RoutePeriod>(period)
+  const rootRef = useRef<HTMLDivElement>(null)
+  const filtered = Boolean(period.from || period.to)
+  const setDraftPeriod = (patch: RoutePeriod) =>
+    setDraft((current) => ({ ...current, ...patch }))
+
+  const label = period.from
+    ? period.to
+      ? `${formatDateInput(period.from)} — ${formatDateInput(period.to)}`
+      : `С ${formatDateInput(period.from)}`
+    : period.to
+      ? `По ${formatDateInput(period.to)}`
+      : 'За всё время'
+
+  const toggle = () => {
+    if (open) {
+      setOpen(false)
+      return
+    }
+    // Каждый новый заход начинает с уже применённого окна: закрытый без
+    // «Применить» черновик не должен неожиданно вернуться позже.
+    setDraft(period)
+    setOpen(true)
+  }
+
+  const apply = () => {
+    setOpen(false)
+    if (draft.from === period.from && draft.to === period.to) return
+    onChange(draft)
+  }
+
+  const reset = () => {
+    setDraft({})
+    setOpen(false)
+    if (filtered) onChange({})
+  }
+
+  // Внешний popover закрывается отдельно от календарей внутри. Клик по
+  // календарю остаётся внутри rootRef, поэтому выбор дня не схлопывает всю
+  // форму до нажатия «Применить».
+  useEffect(() => {
+    if (!open) return
+
+    const onPointerDown = (event: MouseEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false)
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false)
+    }
+
+    document.addEventListener('mousedown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [open])
 
   return (
-    <section className="charts-toolbar period-picker" aria-label="Период съёмок">
-      <span>Период съёмок</span>
-      {/* Границы ограничивают друг друга: конец не выбрать раньше начала.
-          Бэкенд ту же проверку делает заново — здесь она ради того, чтобы
-          неверный период нельзя было даже набрать. */}
-      <DateField
-        label="с"
-        ariaLabel="Начало периода"
-        placeholder="с начала"
-        value={period.from ?? ''}
-        max={period.to}
-        onChange={(next) => set({ from: next || undefined })}
-      />
-      <DateField
-        label="по"
-        ariaLabel="Конец периода"
-        placeholder="по сегодня"
-        value={period.to ?? ''}
-        min={period.from}
-        onChange={(next) => set({ to: next || undefined })}
-      />
-      {(period.from || period.to) && (
-        <button className="ghost-button" onClick={() => onChange({})}>
-          За всё время
+    <div className="period-filter" ref={rootRef}>
+      <div
+        className={`period-filter-control${filtered ? ' has-reset' : ''}`}
+      >
+        <button
+          type="button"
+          className={`period-filter-trigger${filtered ? ' is-active' : ''}${
+            open ? ' is-open' : ''
+          }`}
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          onClick={toggle}
+        >
+          <span className="period-filter-icon" aria-hidden="true" />
+          <span>{label}</span>
+          <span className="period-filter-chevron" aria-hidden="true">
+            ⌄
+          </span>
         </button>
+        {filtered && (
+          <button
+            type="button"
+            className="period-filter-reset"
+            aria-label="Сбросить период"
+            onClick={reset}
+          >
+            ×
+          </button>
+        )}
+      </div>
+
+      {open && (
+        <form
+          className="period-filter-popover"
+          role="dialog"
+          aria-label="Период съёмок"
+          onSubmit={(event) => {
+            event.preventDefault()
+            apply()
+          }}
+        >
+          <header className="period-filter-popover-head">
+            <h3>Период съёмок</h3>
+            <p>Начальная и конечная даты входят в выбор.</p>
+          </header>
+          {/* Границы ограничивают друг друга: конец не выбрать раньше начала.
+              Бэкенд ту же проверку делает заново — здесь она ради того, чтобы
+              неверный период нельзя было даже набрать. */}
+          <div className="period-filter-fields">
+            <DateField
+              label="с"
+              ariaLabel="Начало периода"
+              placeholder="с начала"
+              value={draft.from ?? ''}
+              max={draft.to}
+              onChange={(next) =>
+                setDraftPeriod({ from: next || undefined })
+              }
+            />
+            <DateField
+              label="по"
+              ariaLabel="Конец периода"
+              placeholder="по сегодня"
+              value={draft.to ?? ''}
+              min={draft.from}
+              onChange={(next) => setDraftPeriod({ to: next || undefined })}
+            />
+          </div>
+          <footer className="period-filter-actions">
+            <button type="button" className="ghost-button" onClick={reset}>
+              За всё время
+            </button>
+            <button type="submit" className="primary">
+              Применить
+            </button>
+          </footer>
+        </form>
       )}
-    </section>
+    </div>
   )
 }
 
@@ -85,14 +196,17 @@ export function RouteSummaryPanel({
   // на те же съёмки без влияния выбившегося проезда.
   const [aggregate, setAggregate] = useState<Aggregate>('mean')
 
-  const periodPicker = (
-    <PeriodPicker period={period} onChange={onPeriodChange} />
+  const heading = (
+    <header className="route-summary-head route-analytics-head">
+      <h2>Аналитика маршрута</h2>
+      <PeriodPicker period={period} onChange={onPeriodChange} />
+    </header>
   )
 
   if (totals.shootings_completed === 0) {
     return (
       <>
-        {periodPicker}
+        {heading}
         <EmptyState
           text={
             filtered
@@ -108,7 +222,7 @@ export function RouteSummaryPanel({
 
   return (
     <>
-      {periodPicker}
+      {heading}
       <section className="charts-toolbar" aria-label="Как считать показатели">
         <span>Показатели за съёмку</span>
         <AggregateToggle value={aggregate} onChange={setAggregate} />

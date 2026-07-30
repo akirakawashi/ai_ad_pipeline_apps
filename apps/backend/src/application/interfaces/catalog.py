@@ -158,8 +158,7 @@ class CatalogRepository(Protocol):
         """Съёмки всех заданий маршрута с загруженным заданием. None — маршрута
         нет. Порядок — по времени съёмки.
 
-        Период — полуинтервал [shot_from, shot_to) по `shot_started_at`. Съёмка
-        без даты в него не попадает: поместить её во времени нечем."""
+        Период — полуинтервал [shot_from, shot_to) по `shot_started_at`."""
         ...
 
     def list_geozones(

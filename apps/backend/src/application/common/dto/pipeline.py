@@ -91,8 +91,8 @@ class PipelineRunDTO(ApplicationDTO):
     updated_at: datetime | None
     # --- реквизиты съёмки ---------------------------------------------------
     # Не путать со started_at / completed_at выше: те про обработку видео.
-    shot_started_at: datetime | None = None
-    # Не хранится: shot_started_at + duration_sec. None, пока нет одного из двух.
+    shot_started_at: datetime
+    # Не хранится: shot_started_at + duration_sec. None, пока нет длительности.
     shot_finished_at: datetime | None = None
     # Заполняются только там, где связи загружены явно (_run_to_dto(with_refs=...)).
     # None означает «связь не запрашивали», и только это: задание у съёмки есть

@@ -30,7 +30,7 @@ export function AdminLogin({ onSuccess }: { onSuccess: () => void }) {
   }
 
   return (
-    <div className="page">
+    <div className="page admin-login-page">
       <PageHeader
         eyebrow="Админ-панель"
         title="Нужен пароль"

@@ -66,6 +66,7 @@ export function UserSelect({
       label: `${current.full_name} (не в справочнике)`,
     })
   }
+  const empty = loaded && options.length === 0
 
   return (
     <div className="field user-select">
@@ -73,18 +74,11 @@ export function UserSelect({
       <Select
         ariaLabel={label}
         value={value}
-        disabled={disabled}
-        placeholder={placeholder}
+        disabled={disabled || empty}
+        placeholder={empty ? 'Справочник пуст' : placeholder}
         options={options}
         onChange={onChange}
       />
-      {/* Пустой справочник тупиковый: выбрать некого, а завести отсюда нельзя.
-          Молчаливая пустая выпадашка читалась бы как поломка. */}
-      {loaded && options.length === 0 && (
-        <span className="user-select-hint">
-          Справочник пуст. Людей заводят в админ-панели.
-        </span>
-      )}
       {error && <span className="user-select-error">{error}</span>}
     </div>
   )

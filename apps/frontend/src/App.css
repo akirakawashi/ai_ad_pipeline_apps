@@ -1297,6 +1297,64 @@ main {
   opacity: 0.45;
 }
 
+.upload-panel.is-locked,
+.upload-panel.is-locked:hover {
+  border-style: solid;
+  border-color: rgba(255, 255, 255, 0.1);
+  background:
+    radial-gradient(circle at 50% 35%, rgba(255, 255, 255, 0.035), transparent 30%),
+    rgba(15, 16, 15, 0.9);
+  box-shadow: none;
+  transform: none;
+  cursor: not-allowed;
+}
+
+.upload-panel.is-locked::before {
+  display: none;
+}
+
+.upload-lock-icon {
+  position: relative;
+  width: 54px;
+  height: 46px;
+  margin: 15px 0 22px;
+  border: 2px solid var(--muted-2);
+  border-radius: 9px;
+  color: var(--muted-2);
+}
+
+.upload-lock-icon::before {
+  position: absolute;
+  bottom: calc(100% - 2px);
+  left: 50%;
+  width: 26px;
+  height: 20px;
+  border: 2px solid currentcolor;
+  border-bottom: 0;
+  border-radius: 14px 14px 0 0;
+  content: '';
+  transform: translateX(-50%);
+}
+
+.upload-lock-icon::after {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  width: 6px;
+  height: 11px;
+  border-radius: 999px;
+  background: currentcolor;
+  content: '';
+  transform: translateX(-50%);
+}
+
+.upload-panel .upload-lock-note {
+  max-width: 520px;
+  margin-top: 2px;
+  color: var(--muted-2);
+  font-size: 13px;
+}
+
 .upload-icon {
   display: grid;
   width: 68px;
@@ -1647,9 +1705,160 @@ main {
   cursor: not-allowed;
 }
 
-.period-picker {
-  flex-wrap: wrap;
+.period-filter {
+  position: relative;
+  margin-left: auto;
+}
+
+.period-filter-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.period-filter-trigger,
+.period-filter-reset {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  border: 1px solid var(--line-strong);
+  background: rgba(21, 21, 21, 0.94);
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.period-filter-trigger {
+  gap: 9px;
+  padding: 0 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.period-filter-trigger:hover,
+.period-filter-trigger.is-open,
+.period-filter-reset:hover {
+  border-color: rgba(5, 195, 161, 0.52);
+  color: var(--text);
+}
+
+.period-filter-trigger.is-active {
+  border-color: rgba(5, 195, 161, 0.38);
+  background: rgba(5, 195, 161, 0.08);
+  color: #dffbf5;
+}
+
+.period-filter-trigger.is-open {
+  box-shadow: 0 0 0 3px rgba(5, 195, 161, 0.14);
+}
+
+.period-filter-trigger:focus-visible,
+.period-filter-reset:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.period-filter-icon {
+  position: relative;
+  width: 14px;
+  height: 13px;
+  flex: 0 0 auto;
+  border: 1.5px solid currentcolor;
+  border-radius: 3px;
+  color: var(--accent);
+}
+
+.period-filter-icon::before {
+  position: absolute;
+  top: 3px;
+  right: -1.5px;
+  left: -1.5px;
+  border-top: 1.5px solid currentcolor;
+  content: '';
+}
+
+.period-filter-chevron {
+  margin-left: 2px;
+  color: var(--muted-2);
+  font-size: 13px;
+  line-height: 1;
+  transition: transform 160ms ease;
+}
+
+.period-filter-trigger.is-open .period-filter-chevron {
+  transform: rotate(180deg);
+}
+
+.period-filter-reset {
+  width: 38px;
+  justify-content: center;
+  padding: 0;
+  border-radius: 10px;
+  font-size: 19px;
+  line-height: 1;
+}
+
+.period-filter-popover {
+  position: absolute;
+  z-index: 50;
+  top: calc(100% + 10px);
+  right: 0;
+  width: min(420px, calc(100vw - 32px));
+  padding: 17px;
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  background: #171817;
+  box-shadow: 0 24px 68px rgba(0, 0, 0, 0.52);
+}
+
+.period-filter-popover-head h3 {
+  margin: 0;
+  color: #ffffff;
+  font-size: 15px;
+}
+
+.period-filter-popover-head p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.period-filter-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.period-filter-fields .date-field {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.period-filter-fields .date-field-trigger {
+  min-width: 0;
+  justify-content: space-between;
+}
+
+/* Календарь правой границы открывается внутрь popover, а не за правый край
+   экрана. У левой границы естественное выравнивание уже ведёт внутрь. */
+.period-filter-fields .date-field:last-child .date-popover {
+  right: 0;
+  left: auto;
+}
+
+.period-filter-actions {
+  display: flex;
+  justify-content: space-between;
   gap: 10px;
+  margin-top: 18px;
 }
 
 .upload-file-date {
@@ -1665,10 +1874,18 @@ main {
   font-size: 13px;
 }
 
+.upload-file-date > span b {
+  color: var(--danger);
+}
+
 .upload-file-date .text-input {
   width: auto;
   padding: 6px 10px;
   font-size: 13px;
+}
+
+.text-input.is-invalid {
+  border-color: var(--danger);
 }
 
 .upload-file-error {
@@ -3205,7 +3422,10 @@ button:disabled,
   width: calc((100% - 8px) / var(--tabs-count));
   border-radius: 8px;
   background: var(--accent);
-  transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
+  transition:
+    left 220ms cubic-bezier(0.16, 1, 0.3, 1),
+    width 220ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .tabs-option {
@@ -3563,14 +3783,6 @@ input[type='color'].text-input::-moz-color-swatch {
   min-width: 0;
 }
 
-.user-select-hint {
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: none;
-  letter-spacing: normal;
-}
-
 .user-select-error {
   color: var(--danger);
   font-size: 12px;
@@ -3693,10 +3905,21 @@ input[type='color'].text-input::-moz-color-swatch {
   margin: 8px 0 0;
 }
 
+.route-analytics-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
 .route-summary-head h2 {
   margin: 0 0 4px;
   font-size: 18px;
   color: #ffffff;
+}
+
+.route-analytics-head h2 {
+  margin-bottom: 0;
 }
 
 .route-summary-head p {
@@ -3704,6 +3927,49 @@ input[type='color'].text-input::-moz-color-swatch {
   max-width: 720px;
   color: var(--muted);
   font-size: 13px;
+}
+
+@media (max-width: 620px) {
+  .route-analytics-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .period-filter {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .period-filter-control,
+  .period-filter-trigger {
+    width: 100%;
+  }
+
+  .period-filter-trigger {
+    min-width: 0;
+  }
+
+  .period-filter-trigger > span:nth-child(2) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .period-filter-chevron {
+    margin-left: auto;
+  }
+
+  .period-filter-control.has-reset .period-filter-trigger {
+    width: calc(100% - 44px);
+  }
+
+  .period-filter-popover {
+    right: auto;
+    left: 0;
+  }
+
+  .period-filter-fields {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Легенда заданий под графиком: цвет столбца → кампания и число съёмок в ней. */
@@ -4022,8 +4288,22 @@ input[type='color'].text-input::-moz-color-swatch {
 /* Вкладки занимают всю ширину шапки и переносятся под селектор: они относятся
    ко всему блоку, а не к строке с городом. */
 .city-scope-tabs {
-  flex-basis: 100%;
-  max-width: 460px;
+  width: 100%;
+  flex: 0 0 100%;
+}
+
+.city-scope-tabs .tabs {
+  grid-auto-flow: initial;
+  grid-auto-columns: initial;
+  width: min(460px, 100%);
+  margin-bottom: 0;
+}
+
+.city-scope-tabs .tabs-option {
+  min-width: 0;
+  padding-right: 8px;
+  padding-left: 8px;
+  border-radius: 8px;
 }
 
 /* Первый блок вкладки уже отделён чертой самой шапки — вторая линия рядом
@@ -4069,12 +4349,159 @@ input[type='color'].text-input::-moz-color-swatch {
   font-size: 15px;
 }
 
+.admin-section-intro {
+  margin-bottom: 14px;
+}
+
+.catalog-panel .admin-section-intro h2,
+.city-scope-block .admin-section-intro h3 {
+  margin: 0 0 4px;
+}
+
+.admin-section-intro p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* Адрес показываем как один контрол: постоянная часть объясняет структуру
+   ссылки на месте, а человек вводит только короткое имя. */
+.admin-url-control {
+  display: flex;
+  min-width: 0;
+}
+
+.admin-url-prefix {
+  display: flex;
+  max-width: 70%;
+  flex: 0 0 auto;
+  align-items: center;
+  padding: 10px 10px 10px 12px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-right: 0;
+  border-radius: 10px 0 0 10px;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: normal;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.admin-url-control .text-input {
+  width: auto;
+  min-width: 90px;
+  flex: 1 1 0;
+  border-radius: 0 10px 10px 0;
+}
+
+.admin-url-control:focus-within .admin-url-prefix {
+  border-color: var(--accent);
+}
+
+.admin-field-hint {
+  color: var(--muted-2);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: normal;
+  line-height: 1.4;
+  text-transform: none;
+}
+
+.city-identity {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-bottom: 14px;
+}
+
+.city-identity-region {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.city-identity-path {
+  display: inline-flex;
+  min-height: 42px;
+  overflow: hidden;
+  align-items: stretch;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(21, 21, 21, 0.94);
+}
+
+.city-identity-path code {
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.city-identity-path button {
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  border: 0;
+  border-left: 1px solid var(--line);
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.city-identity-path button:hover {
+  background: rgba(5, 195, 161, 0.08);
+}
+
+.admin-format-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+}
+
+.admin-format-tags li {
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.admin-inline-note {
+  margin: 0 0 14px;
+  color: var(--muted-2);
+  font-size: 12px;
+}
+
 /* Отступ над строкой действий. В панели геозон его даёт `.geozone-form`
    (колонка с gap), а в админ-панели строка лежит прямо в панели или в блоке
    вкладки, где общего gap нет — потому кнопка и прилипала к полям сверху. */
 .catalog-panel > .geozone-form-actions,
 .city-scope-block > .geozone-form-actions {
   margin-top: 16px;
+}
+
+/* Кнопка открывает форму, а ниже неё всегда уже есть состояние списка:
+   загрузка, пустая заглушка или сами задания. Без нижнего зазора следующий
+   блок начинался ровно на границе кнопки. */
+.admin-assignments > .geozone-form-actions {
+  margin-bottom: 16px;
 }
 
 /* Кнопки в строке действий одного роста и одного скругления. Рядом стоят
@@ -4099,8 +4526,27 @@ input[type='color'].text-input::-moz-color-swatch {
   font-size: 13px;
 }
 
+.page.admin-login-page {
+  display: flex;
+  width: min(520px, 100%);
+  min-height: calc(100svh - 78px);
+  flex-direction: column;
+  justify-content: center;
+  padding: 32px 0;
+}
+
 .admin-login {
-  max-width: 520px;
+  width: 100%;
+  max-width: none;
+}
+
+@media (max-width: 620px) {
+  /* На телефоне рабочую высоту делят верхняя панель и нижняя навигация.
+     Вычитаем обе, иначе геометрический центр уедет под нижнюю панель. */
+  .page.admin-login-page {
+    min-height: calc(100svh - 148px);
+    padding: 28px 0;
+  }
 }
 
 /* Скрытый маршрут виден только в справочнике — приглушённым, чтобы его нельзя

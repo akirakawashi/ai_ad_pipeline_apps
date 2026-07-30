@@ -120,9 +120,6 @@ export function RoutePage({
 
       {summary && (
         <section className="route-summary">
-          <header className="route-summary-head">
-            <h2>Аналитика маршрута</h2>
-          </header>
           <RouteSummaryPanel
             summary={summary}
             period={period}
@@ -136,7 +133,7 @@ export function RoutePage({
       {assignments.length > 0 && (
         <header className="route-summary-head">
           <h2>Задания</h2>
-          <p>Кампания на маршруте: серия съёмок с плановым окном.</p>
+          <p>Серии проездов по маршруту.</p>
         </header>
       )}
 

@@ -93,7 +93,7 @@ class PipelineRunService:
         content_type: str | None,
         size_bytes: int,
         assignment_id: str,
-        shot_started_at: datetime | None = None,
+        shot_started_at: datetime,
         operator_user_id: str | None = None,
     ) -> CreateRunDTO:
         safe_name = safe_file_name(file_name)

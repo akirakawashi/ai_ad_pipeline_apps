@@ -41,6 +41,7 @@ def create_run(client, **overrides):
         "file_name": "pass.mp4",
         "content_type": "video/mp4",
         "size_bytes": 1024,
+        "shot_started_at": "2026-08-02T09:30:00Z",
     }
     body.update(overrides)
     return client.post("/api/v1/runs", json=body)
@@ -112,12 +113,6 @@ def test_finish_is_start_plus_duration(client, assignment):
     started = datetime.fromisoformat(got["shot_started_at"])
     finished = datetime.fromisoformat(got["shot_finished_at"])
     assert (finished - started).total_seconds() == pytest.approx(754.5)
-
-
-def test_finish_unknown_without_start(client, assignment):
-    run = payload(create_run(client, assignment_id=assignment["id"]))
-    set_duration(run["run_id"], 100.0)
-    assert payload(client.get(f"/api/v1/runs/{run['run_id']}"))["shot_finished_at"] is None
 
 
 def test_patch_changes_operator_only(client, assignment, operator):
@@ -205,6 +200,38 @@ class TestAssignmentIsMandatory:
     def test_empty_string_is_refused(self, client):
         """Пустая строка прошла бы `str`, поэтому у поля есть min_length."""
         response = create_run(client, file_name="solo.mp4", assignment_id="")
+        assert response.status_code == 422
+
+
+class TestShootingDateIsMandatory:
+    """Съёмку без места на оси времени нельзя ни создать, ни получить через PATCH."""
+
+    def test_without_date_is_refused(self, client, assignment):
+        response = client.post(
+            "/api/v1/runs",
+            json={
+                "file_name": "undated.mp4",
+                "content_type": "video/mp4",
+                "size_bytes": 1024,
+                "assignment_id": assignment["id"],
+            },
+        )
+        assert response.status_code == 422
+
+    def test_explicit_null_is_refused_too(self, client, assignment):
+        response = create_run(
+            client,
+            assignment_id=assignment["id"],
+            shot_started_at=None,
+        )
+        assert response.status_code == 422
+
+    def test_patch_cannot_clear_date(self, client, assignment):
+        run = payload(create_run(client, assignment_id=assignment["id"]))
+        response = client.patch(
+            f"/api/v1/runs/{run['run_id']}",
+            json={"shot_started_at": None},
+        )
         assert response.status_code == 422
 
 

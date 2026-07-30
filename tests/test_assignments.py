@@ -279,6 +279,7 @@ def test_summary_counts_shootings(client, assignments_url):
             "content_type": "video/mp4",
             "size_bytes": 1024,
             "assignment_id": created["id"],
+            "shot_started_at": "2026-08-02T09:30:00Z",
         },
     )
     summary = payload(client.get(f"/api/v1/assignments/{created['id']}/summary"))

@@ -180,13 +180,18 @@ export function CatalogImports({ citySlug }: { citySlug: string }) {
   return (
     <>
       <div className="city-scope-block">
-        <h3>Загрузка пака</h3>
+        <div className="admin-section-intro">
+          <h3>Импорт каталога</h3>
+          <p>Загрузите таблицы для выбранного города.</p>
+        </div>
+        <ul className="admin-format-tags" aria-label="Ограничения загрузки">
+          <li>XLSX · XLS · CSV</li>
+          <li>до {MAX_FILES} файлов</li>
+          <li>один город</li>
+        </ul>
+        <p className="admin-inline-note">Исходные файлы не сохраняются.</p>
         {error && <ErrorBanner text={error} />}
         {notice && <p className="catalog-hint">{notice}</p>}
-        <p className="catalog-hint">
-          До {MAX_FILES} файлов формата xlsx, xls или csv — все по одному городу.
-          Файлы разбираются и не сохраняются: в базу уезжают только данные.
-        </p>
 
         <div className="catalog-row">
           <div className="field">

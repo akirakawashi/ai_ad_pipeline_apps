@@ -105,6 +105,13 @@ export function dateInputFromIso(value: string | null): string {
   return localInputFromIso(value).slice(0, 10)
 }
 
+/** Значение календарного поля «ГГГГ-ММ-ДД» → короткая подпись «ДД.ММ.ГГГГ». */
+export function formatDateInput(value: string): string {
+  const [year, month, day] = value.split('-').map(Number)
+  if (!year || !month || !day) return value
+  return `${String(day).padStart(2, '0')}.${String(month).padStart(2, '0')}.${year}`
+}
+
 export function formatDateTime(value: string | null): string {
   if (!value) return '—'
   const parsed = new Date(value)

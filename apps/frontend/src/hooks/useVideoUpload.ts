@@ -34,10 +34,12 @@ function fileTimestamp(file: File): string {
  * копирования, — поэтому отдаём полночь: «время не указано» честнее, чем
  * правдоподобная выдумка.
  */
-function shotStartedAt(item: UploadItem): string | null {
+function shotStartedAt(item: UploadItem): string {
   const fromFile = fileTimestamp(item.file)
   if (item.shotDate === dateInputFromIso(fromFile)) return fromFile
-  return isoFromDateInput(item.shotDate)
+  const fromInput = isoFromDateInput(item.shotDate)
+  if (!fromInput) throw new Error('Укажите дату съёмки.')
+  return fromInput
 }
 
 export interface UploadResult {
@@ -209,6 +211,7 @@ export function useVideoUpload({
 
   const doneCount = items.filter((item) => item.status === 'done').length
   const failedCount = items.filter((item) => item.status === 'error').length
+  const datesReady = items.every((item) => Boolean(item.shotDate))
 
   return {
     items,
@@ -218,7 +221,8 @@ export function useVideoUpload({
     error,
     doneCount,
     failedCount,
-    canStart: items.length > 0 && !busy && doneCount < items.length,
+    datesReady,
+    canStart: items.length > 0 && datesReady && !busy && doneCount < items.length,
     addFiles,
     removeItem,
     setShotDate,

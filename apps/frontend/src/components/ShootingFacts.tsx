@@ -37,10 +37,15 @@ export function ShootingFacts({
   }
 
   const save = () => {
+    const shotStartedAt = isoFromLocalInput(startAt)
+    if (!shotStartedAt) {
+      setError('Укажите начало съёмки.')
+      return
+    }
     setBusy(true)
     setError(null)
     updateShooting(run.run_id, {
-      shot_started_at: isoFromLocalInput(startAt),
+      shot_started_at: shotStartedAt,
       operator_user_id: operatorId || null,
     })
       .then((updated) => {
@@ -57,11 +62,13 @@ export function ShootingFacts({
         <h2>Реквизиты съёмки</h2>
         <div className="assignment-form-fields">
           <div className="field">
-            Начало съёмки
+            Начало съёмки *
             <input
               type="datetime-local"
-              className="text-input"
+              className={`text-input${startAt ? '' : ' is-invalid'}`}
               value={startAt}
+              required
+              aria-invalid={!startAt}
               disabled={busy}
               onChange={(event) => setStartAt(event.target.value)}
             />
@@ -80,7 +87,7 @@ export function ShootingFacts({
         </p>
         {error && <ErrorBanner text={error} />}
         <div className="assignment-form-actions">
-          <button className="primary" disabled={busy} onClick={save}>
+          <button className="primary" disabled={busy || !startAt} onClick={save}>
             {busy ? 'Сохраняем…' : 'Сохранить'}
           </button>
           <button

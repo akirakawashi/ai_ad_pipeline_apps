@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import csv
 import io
+from datetime import datetime
 
 import pytest
 from sqlmodel import Session
@@ -62,8 +63,7 @@ def _seed_shooting(
     *,
     run_id: str,
     assignment_id: str,
-    # None — съёмка без даты: законное состояние, и в период она не попадает.
-    shot_started_at: str | None,
+    shot_started_at: str,
     brands_visibility: dict[str, float],
     status: PipelineRunStatus = PipelineRunStatus.COMPLETED,
 ) -> None:
@@ -78,7 +78,7 @@ def _seed_shooting(
                 source_object_key=f"runs/{run_id}/source/in.mp4",
                 source_size_bytes=1,
                 duration_sec=40.0,
-                shot_started_at=shot_started_at,
+                shot_started_at=datetime.fromisoformat(shot_started_at),
                 status=status.value,
                 assignments_id=assignment_id,
             )
@@ -238,7 +238,12 @@ def test_shootings_without_assignment_are_invisible(client, storage, summary_url
     """Съёмка без задания не принадлежит маршруту — её тут быть не может."""
     client.post(
         "/api/v1/runs",
-        json={"file_name": "loose.mp4", "content_type": "video/mp4", "size_bytes": 1024},
+        json={
+            "file_name": "loose.mp4",
+            "content_type": "video/mp4",
+            "size_bytes": 1024,
+            "shot_started_at": "2026-05-01T09:00:00Z",
+        },
     )
     data = payload(client.get(summary_url))
     assert data["shootings"] == []
@@ -409,33 +414,6 @@ class TestPeriod:
         assert data["totals"]["shootings_completed"] == 0
         assert data["shootings"] == []
         assert data["brands"] == []
-
-    def test_shooting_without_a_date_never_matches(
-        self, client, storage, summary_url, assignments_url
-    ):
-        """Съёмку без даты во времени не разместить — в окно она не попадает.
-
-        Без периода она считается как обычно: «дату не указали» не повод
-        выкидывать проезд из метрик маршрута.
-        """
-        assignment_id = payload(client.post(assignments_url, json={}))["id"]
-        _seed_shooting(
-            storage,
-            run_id="run-undated",
-            assignment_id=assignment_id,
-            shot_started_at=None,
-            brands_visibility={"mts": 50.0},
-        )
-
-        assert payload(client.get(summary_url))["totals"]["shootings_completed"] == 1
-
-        windowed = payload(
-            client.get(
-                summary_url,
-                params={"shot_from": "2000-01-01T00:00:00+00:00"},
-            )
-        )
-        assert windowed["totals"]["shootings_completed"] == 0
 
     def test_end_before_start_is_refused(self, client, summary_url):
         response = client.get(
