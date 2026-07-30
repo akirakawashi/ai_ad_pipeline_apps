@@ -165,7 +165,7 @@ On the backend `visibility_value` means **S·α·β**. They are different number
    (`PUT /cities/{c}/roads-geometry`, recomputes the bounds in the same operation), while a route's
    line is **drawn by hand over that layer** (`POST /cities/{c}/routes/{r}/geometry`, body
    `{"stroke": [[lon, lat], …]}`). The stroke is snapped onto the real road network by
-   `domain/route_snapping.py`; uploading a route geojson is gone (29.07.2026, see §10).
+   `domain/route_snapping.py`; uploading a route geojson is gone (30.07.2026, see §10).
 10. Frontend renders charts from `/summary`, `/objects`, `/timeline`, and the player from
    `/overlay` + `/playback`.
 
@@ -345,7 +345,7 @@ is collected, and calls `pytest.exit` when postgres is unreachable. There is no 
 * Geozone validation is split: bounds (`0 ≤ start < end ≤ 1`) in `catalog_service`, overlap detection
   in `sql_catalog_repository` under a route row lock (`GeozoneOverlapError` → HTTP 409).
 * **A route is drawn, not uploaded — and the reason is the shape of the result, not convenience.**
-  Until 29.07.2026 a route's line came from OSM as a geojson file. What arrived was a *bag of
+  Until 30.07.2026 a route's line came from OSM as a geojson file. What arrived was a *bag of
   segments*: connected, but with branches (38 branch nodes in Simferopol's route-1) and with no
   order at all. `RouteMap.tsx` therefore carried `orderRouteSegments`, a "nearest endpoint from the
   westernmost point" heuristic, purely so the thing could be animated. A drawn route is **one

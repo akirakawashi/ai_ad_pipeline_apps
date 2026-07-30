@@ -243,6 +243,16 @@ class TestSnapStroke:
         with pytest.raises(RouteSnappingError):
             snap_stroke(graphs["simferopol"], [(20.0, 20.0), (20.1, 20.1)])
 
+    def test_absurdly_long_stroke_is_refused_before_the_work_starts(self, graphs) -> None:
+        """Отказ по длине линии, а не по числу её точек.
+
+        Десяток точек по всей карте мира — это ломаная в тысячи километров:
+        проверка «не больше N точек» её пропустит, а поиск путей по графу на
+        каждую сотню метров положит запрос надолго.
+        """
+        with pytest.raises(RouteSnappingError):
+            snap_stroke(graphs["simferopol"], [(-170.0, -80.0), (170.0, 80.0)])
+
 
 class TestRouteLineCollection:
     def test_builds_a_single_ordered_line(self) -> None:

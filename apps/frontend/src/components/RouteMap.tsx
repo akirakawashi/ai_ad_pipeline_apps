@@ -29,9 +29,16 @@ const VIEWBOX = { width: 1420, height: 1085, padding: 55 }
 const ZOOM_MIN = 1
 const ZOOM_MAX = 40
 
-/** Полоса у края кадра, в которой карта едет сама, пока ведёшь линию. */
-const EDGE_BAND_PX = 48
-const EDGE_SPEED_PX = 12
+/**
+ * Полоса у края кадра, в которой карта едет сама, пока ведёшь линию.
+ *
+ * Скорость — предел в пикселях за кадр, и он намеренно мал: линию ведут
+ * аккуратно, а уезжающая из-под руки карта сбивает прицел сильнее, чем помогает.
+ * Внутри полосы скорость растёт пропорционально глубине захода: коснулся
+ * кромки — карта почти стоит, вжался в самый край — ползёт.
+ */
+const EDGE_BAND_PX = 56
+const EDGE_SPEED_PX = 2.5
 
 function toWebMercator([lon, lat]: Position): Position {
   const safeLat = Math.max(-85.05112878, Math.min(85.05112878, lat))
@@ -84,6 +91,26 @@ function createProjector(collections: GeoFeatureCollection[]): Projector {
     unproject: ([x, y]: Position) =>
       fromWebMercator([minX + (x - xOffset) / scale, maxY - (y - yOffset) / scale]),
   }
+}
+
+/**
+ * Скорость самохода по одной оси, пикселей за кадр. Ноль — курсор вне кромки.
+ *
+ * Внутри полосы скорость растёт линейно от нуля на её внутренней границе до
+ * предела у самого края экрана, поэтому подъезд начинается незаметно и не
+ * дёргает картинку в момент, когда рука только коснулась кромки.
+ */
+function edgeSpeed(offset: number, size: number): number {
+  if (offset < EDGE_BAND_PX) {
+    const depth = Math.min(1, (EDGE_BAND_PX - offset) / EDGE_BAND_PX)
+    return -EDGE_SPEED_PX * depth
+  }
+  const fromEnd = size - offset
+  if (fromEnd < EDGE_BAND_PX) {
+    const depth = Math.min(1, (EDGE_BAND_PX - fromEnd) / EDGE_BAND_PX)
+    return EDGE_SPEED_PX * depth
+  }
+  return 0
 }
 
 function pointsToPath(points: Position[]): string {
@@ -301,10 +328,16 @@ export function RouteMap({
   // Оба живут на одних и тех же событиях указателя, поэтому и состояние одно.
   const gesture = useRef<
     | { kind: 'pan'; lastClient: Position }
-    | { kind: 'draw'; points: Position[] }
+    | { kind: 'draw'; points: Position[]; lastClient: Position }
     | null
   >(null)
   const edgePush = useRef<Position>([0, 0])
+  // Кадр нужен и вне рендера — автоподъезд у края работает по таймеру кадров,
+  // а не по событиям указателя, и должен считать от актуального положения.
+  const viewRef = useRef<ViewBox>(view)
+  useEffect(() => {
+    viewRef.current = view
+  }, [view])
   // Линия, которую рука ведёт прямо сейчас, рисуется в обход React: атрибут
   // пути ставится напрямую по ссылке. Через состояние каждое движение мыши
   // перерисовывало бы полторы тысячи путей дорожного слоя.
@@ -321,22 +354,39 @@ export function RouteMap({
     if (!drawing) return
     let frame = 0
     const step = () => {
-      const [pushX, pushY] = edgePush.current
-      if (pushX || pushY) {
-        setView((current) => {
-          const scale = current.width / VIEWBOX.width
-          return clampView({
-            ...current,
-            x: current.x + pushX * scale,
-            y: current.y + pushY * scale,
-          })
-        })
-      }
       frame = requestAnimationFrame(step)
+      const [pushX, pushY] = edgePush.current
+      const active = gesture.current
+      // Мёртвая зона: у самой границы полосы скорость почти нулевая, и без
+      // порога это были бы перерисовки на доли пикселя каждый кадр.
+      if (Math.abs(pushX) < 0.05 && Math.abs(pushY) < 0.05) return
+      if (active?.kind !== 'draw') return
+
+      const current = viewRef.current
+      const scale = current.width / VIEWBOX.width
+      const next = clampView({
+        ...current,
+        x: current.x + pushX * scale,
+        y: current.y + pushY * scale,
+      })
+      // Карта упёрлась в край мира — двигаться дальше некуда, и трогать
+      // состояние незачем: иначе рендер на каждый кадр до отпускания кнопки.
+      if (next.x === current.x && next.y === current.y) return
+      viewRef.current = next
+      setView(next)
+
+      // Линия обязана ехать вместе с картой. Указатель стоит на месте, событий
+      // движения нет, а под ним уже другое место — без этой дописки штрих
+      // прерывался бы на всё проехавшее и потом сшивался напрямую, срезая угол.
+      const point = toUserSpace(active.lastClient[0], active.lastClient[1], next)
+      if (point) {
+        active.points.push(point)
+        showLiveStroke(active.points)
+      }
     }
     frame = requestAnimationFrame(step)
     return () => cancelAnimationFrame(frame)
-  }, [drawing, clampView])
+  }, [drawing, clampView, toUserSpace, showLiveStroke])
 
   const handlePointerDown = (event: ReactPointerEvent<SVGSVGElement>) => {
     // Средняя кнопка двигает карту всегда. Без неё во взведённом режиме
@@ -354,7 +404,11 @@ export function RouteMap({
     const point = toUserSpace(event.clientX, event.clientY, view)
     if (!point) return
     event.currentTarget.setPointerCapture(event.pointerId)
-    gesture.current = { kind: 'draw', points: [point] }
+    gesture.current = {
+      kind: 'draw',
+      points: [point],
+      lastClient: [event.clientX, event.clientY],
+    }
     showLiveStroke([point])
   }
 
@@ -374,6 +428,7 @@ export function RouteMap({
       return
     }
 
+    active.lastClient = [event.clientX, event.clientY]
     const point = toUserSpace(event.clientX, event.clientY, view)
     if (!point) return
     const previous = active.points[active.points.length - 1]
@@ -388,11 +443,9 @@ export function RouteMap({
     const svg = svgRef.current
     if (svg) {
       const rect = svg.getBoundingClientRect()
-      const left = event.clientX - rect.left
-      const top = event.clientY - rect.top
       edgePush.current = [
-        left < EDGE_BAND_PX ? -EDGE_SPEED_PX : left > rect.width - EDGE_BAND_PX ? EDGE_SPEED_PX : 0,
-        top < EDGE_BAND_PX ? -EDGE_SPEED_PX : top > rect.height - EDGE_BAND_PX ? EDGE_SPEED_PX : 0,
+        edgeSpeed(event.clientX - rect.left, rect.width),
+        edgeSpeed(event.clientY - rect.top, rect.height),
       ]
     }
   }
@@ -460,6 +513,12 @@ export function RouteMap({
         role="img"
         aria-labelledby="routeMapTitle routeMapDesc"
         className={`${zoomable ? 'is-zoomable' : ''}${drawing ? ' is-drawing-mode' : ''}`}
+        // Автоскролл средней кнопкой браузер заводит на mousedown, а не на
+        // pointerdown, — гасить его надо именно здесь, иначе поверх карты
+        // появляется кружок прокрутки и жест панорамирования срывается.
+        onMouseDown={(event) => {
+          if (event.button === 1) event.preventDefault()
+        }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={finishGesture}

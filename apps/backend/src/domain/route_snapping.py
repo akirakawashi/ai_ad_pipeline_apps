@@ -75,6 +75,13 @@ MAX_STROKE_POINTS = 100_000
 # это условие точности, а не тюнинг производительности.
 DEFAULT_MAX_SEGMENT_M = 20.0
 
+# Потолок на число точек ПОСЛЕ прореживания, то есть на длину линии: при шаге
+# 100 м это 500 км. Ограничение числа точек штриха такого не ловит — сто точек,
+# расставленных по всей карте, дают ломаную в тысячи километров, и на каждую её
+# сотню метров пришлось бы искать пути по графу. Реальный маршрут города — это
+# десятки километров, так что запас десятикратный.
+MAX_OBSERVATIONS = 5_000
+
 
 class RouteSnappingError(ValueError):
     """Штрих не удалось положить на дорожную сеть."""
@@ -348,6 +355,10 @@ def snap_stroke(
     """
     settings = config or SnappingConfig()
     points = _resample(_clean_stroke(stroke), settings.resample_step_m)
+    if len(points) > MAX_OBSERVATIONS:
+        raise RouteSnappingError(
+            "Линия слишком длинная для маршрута — проверьте, что вели её по городу."
+        )
     projected = [graph.project(point) for point in points]
 
     # Точки, рядом с которыми дорог нет вовсе, выбрасываем: рука могла срезать
@@ -370,8 +381,13 @@ def snap_stroke(
         # Штрих короче шага прореживания: маршрута из одной точки не бывает.
         raise RouteSnappingError("Линия слишком короткая, чтобы проложить по ней маршрут.")
 
-    chosen = _viterbi(graph, observations, settings)
-    return _stitch(graph, chosen)
+    path = _stitch(graph, _viterbi(graph, observations, settings))
+    if len(path) < 2:
+        # Весь штрих сел в один узел: короткая линия или дрожь на месте. Сказать
+        # об этом должен снап — иначе причину озвучит сборка геометрии, и человек
+        # прочтёт «в маршруте должно быть хотя бы две точки» про свою линию.
+        raise RouteSnappingError("Линия слишком короткая, чтобы проложить по ней маршрут.")
+    return path
 
 
 def _viterbi(
