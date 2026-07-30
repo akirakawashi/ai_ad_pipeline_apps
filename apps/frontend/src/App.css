@@ -773,8 +773,17 @@ main {
   padding: 19px 20px 20px;
 }
 
-.city-card-kicker,
+.city-card-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #dce8e4;
+  font-size: 13px;
+  font-weight: 650;
+}
+
 .city-card-live-dot {
+  flex: 0 0 7px;
   width: 7px;
   height: 7px;
   border-radius: 50%;

@@ -122,11 +122,6 @@ export function RoutePage({
         <section className="route-summary">
           <header className="route-summary-head">
             <h2>Аналитика маршрута</h2>
-            <p>
-              Считается из съёмок напрямую, а не из средних по заданиям: иначе
-              кампания из двух проездов весила бы столько же, сколько кампания из
-              двадцати.
-            </p>
           </header>
           <RouteSummaryPanel
             summary={summary}
