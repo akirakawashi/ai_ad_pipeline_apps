@@ -4988,3 +4988,207 @@ input[type='color'].text-input::-moz-color-swatch {
   stroke: rgba(0, 0, 0, 0.55);
   stroke-width: 1;
 }
+
+/* ── Инструкция «Как завести город» ───────────────────────────────────────
+   Отдельной страницей, а не абзацами над формами: длинные пояснения в
+   админ-панели уже были и от них избавились. Этот текст читают один раз при
+   заведении города — ему место там, куда заходят нарочно. */
+.manual-page {
+  max-width: 900px;
+}
+
+.manual-steps {
+  display: grid;
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.manual-step {
+  display: flex;
+  gap: 18px;
+  padding: 24px 26px;
+}
+
+/* Номер — кружок фиксированного размера: шаги разной высоты, и без него
+   взглядом не найти, где начинается следующий. */
+.manual-step-number {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  margin-top: 1px;
+  border-radius: 50%;
+  background: var(--surface-3);
+  color: var(--accent);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.manual-step-body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.manual-step-body h2 {
+  margin: 3px 0 14px;
+  font-size: 19px;
+  letter-spacing: -0.01em;
+}
+
+/* 15px, а не 13px как в карточках и таблицах: это сплошной текст, который
+   читают подряд с начала до конца, а не цифра, которую выхватывают взглядом. */
+.manual-step-body p,
+.manual-step-body li {
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+.manual-step-body p {
+  margin: 0 0 12px;
+}
+
+.manual-step-body ol,
+.manual-step-body ul {
+  margin: 0 0 12px;
+  padding-left: 22px;
+}
+
+.manual-step-body li {
+  margin-bottom: 7px;
+}
+
+.manual-step-body > :last-child,
+.manual-step-body li:last-child {
+  margin-bottom: 0;
+}
+
+.manual-step-body strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.manual-step-body code,
+.manual-troubles code {
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: var(--surface-3);
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13.5px;
+}
+
+.manual-link {
+  color: var(--accent);
+  text-underline-offset: 3px;
+}
+
+.manual-code {
+  position: relative;
+  margin: 0 0 12px;
+}
+
+/* Запрос показываем целиком и без переносов: перенос в середине строки
+   ["highway"~"…"] читался бы как ошибка в самом запросе. Длинную строку
+   уводим в горизонтальную прокрутку внутри блока — страница от неё не едет. */
+.manual-code pre {
+  margin: 0;
+  padding: 18px 124px 18px 20px;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.manual-code button {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  min-height: 32px;
+  padding: 6px 14px;
+  font-size: 13px;
+}
+
+/* Врезка про {{bbox}}: единственное место инструкции, где ошибка не видна
+   сразу, — слой просто окажется обрезанным по краю кадра. */
+.manual-note {
+  margin: 0 0 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--accent);
+  border-radius: 0 10px 10px 0;
+  background: rgba(5, 195, 161, 0.06);
+}
+
+.manual-note p:last-child {
+  margin-bottom: 0;
+}
+
+.manual-troubles {
+  margin-top: 16px;
+  padding: 24px 26px;
+}
+
+/* Заголовок и подводка тянут размер из `.catalog-panel`, где всё мельче:
+   там это подпись над формой, здесь — конец сплошного текста. */
+.manual-troubles h2 {
+  margin-bottom: 10px;
+  font-size: 19px;
+}
+
+.manual-troubles .catalog-hint {
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+.manual-troubles-list {
+  display: grid;
+  gap: 14px;
+  margin: 0;
+}
+
+.manual-troubles-list dt {
+  margin-bottom: 5px;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.manual-troubles-list dd {
+  margin: 0;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+@media (max-width: 620px) {
+  .manual-step,
+  .manual-troubles {
+    padding: 18px 16px;
+  }
+
+  /* Номер уходит над заголовком: на узком экране он съедал треть строки
+     заголовка, и тот ломался на четыре слова в столбик. */
+  .manual-step {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  /* Кнопка «Скопировать» переезжает под запрос: над ним она накрывала первую
+     строку, а укоротить её нечем — запрос нужен целиком. */
+  .manual-code pre {
+    padding: 16px 18px;
+  }
+
+  .manual-code button {
+    position: static;
+    margin-top: 8px;
+  }
+}

@@ -199,6 +199,7 @@ only feed the pipeline's own `report.html`.
 | Change catalogue parsing (new column, new format) | `infrastructure/catalog/parser.py` only; the row/point types live in `domain/catalog.py` |
 | Retune catalogue distance thresholds | `MERGE_DISTANCE_M` / `DIFF_DISTANCE_M` / `CITY_BOUNDS_MARGIN_M` in `domain/catalog.py` |
 | Change how a catalogue pack is uploaded or a revision rolled back | `components/CatalogImports.tsx` (admin only). `CatalogPage.tsx` is the read-only directory and must stay that way |
+| Change the «Как завести город» manual, or add a second one | `pages/ManualCityPage.tsx` (the page and the Overpass query) → `MANUAL_CITY_PATH` + the `manual` variant in `routing.ts` → `App.tsx` (render + backlink to `/admin`). The page fetches nothing and **is deliberately outside `require_admin`** — see §10. The Overpass query lives only in that file; `docs/pipeline-and-metrics.md` describes the page but does not copy the query, so the two cannot drift |
 | Add a section to the admin panel | a component under `components/`, mounted from `AdminPage.tsx`. City-scoped → a tab in `CITY_TABS`; not city-scoped → a page-level section in `AdminSection` (like `AdminUsers.tsx`). Keep the two switchers visually different — underlined text for sections, pill tabs inside a city — or they read as one level. Guard its writes with `require_admin` in the same change |
 | Change the people directory | `user_service.py` → `users.py` router → `AdminUsers.tsx` — creation, renaming and hiding all live there. `UserSelect.tsx` only selects; do not put a create form back into it (see §10) |
 | Change how the shooting date is entered | `useVideoUpload.ts` (`shotDate` per queued file, `shotStartedAt()` decides what is sent) → `DateField.tsx` + its mount in `UploadPage.tsx` → `createRun` in `api.ts` → `CreateRunRequest` / `UpdateShootingRequest` → `pipeline_run_service` → repository → the `PipelineRun` model and `0001_schema`. Use the shared `DateField`, never a native `<input type="date">`: the browser owns that popup and renders it outside the product theme. Date↔ISO conversion belongs in `utils/formatters.ts` and nowhere else — see the timezone trap in §10. Preserve the invariant at every layer: create requires `shot_started_at`, PATCH may omit it but may not send `null`, and the database column is `NOT NULL` |
@@ -404,6 +405,27 @@ is collected, and calls `pytest.exit` when postgres is unreachable. There is no 
   that is not redundant, it is the other half; and every rejection must reach `_verify`, so
   `_Utf8HTTPBasic` returns `None` on anything malformed and never raises — otherwise the library's
   English "Not authenticated" leaks out in place of the Russian sentence.
+* **A gate that is an early `return` does not gate the effects above it — `signedIn` must be in their
+  dependencies.** `AdminPage.tsx` renders `<AdminLogin/>` from an early return, but its two loading
+  effects sit above that return (hooks must) and therefore ran while the form was still on screen:
+  no token, 401, and the backend's «Админ-панель под паролем. Введите логин и пароль.» landed in
+  `error`. Logging in sets only `signedIn` — neither `version` nor `citySlug` moves — so nothing
+  refetched and that banner sat over an already-authenticated panel with an empty city list. It
+  looked like a broken login and was cured by F5, which remounts with the token already in
+  `sessionStorage`. Both effects now start with `if (!signedIn) return` **and carry `signedIn` in
+  their deps** — that is what makes a successful login the trigger to load. Same reason `onSuccess`
+  clears `error`: the other way in is a 401 mid-session (the password changed on the server), and
+  page state outlives the trip through the login form. **Any admin screen that fetches behind the
+  password inherits this**: gate the request on the session and let the session re-trigger it.
+* **The city manual sits outside the password on purpose, and the reason is the router, not the
+  content.** `/manual/city` describes admin work, so putting it behind `require_admin` looks
+  obviously right — it would break the page. The admin panel's tabs live in component state, not in
+  the address (deliberately: «админку не шлют ссылкой»), so a link that goes through the login form
+  can only land on the panel's first screen. A manual reachable only by logging in and then not
+  arriving is not reachable. It is also pure text — no `apiFetch`, nothing to leak — and it explains
+  a third-party public service plus our own button labels. Any further manual inherits both
+  properties: **no data fetching, no password.** The moment one needs a backend read, it stops being
+  a manual and the whole placement has to be reconsidered.
 * **There is exactly one video per shooting, and the pipeline never writes a second one.** The player
   draws boxes over the *source* video from `overlay.json` — see `VideoOverlayPlayer.tsx`, which is
   handed `playback.source_url`. Until 29.07.2026 the pipeline also burned the boxes into a full copy

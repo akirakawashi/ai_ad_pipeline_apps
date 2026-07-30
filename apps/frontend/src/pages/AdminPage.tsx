@@ -18,6 +18,7 @@ import { RouteDrawing } from '../components/RouteDrawing'
 import { EmptyState, ErrorBanner } from '../components/common/Feedback'
 import { Select } from '../components/common/Select'
 import { Tabs } from '../components/common/Tabs'
+import { MANUAL_CITY_PATH, navigate } from '../routing'
 import type { City, CityDetail, Route } from '../types'
 import { pluralAssignments, pluralRoutes } from '../utils/formatters'
 
@@ -128,7 +129,14 @@ export function AdminPage() {
   const [version, setVersion] = useState(0)
   const reload = () => setVersion((current) => current + 1)
 
+  // Пока на экране форма входа, за справочниками не ходим: без пароля бэкенд
+  // ответит 401, и его фраза села бы в `error` — а вход её не гасит, он меняет
+  // только `signedIn`. Получалась панель с баннером «введите логин и пароль»
+  // над уже пройденным входом и пустым списком городов, лечившаяся F5.
+  // Поэтому `signedIn` стоит в зависимостях: успешный вход и есть сигнал
+  // загрузиться, второго пути сюда нет.
   useEffect(() => {
+    if (!signedIn) return
     let disposed = false
     getCities(true)
       .then((list) => {
@@ -144,10 +152,10 @@ export function AdminPage() {
     return () => {
       disposed = true
     }
-  }, [version])
+  }, [signedIn, version])
 
   useEffect(() => {
-    if (!citySlug) return
+    if (!signedIn || !citySlug) return
     let disposed = false
     getCity(citySlug, true)
       .then((loaded) => !disposed && setDetail(loaded))
@@ -159,7 +167,7 @@ export function AdminPage() {
     return () => {
       disposed = true
     }
-  }, [citySlug, version])
+  }, [signedIn, citySlug, version])
 
   /** Общая обёртка действий: гасим прошлую ошибку, показываем итог, перечитываем. */
   const run = async (action: () => Promise<string>) => {
@@ -284,7 +292,17 @@ export function AdminPage() {
   }
 
   if (!signedIn) {
-    return <AdminLogin onSuccess={() => setSignedIn(true)} />
+    // Ошибку гасим вместе с входом: сюда попадают и по 401 посреди работы
+    // (пароль сменили на сервере), и её фраза пережила бы новый вход — она
+    // живёт в состоянии страницы, а страница не пересоздаётся.
+    return (
+      <AdminLogin
+        onSuccess={() => {
+          setError(null)
+          setSignedIn(true)
+        }}
+      />
+    )
   }
 
   return (
@@ -514,6 +532,15 @@ export function AdminPage() {
                         }}
                       />
                     </label>
+                    {/* Инструкция стоит вплотную к загрузке слоя: файл готовят
+                        в чужом сервисе, и без неё это единственная кнопка,
+                        нажать которую нечем. */}
+                    <button
+                      className="ghost-button"
+                      onClick={() => navigate(MANUAL_CITY_PATH)}
+                    >
+                      Как завести город
+                    </button>
                     {detail.is_active ? (
                       <button
                         className="geozone-delete"
@@ -532,6 +559,13 @@ export function AdminPage() {
                       </button>
                     )}
                   </div>
+                  {!detail.has_roads_geometry && (
+                    <p className="catalog-hint">
+                      Дорожного слоя нет: карта города пустая, и вести по ней
+                      линию маршрута не по чему. Файл со слоем готовят в
+                      стороннем сервисе — как именно, написано в инструкции.
+                    </p>
+                  )}
                   {!detail.is_active && (
                     <p className="catalog-hint">
                       Город скрыт: его не видно ни в архиве, ни при загрузке видео,

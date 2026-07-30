@@ -26,6 +26,15 @@ export interface VideoFilters {
  */
 export type PageView = 'work' | 'analytics'
 
+/**
+ * Инструкция «Как завести город».
+ *
+ * Открыта без пароля, хотя описывает работу под ним: вкладки админ-панели живут
+ * в состоянии, а не в адресе, поэтому ссылка через форму входа привела бы после
+ * входа не сюда, а на первый экран панели. Секретов на странице нет.
+ */
+export const MANUAL_CITY_PATH = '/manual/city'
+
 function parseView(search: URLSearchParams): PageView {
   return search.get('view') === 'analytics' ? 'analytics' : 'work'
 }
@@ -35,6 +44,9 @@ export type Route =
   | { page: 'archive' }
   | { page: 'catalog' }
   | { page: 'admin' }
+  // Инструкция по заведению города. Адрес с «/city» на конце — на вырост:
+  // мануал сегодня один, но следующий не должен требовать переименования.
+  | { page: 'manual' }
   | { page: 'city'; citySlug: string }
   | {
       page: 'route'
@@ -65,6 +77,7 @@ export function currentRoute(): Route {
   if (pathname === '/archive') return { page: 'archive' }
   if (pathname === '/catalog') return { page: 'catalog' }
   if (pathname === '/admin') return { page: 'admin' }
+  if (pathname === MANUAL_CITY_PATH) return { page: 'manual' }
   if (pathname === '/videos') return { page: 'videos', filters: parseVideoFilters(search) }
   if (pathname === '/upload') {
     return {
@@ -171,6 +184,7 @@ export function workspaceTitle(route: Route) {
   if (route.page === 'archive') return 'Города и маршруты'
   if (route.page === 'catalog') return 'Каталог конструкций'
   if (route.page === 'admin') return 'Админ-панель'
+  if (route.page === 'manual') return 'Как завести город'
   if (route.page === 'city') return 'Маршруты города'
   if (route.page === 'route') return 'Задания маршрута'
   if (route.page === 'assignment') return 'Задание'

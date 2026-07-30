@@ -7,6 +7,7 @@ import { CatalogPage } from './pages/CatalogPage'
 import { CitiesPage } from './pages/CitiesPage'
 import { CityPage } from './pages/CityPage'
 import { LandingPage } from './pages/LandingPage'
+import { ManualCityPage } from './pages/ManualCityPage'
 import { RoutePage } from './pages/RoutePage'
 import { RunPage } from './pages/RunPage'
 import { UploadPage } from './pages/UploadPage'
@@ -30,6 +31,11 @@ function backlink(route: Route): { label: string; to: string } | null {
   }
   if (route.page === 'city') {
     return { label: '← Назад к городам', to: '/archive' }
+  }
+  // Инструкцию открывают из админ-панели, туда же и возвращают: другого входа
+  // на неё нет, в общем меню её нарочно не показываем.
+  if (route.page === 'manual') {
+    return { label: '← Назад в админ-панель', to: '/admin' }
   }
   if (route.page === 'route') {
     return { label: '← Назад к городу', to: `/archive/${route.citySlug}` }
@@ -140,6 +146,7 @@ function App() {
           {route.page === 'archive' && <CitiesPage />}
           {route.page === 'catalog' && <CatalogPage />}
           {route.page === 'admin' && <AdminPage />}
+          {route.page === 'manual' && <ManualCityPage />}
           {route.page === 'city' && (
             <CityPage key={route.citySlug} citySlug={route.citySlug} />
           )}
