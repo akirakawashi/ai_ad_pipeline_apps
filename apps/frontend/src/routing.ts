@@ -16,14 +16,34 @@ export interface VideoFilters {
   status?: string
 }
 
+/**
+ * Что показывает страница маршрута или задания: работу или цифры.
+ *
+ * Живёт в адресе, а не в состоянии страницы, по той же причине, что и период:
+ * ссылку на аналитику можно послать, и она переживёт перезагрузку. Заодно это
+ * единственное, что делает сводку ленивой: пока вкладка не выбрана, дорогой
+ * запрос (он перечитывает tracks.csv каждой готовой съёмки) не уходит вовсе.
+ */
+export type PageView = 'work' | 'analytics'
+
+function parseView(search: URLSearchParams): PageView {
+  return search.get('view') === 'analytics' ? 'analytics' : 'work'
+}
+
 export type Route =
   | { page: 'home' }
   | { page: 'archive' }
   | { page: 'catalog' }
   | { page: 'admin' }
   | { page: 'city'; citySlug: string }
-  | { page: 'route'; citySlug: string; routeSlug: string; period: RoutePeriod }
-  | { page: 'assignment'; assignmentId: string }
+  | {
+      page: 'route'
+      citySlug: string
+      routeSlug: string
+      period: RoutePeriod
+      view: PageView
+    }
+  | { page: 'assignment'; assignmentId: string; view: PageView }
   | { page: 'videos'; filters: VideoFilters }
   | { page: 'upload'; citySlug?: string; routeSlug?: string; assignmentId?: string }
   | { page: 'run'; runId: string; seek?: number }
@@ -66,13 +86,20 @@ export function currentRoute(): Route {
         from: search.get('from') ?? undefined,
         to: search.get('to') ?? undefined,
       },
+      view: parseView(search),
     }
   }
   const cityMatch = pathname.match(/^\/archive\/([^/]+)$/)
   if (cityMatch) return { page: 'city', citySlug: cityMatch[1] }
 
   const assignmentMatch = pathname.match(/^\/assignments\/([^/]+)$/)
-  if (assignmentMatch) return { page: 'assignment', assignmentId: assignmentMatch[1] }
+  if (assignmentMatch) {
+    return {
+      page: 'assignment',
+      assignmentId: assignmentMatch[1],
+      view: parseView(search),
+    }
+  }
 
   const runMatch = pathname.match(/^\/videos\/([^/]+)$/)
   if (runMatch) {
@@ -106,13 +133,22 @@ export function routePath(
   citySlug: string,
   routeSlug: string,
   period: RoutePeriod = {},
+  view: PageView = 'work',
 ): string {
   const query = new URLSearchParams()
   if (period.from) query.set('from', period.from)
   if (period.to) query.set('to', period.to)
+  // Рабочая вкладка — умолчание, и в адресе её не пишем: чистая ссылка на
+  // маршрут должна оставаться чистой.
+  if (view === 'analytics') query.set('view', view)
   const suffix = query.toString()
   const base = `/archive/${citySlug}/${routeSlug}`
   return suffix ? `${base}?${suffix}` : base
+}
+
+export function assignmentPath(assignmentId: string, view: PageView = 'work'): string {
+  const base = `/assignments/${assignmentId}`
+  return view === 'analytics' ? `${base}?view=analytics` : base
 }
 
 export function uploadPath(options: {

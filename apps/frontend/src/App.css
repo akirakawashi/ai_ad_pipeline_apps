@@ -2232,6 +2232,52 @@ button:disabled,
   margin-bottom: 18px;
 }
 
+/* Сводка одним блоком: шапка с выбором оценки и плитки под ней. Разделители —
+   зазор в один пиксель на фоне линии, а не рамки у плиток: так стык остаётся
+   ровным и когда сетка переносится в две строки или в одну колонку. */
+.metrics-panel {
+  overflow: hidden;
+  margin: 18px 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--line);
+}
+
+.metrics-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 12px 16px;
+  background: rgba(15, 15, 15, 0.94);
+}
+
+.metrics-panel-head > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.metrics-panel-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  border-top: 1px solid var(--line);
+}
+
+.metrics-panel-grid .metric-card {
+  border: 0;
+  border-radius: 0;
+}
+
+/* Внутри общей рамки плитка — не отдельная карточка: подниматься ей некуда. */
+.metrics-panel-grid .metric-card:hover {
+  transform: none;
+  background: rgba(28, 28, 28, 0.96);
+}
+
 .metric-card {
   padding: 18px;
   border: 1px solid var(--line);
@@ -3244,6 +3290,7 @@ button:disabled,
   }
 
   .summary-grid,
+  .metrics-panel-grid,
   .charts-grid {
     grid-template-columns: 1fr 1fr;
   }
@@ -3341,6 +3388,7 @@ button:disabled,
   }
 
   .summary-grid,
+  .metrics-panel-grid,
   .charts-grid {
     grid-template-columns: 1fr;
   }
@@ -3978,6 +4026,17 @@ input[type='color'].text-input::-moz-color-swatch {
 
 .route-summary-head {
   margin: 8px 0 0;
+}
+
+/* Переключатель «работа / цифры» на странице маршрута и задания. Отбит сверху
+   от реквизитов и снизу от содержимого: он делит страницу надвое, и читаться
+   должен как граница, а не как ещё один элемент шапки. */
+.page-view-tabs {
+  margin: 22px 0 18px;
+}
+
+.page-view-tabs .tabs {
+  margin-bottom: 0;
 }
 
 .route-analytics-head {

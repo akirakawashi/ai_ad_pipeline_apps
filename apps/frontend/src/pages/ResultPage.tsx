@@ -19,7 +19,7 @@ import {
   ObjectsSkeleton,
   PlayerSkeleton,
 } from '../components/common/Skeletons'
-import { navigate } from '../routing'
+import { assignmentPath, navigate } from '../routing'
 import type {
   OverlayPayload,
   PipelineRun,
@@ -104,7 +104,7 @@ export function ResultPage({
             {run.assignment && (
               <button
                 className="secondary"
-                onClick={() => navigate(`/assignments/${run.assignment!.assignment_id}`)}
+                onClick={() => navigate(assignmentPath(run.assignment!.assignment_id))}
               >
                 К заданию
               </button>

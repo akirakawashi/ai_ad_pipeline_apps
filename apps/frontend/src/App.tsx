@@ -143,19 +143,26 @@ function App() {
           {route.page === 'city' && (
             <CityPage key={route.citySlug} citySlug={route.citySlug} />
           )}
-          {/* key без периода: смена окна не должна пересоздавать страницу —
-              иначе сбрасывался бы выбор «среднее/медиана» и мигал бы весь
-              экран. Период приезжает пропом, сводка перечитывается сама. */}
+          {/* key без периода и без вкладки: ни смена окна, ни переключение
+              «Задания/Аналитика» не должны пересоздавать страницу — иначе
+              сбрасывался бы выбор «среднее/медиана», мигал бы весь экран и
+              заново грузились бы уже загруженные задания. Оба приезжают
+              пропами, сводка перечитывается сама. */}
           {route.page === 'route' && (
             <RoutePage
               key={`${route.citySlug}/${route.routeSlug}`}
               citySlug={route.citySlug}
               routeSlug={route.routeSlug}
               period={route.period}
+              view={route.view}
             />
           )}
           {route.page === 'assignment' && (
-            <AssignmentPage key={route.assignmentId} assignmentId={route.assignmentId} />
+            <AssignmentPage
+              key={route.assignmentId}
+              assignmentId={route.assignmentId}
+              view={route.view}
+            />
           )}
           {route.page === 'videos' && (
             <VideosPage filters={route.filters} />

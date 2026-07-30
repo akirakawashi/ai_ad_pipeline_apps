@@ -4,8 +4,15 @@ import { RouteSummaryPanel } from '../components/RouteSummaryPanel'
 import { EmptyState, ErrorBanner } from '../components/common/Feedback'
 import { PageHeader } from '../components/common/PageHeader'
 import { RunsSkeleton } from '../components/common/Skeletons'
-import { navigate, routePath, type RoutePeriod } from '../routing'
-import type { Assignment, Route, RouteSummary } from '../types'
+import { Tabs } from '../components/common/Tabs'
+import {
+  assignmentPath,
+  navigate,
+  routePath,
+  type PageView,
+  type RoutePeriod,
+} from '../routing'
+import type { Aggregate, Assignment, Route, RouteSummary } from '../types'
 import { formatPeriod, pluralAssignments } from '../utils/formatters'
 
 function assignmentProgressLabel(assignment: Assignment): string {
@@ -20,14 +27,21 @@ function assignmentProgressLabel(assignment: Assignment): string {
   return parts.join(' · ') || 'Пусто'
 }
 
+const VIEW_TABS = [
+  { value: 'work', label: 'Задания' },
+  { value: 'analytics', label: 'Аналитика' },
+]
+
 export function RoutePage({
   citySlug,
   routeSlug,
   period,
+  view,
 }: {
   citySlug: string
   routeSlug: string
   period: RoutePeriod
+  view: PageView
 }) {
   const [route, setRoute] = useState<Route | null>(null)
   const [cityName, setCityName] = useState('')
@@ -35,6 +49,11 @@ export function RoutePage({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [summary, setSummary] = useState<RouteSummary | null>(null)
+  // Оценка живёт на странице, а не в панели: панель размонтируется при уходе на
+  // вкладку заданий, а выбранная медиана это пережить должна. Среднее по
+  // умолчанию — оно слышит каждый проезд; медиана показывает те же съёмки без
+  // влияния выбившегося.
+  const [aggregate, setAggregate] = useState<Aggregate>('mean')
 
   useEffect(() => {
     let disposed = false
@@ -79,9 +98,14 @@ export function RoutePage({
   // Границы разбираем на строки: объект периода приезжает из разбора адреса и
   // при каждом переходе новый, даже если даты те же. По самим датам эффект
   // срабатывает ровно тогда, когда окно действительно поменялось.
+  // Вкладка в зависимостях не для красоты: пока открыта работа, запрос не
+  // уходит вообще. Раньше он уходил при каждом открытии страницы, даже когда
+  // человек зашёл найти видео и цифры ему не нужны.
   const { from: periodFrom, to: periodTo } = period
+  const analytics = view === 'analytics'
 
   useEffect(() => {
+    if (!analytics) return
     let disposed = false
     getRouteSummary(citySlug, routeSlug, { from: periodFrom, to: periodTo })
       .then((loaded) => {
@@ -91,7 +115,7 @@ export function RoutePage({
     return () => {
       disposed = true
     }
-  }, [citySlug, routeSlug, completedVideos, periodFrom, periodTo])
+  }, [analytics, citySlug, routeSlug, completedVideos, periodFrom, periodTo])
 
   return (
     <div className="page">
@@ -109,8 +133,57 @@ export function RoutePage({
 
       {route?.description && <p className="route-description">{route.description}</p>}
 
+      {/* Работа и цифры разведены по вкладкам: аналитика — это тысяча с лишним
+          пикселей графиков, и держать её над списком заданий значило бы
+          отправлять в прокрутку каждого, кто зашёл за конкретным видео. */}
+      <div className="page-view-tabs">
+        <Tabs
+          value={view}
+          options={VIEW_TABS}
+          ariaLabel="Что показывать"
+          onChange={(next) =>
+            navigate(routePath(citySlug, routeSlug, period, next as PageView))
+          }
+        />
+      </div>
+
       {loading && <RunsSkeleton />}
 
+      {analytics ? (
+        summary ? (
+          <section className="route-summary">
+            <RouteSummaryPanel
+              summary={summary}
+              period={period}
+              onPeriodChange={(next) =>
+                navigate(routePath(citySlug, routeSlug, next, 'analytics'))
+              }
+              aggregate={aggregate}
+              onAggregateChange={setAggregate}
+            />
+          </section>
+        ) : (
+          <RunsSkeleton />
+        )
+      ) : (
+        <RouteWork assignments={assignments} loading={loading} error={error} />
+      )}
+    </div>
+  )
+}
+
+/** Операционная вкладка маршрута: задания и их состояние, без единой цифры метрики. */
+function RouteWork({
+  assignments,
+  loading,
+  error,
+}: {
+  assignments: Assignment[]
+  loading: boolean
+  error: string | null
+}) {
+  return (
+    <>
       {/* Кнопки «Новое задание» здесь больше нет: задание заводят в админке.
           Пустой маршрут поэтому не предлагает создать, а говорит, где это
           делается, — иначе экран выглядел бы сломанным. */}
@@ -118,31 +191,12 @@ export function RoutePage({
         <EmptyState text="На этом маршруте ещё нет заданий. Их заводят в админ-панели, на вкладке «Задания»." />
       )}
 
-      {summary && (
-        <section className="route-summary">
-          <RouteSummaryPanel
-            summary={summary}
-            period={period}
-            onPeriodChange={(next) =>
-              navigate(routePath(citySlug, routeSlug, next))
-            }
-          />
-        </section>
-      )}
-
-      {assignments.length > 0 && (
-        <header className="route-summary-head">
-          <h2>Задания</h2>
-          <p>Серии проездов по маршруту.</p>
-        </header>
-      )}
-
       <div className="runs-grid">
         {assignments.map((assignment) => (
           <button
             className="run-card"
             key={assignment.id}
-            onClick={() => navigate(`/assignments/${assignment.id}`)}
+            onClick={() => navigate(assignmentPath(assignment.id))}
           >
             <div
               className="run-preview"
@@ -172,6 +226,6 @@ export function RoutePage({
           </button>
         ))}
       </div>
-    </div>
+    </>
   )
 }

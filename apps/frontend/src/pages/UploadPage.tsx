@@ -8,7 +8,7 @@ import { ProgressBar } from '../components/common/ProgressBar'
 import { Select } from '../components/common/Select'
 import { UserSelect } from '../components/common/UserSelect'
 import { useVideoUpload } from '../hooks/useVideoUpload'
-import { navigate } from '../routing'
+import { assignmentPath, navigate } from '../routing'
 import type { Assignment, City, CityDetail } from '../types'
 
 const MAX_FILES = 20
@@ -165,7 +165,7 @@ export function UploadPage({ citySlug, routeSlug, assignmentId }: UploadPageProp
       // При частичном сбое остаёмся на странице: «Повторить» дольёт туда же.
       if (failed > 0) return
       // Уходим всегда в задание: другого места для съёмки теперь нет.
-      navigate(`/assignments/${targetAssignmentId}`)
+      navigate(assignmentPath(targetAssignmentId))
     },
   })
 

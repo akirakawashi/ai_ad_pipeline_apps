@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Metric } from './common/Metric'
-import { AggregateToggle } from './common/AggregateToggle'
+import { MetricsPanel } from './common/MetricsPanel'
 import { DateField } from './common/DateField'
 import { EmptyState } from './common/Feedback'
 import { RollupCharts } from './RollupCharts'
@@ -184,21 +184,26 @@ export function RouteSummaryPanel({
   summary,
   period,
   onPeriodChange,
+  aggregate,
+  onAggregateChange,
 }: {
   summary: RouteSummary
   period: RoutePeriod
   onPeriodChange: (period: RoutePeriod) => void
+  // Оценка приходит со страницы, а не заводится здесь: панель живёт под
+  // вкладкой и размонтируется при уходе на задания, а выбранная медиана это
+  // пережить должна.
+  aggregate: Aggregate
+  onAggregateChange: (value: Aggregate) => void
 }) {
   const { totals, brands, shootings, assignments_total } = summary
   const waiting = totals.shootings_total - totals.shootings_completed
   const filtered = Boolean(period.from || period.to)
-  // Среднее по умолчанию: оно слышит каждый проезд. Медиана — чтобы посмотреть
-  // на те же съёмки без влияния выбившегося проезда.
-  const [aggregate, setAggregate] = useState<Aggregate>('mean')
 
+  // Заголовка «Аналитика маршрута» здесь нет: так теперь называется вкладка,
+  // под которой лежит вся панель, и повторять её строкой ниже незачем.
   const heading = (
     <header className="route-summary-head route-analytics-head">
-      <h2>Аналитика маршрута</h2>
       <PeriodPicker period={period} onChange={onPeriodChange} />
     </header>
   )
@@ -223,12 +228,7 @@ export function RouteSummaryPanel({
   return (
     <>
       {heading}
-      <section className="charts-toolbar" aria-label="Как считать показатели">
-        <span>Показатели за съёмку</span>
-        <AggregateToggle value={aggregate} onChange={setAggregate} />
-      </section>
-
-      <div className="summary-grid">
+      <MetricsPanel aggregate={aggregate} onAggregateChange={onAggregateChange}>
         <Metric
           label="Заметность за съёмку"
           value={formatStat(totals.visibility_per_shooting, aggregate)}
@@ -244,7 +244,7 @@ export function RouteSummaryPanel({
           )}`}
         />
         <Metric label="Отснято" value={formatDuration(totals.duration_sec)} />
-      </div>
+      </MetricsPanel>
 
       {waiting > 0 && (
         <p className="assignment-pending-note">
