@@ -4254,7 +4254,7 @@ input[type='color'].text-input::-moz-color-swatch {
 .admin-sections {
   display: flex;
   gap: 34px;
-  margin: -4px 0 26px;
+  margin: 0 0 26px;
   border-bottom: 1px solid var(--line);
 }
 

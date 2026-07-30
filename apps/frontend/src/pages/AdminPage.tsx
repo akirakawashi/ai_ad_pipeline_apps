@@ -16,7 +16,6 @@ import { AdminAssignments } from '../components/AdminAssignments'
 import { AdminUsers } from '../components/AdminUsers'
 import { CatalogImports } from '../components/CatalogImports'
 import { EmptyState, ErrorBanner } from '../components/common/Feedback'
-import { PageHeader } from '../components/common/PageHeader'
 import { Select } from '../components/common/Select'
 import { Tabs } from '../components/common/Tabs'
 import type { City, CityDetail, Route } from '../types'
@@ -290,12 +289,6 @@ export function AdminPage() {
 
   return (
     <div className="page">
-      <PageHeader
-        eyebrow="Админ-панель"
-        title="Справочники"
-        description="Города с их маршрутами и каталогом конструкций — и люди, которые всё это загружают."
-      />
-
       {/* Кнопка закреплена в углу экрана, а не в потоке страницы: форма
           длинная, и выход должен быть под рукой на любой её высоте. */}
       <button
