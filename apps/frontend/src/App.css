@@ -2252,12 +2252,20 @@ button:disabled,
   background: rgba(15, 15, 15, 0.94);
 }
 
+/* Переключатель — тот же .tabs, а у него свой нижний отступ под другую
+   раскладку. Внутри шапки он сбивал вертикаль: подпись стояла по центру, а
+   тумблер уезжал вверх. */
+.metrics-panel-head .tabs {
+  margin-bottom: 0;
+}
+
 .metrics-panel-head > span {
   color: var(--muted);
   font-size: 12px;
   font-weight: 850;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+  line-height: 1;
 }
 
 .metrics-panel-grid {
