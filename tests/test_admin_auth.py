@@ -165,10 +165,18 @@ def test_writes_are_closed_without_password(anonymous_client, method, url, body)
     assert getattr(anonymous_client, method)(url, json=body).status_code == 401
 
 
-def test_geometry_upload_is_closed_without_password(anonymous_client):
+def test_geometry_writes_are_closed_without_password(anonymous_client):
+    """Обе двери к геометрии заперты, хотя ведут они себя по-разному.
+
+    Дорожный слой города по-прежнему заливают файлом, а линию маршрута рисуют
+    мышью и присылают точками. Ручки разные, глаголы разные — проверять надо обе.
+    """
     assert _upload(anonymous_client, f"{CITIES}/simferopol/roads-geometry").status_code == 401
     assert (
-        _upload(anonymous_client, f"{CITIES}/simferopol/routes/route-1/geometry").status_code
+        anonymous_client.post(
+            f"{CITIES}/simferopol/routes/route-1/geometry",
+            json={"stroke": [[34.10, 44.95], [34.11, 44.96]]},
+        ).status_code
         == 401
     )
 

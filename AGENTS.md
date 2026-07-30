@@ -63,7 +63,7 @@ Three target brands: `mts`, `plus7`, `miranda`. Everything else collapses to `ot
 | `ml/pipeline/scripts/` (rest) | `detection`, `crops`, `quality`, `classification`, `tracking`, `track_groups`, `aggregation`, `io`, `schemas`, `config`, `visualization` (**despite the name it draws nothing** — it works out which boxes are visible in which frame, with gap interpolation, and its only consumer is `viewer/payload.py`). |
 | `ml/pipeline/scripts/reporting/` | CSV + charts + `report.html` (standalone pipeline reports, **not** the product UI). |
 | `ml/pipeline/scripts/viewer/` | `overlay.json` + `viewer.html` (standalone player with cards). |
-| `apps/backend/src/domain/` | Pure logic, no I/O: `geozones.py` (`beta`, `overlaps`), `catalog.py` (point collapsing, revision diff, city bounds), `geometry.py` (geojson validation, bbox) + entity facades. |
+| `apps/backend/src/domain/` | Pure logic, no I/O: `geozones.py` (`beta`, `overlaps`), `catalog.py` (point collapsing, revision diff, city bounds), `geometry.py` (geojson validation, bbox, route line assembly), `route_snapping.py` (road graph + map matching: a hand-drawn stroke onto real roads) + entity facades. |
 | `apps/backend/src/application/` | Services (`pipeline_run_service`, `catalog_service`, `metrics_rollup`, `user_service`), DTOs, repository interfaces. |
 | `apps/backend/src/infrastructure/` | SQLModel models, SQL repositories, MinIO storage, `catalog/parser.py` (xlsx/xls/csv). |
 | `apps/backend/src/presentation/http/` | FastAPI routers, request/response DTOs, DI, exception handlers, `security.py` (the admin password). |
@@ -72,7 +72,7 @@ Three target brands: `mts`, `plus7`, `miranda`. Everything else collapses to `ot
 | `apps/frontend/src/` | React 19 + Vite + Recharts. Hand-rolled router (`routing.ts`), no react-router. |
 | `scripts/` | `dev.sh` — brings up the whole stack. |
 | `tests/` | pytest. Needs a live Postgres; MinIO is faked. |
-| `docs/plan.md` + `docs/plan-NN-*.md` | **Intent, not state**: accepted decisions with reasons, open decisions that block work, and the step list. Per-step detail files are deleted once the step lands and its content moves into `pipeline-and-metrics.md`. Never describe working behaviour here. |
+| `docs/refactoring-backlog.md` | The only planning document left. `docs/plan.md` and its per-step files existed until 28.07.2026 and are gone: intent that has landed belongs in `pipeline-and-metrics.md`, not in a parallel history. Do not recreate them. |
 | `README.md` | Setup/ops guide. Predates the metric rewrite; treat metric statements in it as stale. |
 
 ---
@@ -160,8 +160,12 @@ On the backend `visibility_value` means **S·α·β**. They are different number
    `/cities/{c}/roads-geometry` and `/cities/{c}/routes/{r}/geometry` with weak `ETag`s. **The seeded
    cities and routes get their geometry from `0002_seed`**, which reads the nine geojson files in
    `apps/backend/alembic/seed_data/geometry/` and computes each city's bounds from its roads layer —
-   so an empty database comes up with a working map and no manual step. New geometry arrives through
-   `/admin` (upload recomputes the bounds in the same operation).
+   so an empty database comes up with a working map and no manual step. **The two sides arrive
+   differently, and that is the point:** a city's road layer is still uploaded as a geojson file
+   (`PUT /cities/{c}/roads-geometry`, recomputes the bounds in the same operation), while a route's
+   line is **drawn by hand over that layer** (`POST /cities/{c}/routes/{r}/geometry`, body
+   `{"stroke": [[lon, lat], …]}`). The stroke is snapped onto the real road network by
+   `domain/route_snapping.py`; uploading a route geojson is gone (29.07.2026, see §10).
 10. Frontend renders charts from `/summary`, `/objects`, `/timeline`, and the player from
    `/overlay` + `/playback`.
 
@@ -188,6 +192,8 @@ only feed the pipeline's own `report.html`.
 | Change the route's date period | `list_route_runs` in `sql_catalog_repository.py` (the `[shot_from, shot_to)` window) → `get_route_summary` in `catalog_service.py` → `cities.py` router → `getRouteSummary` in `api.ts` → `PeriodPicker` in `RouteSummaryPanel.tsx`, with the window itself in the URL (`routePath`). Date↔instant conversion lives in `utils/formatters.ts`. **The filter stays on the server** — see §10 |
 | Change which centre estimate the UI shows, or add a third one | `MetricStatDTO` → `_stat()` in `metrics_rollup.py` → `MetricStat` in `types.ts` → `statValue`/`formatStat` in `utils/formatters.ts` → `AggregateToggle.tsx`. The choice itself never reaches the backend |
 | Add a city/route field, change geometry handling | `domain/geometry.py` (validation only) → `models.py` → `sql_catalog_repository` → `catalog_service` → `cities.py` router → `AdminPage.tsx`. Geometry must stay out of list responses |
+| Change how a route's line is drawn or snapped | `domain/route_snapping.py` — graph building, candidate search, Viterbi, stitching, and `SnappingConfig`. Quality is measured, not eyeballed: [tests/test_route_snapping.py](tests/test_route_snapping.py) traces all seven real routes. Read the two traps in §10 before touching the graph or the tests |
+| Change the drawing surface (zoom, pan, the stroke itself) | `RouteMap.tsx` (`zoomable` / `drawing` / `onStrokeDrawn` props; the live stroke is written straight to the DOM by `showLiveStroke`, deliberately bypassing React) → `RouteDrawing.tsx` (the three buttons and the confirm call) → `AdminPage.tsx` mounts it on the «Маршруты» tab |
 | Change who can see hidden cities/routes/assignments | `include_inactive` threads through `list_cities` / `get_city` / `list_assignments` / `get_assignment` (repository → service → router → `api.ts`). Only the admin panel passes `true` |
 | Change catalogue parsing (new column, new format) | `infrastructure/catalog/parser.py` only; the row/point types live in `domain/catalog.py` |
 | Retune catalogue distance thresholds | `MERGE_DISTANCE_M` / `DIFF_DISTANCE_M` / `CITY_BOUNDS_MARGIN_M` in `domain/catalog.py` |
@@ -338,6 +344,38 @@ is collected, and calls `pytest.exit` when postgres is unreachable. There is no 
   derived from fetched data must be validated against what actually loaded, not merely stored.
 * Geozone validation is split: bounds (`0 ≤ start < end ≤ 1`) in `catalog_service`, overlap detection
   in `sql_catalog_repository` under a route row lock (`GeozoneOverlapError` → HTTP 409).
+* **A route is drawn, not uploaded — and the reason is the shape of the result, not convenience.**
+  Until 29.07.2026 a route's line came from OSM as a geojson file. What arrived was a *bag of
+  segments*: connected, but with branches (38 branch nodes in Simferopol's route-1) and with no
+  order at all. `RouteMap.tsx` therefore carried `orderRouteSegments`, a "nearest endpoint from the
+  westernmost point" heuristic, purely so the thing could be animated. A drawn route is **one
+  ordered LineString** by construction — it has a start, an end and a length — so that heuristic is
+  gone with the upload. Two consequences: `route_line_collection` in `domain/geometry.py` is the
+  only writer of route geometry, and the seeded routes are still bags until someone redraws them
+  (they still render; each segment is simply its own path).
+* **Snapping lives on the backend because the computation happens once, on «Подтвердить».** The
+  stroke is matched to the road network for the stroke *as a whole* — where each point lands depends
+  on where the line goes next — so it cannot run incrementally while the hand is still moving. Given
+  that, a round trip costs nothing next to the ~60 ms of graph building, and it buys a pure domain
+  module under ordinary pytest instead of a map-matching engine in the browser with no test runner.
+  Do not "optimise" this into the frontend without first bringing a test story for it.
+* **The road graph must be densified, and this is load-bearing.** `RoadGraph.from_feature_collection`
+  splits every edge to at most `DEFAULT_MAX_SEGMENT_M` (20 m). It is not a performance knob. Raw OSM
+  edges have a median length of ~22 m but a tenth exceed 80 m and the longest approach 500 m; on such
+  an edge a position "halfway along" cannot be represented, consecutive stroke points grab opposite
+  endpoints, and stitching faithfully lays a path out and back. Measured: **without densification the
+  route length inflated by 24–250 % under every combination of the scoring weights.** Densifying
+  doubles the node count (8 k → 18 k) and costs milliseconds. The parameter sweep also showed the
+  opposite: `SnappingConfig`'s weights barely matter within sane ranges. Tune the graph, not the
+  numbers.
+* **When testing the snapper, model the hand as a *smooth* error — otherwise you measure nothing.**
+  The obvious synthetic stroke (jitter every reference point independently) is a sawtooth: reference
+  vertices sit ~20 m apart, so ±40 m of per-point noise produces a line that genuinely zigzags, and
+  any correct matcher follows the zigzag. The first version of these tests did exactly that and
+  reported 24–250 % length error — a failure of the *model*, not the engine. `_hand()` in
+  [tests/test_route_snapping.py](tests/test_route_snapping.py) draws the offset from knots every few
+  hundred metres and interpolates between them; with it, ±20 m of hand error recovers six of the
+  seven real routes to within 0.8 %.
 * **`JSONB` needs `none_as_null=True`.** By default SQLAlchemy writes Python `None` into a JSONB
   column as the JSON literal `null`, so `IS NOT NULL` is true and "geometry not loaded" becomes
   indistinguishable from loaded. Both geometry columns declare `JSONB(none_as_null=True)`; any new
@@ -390,7 +428,7 @@ is collected, and calls `pytest.exit` when postgres is unreachable. There is no 
   purpose — a 404 on "показать" would be the one-way door all over again.
 * **Hidden means gone everywhere, including direct URLs.** `get_city` and `get_route` return `None`
   for inactive rows unless `include_inactive` is set, so a bookmarked `/archive/kerch` gives 404.
-  The two admin write paths (`update_route`, `set_route_geometry`) pass `include_inactive=True` on
+  The two admin write paths (`update_route`, `draw_route_geometry`) pass `include_inactive=True` on
   purpose — they answer about the very row they just hid, and a 404 there would read as a failure.
 * **Both centre estimates ship in every rollup response; the choice is presentation-only.**
   `MetricStat` carries `mean`, `median` and `std` together — switching is a re-render, never a

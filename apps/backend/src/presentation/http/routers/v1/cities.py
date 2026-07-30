@@ -13,6 +13,7 @@ from presentation.http.dto.response import (
     CreateAssignmentRequest,
     CreateCityRequest,
     CreateRouteRequest,
+    DrawRouteRequest,
     OkResponse,
     PaginatedAssignmentsResponse,
     RouteResponse,
@@ -172,18 +173,25 @@ def update_route(
     return OkResponse(data=RouteResponse.model_validate(result))
 
 
-@router.put(
+@router.post(
     "/{city_slug}/routes/{route_slug}/geometry",
     response_model=OkResponse[RouteResponse],
     dependencies=[Depends(require_admin)],
 )
-def set_route_geometry(
+def draw_route_geometry(
+    payload: DrawRouteRequest,
     city_slug: str = Path(description="Слаг города"),
     route_slug: str = Path(description="Слаг маршрута в пределах города"),
-    file: UploadFile = File(description="geojson линии маршрута"),
     service: CatalogService = Depends(get_catalog_service),
 ) -> OkResponse[RouteResponse]:
-    result = service.set_route_geometry(city_slug, route_slug, content=file.file.read())
+    """Принимает нарисованную линию и кладёт её на дороги города.
+
+    Расчёт идёт здесь, а не в браузере, потому что он один на весь маршрут и
+    запускается по кнопке «Подтвердить»: сетевой заход на фоне десятков
+    миллисекунд разбора ничего не стоит, зато алгоритм остаётся в домене под
+    обычными тестами. Ответ — уже сохранённый маршрут.
+    """
+    result = service.draw_route_geometry(city_slug, route_slug, stroke=payload.stroke)
     return OkResponse(data=RouteResponse.model_validate(result))
 
 

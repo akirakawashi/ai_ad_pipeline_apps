@@ -270,23 +270,85 @@ def test_roads_upload_recomputes_city_bounds(client, city):
     assert _city_bounds(city) == pytest.approx((45.00, 45.05, 36.00, 36.10))
 
 
-def test_route_geometry_round_trip(client, city):
+# Прямая дорога по широте 45.30: удобна тем, что о правильном ответе можно
+# судить по одному числу — легла линия на дорогу или осталась там, где вела рука.
+STRAIGHT_ROAD: list[tuple[float, float]] = [
+    (36.40, 45.30),
+    (36.41, 45.30),
+    (36.42, 45.30),
+]
+
+
+def _draw(client, city: str, route_slug: str, stroke: list[list[float]]):
+    return client.post(
+        f"{CITIES}/{city}/routes/{route_slug}/geometry",
+        json={"stroke": stroke},
+    )
+
+
+def _route_with_roads(client, city: str) -> str:
+    """Город с дорожным слоем и пустой маршрут на нём — почва для рисования."""
+    _upload(client, f"{CITIES}/{city}/roads-geometry", _collection(STRAIGHT_ROAD))
     client.post(f"{CITIES}/{city}/routes", json={"slug": "route-1", "name": "Кольцо"})
-    url = f"{CITIES}/{city}/routes/route-1/geometry"
+    return f"{CITIES}/{city}/routes/route-1/geometry"
+
+
+def test_drawn_route_lands_on_the_roads(client, city):
+    """Главный тест рисования: кривой штрих ложится ровно на дорогу.
+
+    Рука ведёт линию в стороне от дороги (десяток метров) и с разной высотой —
+    попадать точно рисующий не обязан. Ответ обязан лежать на дороге.
+    """
+    url = _route_with_roads(client, city)
     assert client.get(url).status_code == 404
 
-    points = [[36.40, 45.30], [36.41, 45.31]]
-    assert _upload(client, url, _collection(points)).status_code == 200
+    assert _draw(
+        client,
+        city,
+        "route-1",
+        [[36.4005, 45.30012], [36.4103, 45.29991], [36.4198, 45.30014]],
+    ).status_code == 200
 
     loaded = payload(client.get(url))
-    assert loaded["features"][0]["geometry"]["coordinates"] == points
+    assert len(loaded["features"]) == 1, "маршрут — одна линия, а не мешок отрезков"
+    line = loaded["features"][0]["geometry"]
+    assert line["type"] == "LineString"
+    assert len(line["coordinates"]) >= 2
+    # Ни одной точки не осталось там, где вела рука: все легли на саму дорогу.
+    assert all(point[1] == pytest.approx(45.30) for point in line["coordinates"])
     assert payload(client.get(f"{CITIES}/{city}"))["routes"][0]["has_geometry"] is True
 
 
-def test_geometry_is_revalidated_by_etag(client, city):
+def test_drawing_is_refused_without_a_road_layer(client, city):
+    """Без дорожного слоя рисовать не по чему — и об этом говорится словами."""
     client.post(f"{CITIES}/{city}/routes", json={"slug": "route-1", "name": "Кольцо"})
-    url = f"{CITIES}/{city}/routes/route-1/geometry"
-    _upload(client, url, _collection([[36.40, 45.30], [36.41, 45.31]]))
+
+    response = _draw(client, city, "route-1", [[36.40, 45.30], [36.41, 45.30]])
+
+    assert response.status_code == 400
+    assert "дорожный слой" in response.json()["detail"]
+    assert payload(client.get(f"{CITIES}/{city}"))["routes"][0]["has_geometry"] is False
+
+
+@pytest.mark.parametrize(
+    "stroke",
+    [
+        [[36.40, 45.30]],
+        [[20.0, 20.0], [20.1, 20.1]],
+        [[500.0, 45.30], [36.41, 45.30]],
+    ],
+    ids=["одна точка", "мимо всех дорог", "координаты не с Земли"],
+)
+def test_broken_stroke_is_400_and_changes_nothing(client, city, stroke):
+    _route_with_roads(client, city)
+
+    assert _draw(client, city, "route-1", stroke).status_code == 400
+    assert payload(client.get(f"{CITIES}/{city}"))["routes"][0]["has_geometry"] is False
+
+
+def test_geometry_is_revalidated_by_etag(client, city):
+    url = _route_with_roads(client, city)
+    _draw(client, city, "route-1", [[36.4005, 45.3001], [36.4198, 45.3001]])
 
     first = client.get(url)
     etag = first.headers["etag"]

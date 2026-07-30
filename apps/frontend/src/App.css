@@ -2928,6 +2928,58 @@ button:disabled,
   }
 }
 
+/* --- рисование маршрута --------------------------------------------------- */
+
+.map-viewport svg.is-zoomable {
+  cursor: grab;
+  touch-action: none;
+}
+
+.map-viewport svg.is-zoomable:active {
+  cursor: grabbing;
+}
+
+/* В режиме рисования перетаскивание ведёт линию, а не двигает карту, поэтому и
+   курсор другой: «схватить» здесь означало бы не то, что произойдёт. */
+.map-viewport svg.is-drawing-mode,
+.map-viewport svg.is-drawing-mode:active {
+  cursor: crosshair;
+}
+
+/* Линия «как вела рука» — намеренно не похожа на маршрут: пунктир и блёклый
+   цвет говорят, что это ещё черновик, а не проложенный по дорогам путь. */
+.hand-stroke {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.85);
+  stroke-width: 2.5;
+  stroke-dasharray: 7 5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.hand-stroke.is-settled {
+  stroke: rgba(255, 255, 255, 0.55);
+}
+
+.route-drawing {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.route-drawing .map-viewport {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.route-drawing-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .legend {
   position: absolute;
   left: 18px;

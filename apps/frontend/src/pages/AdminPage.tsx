@@ -9,12 +9,12 @@ import {
   updateCity,
   updateRoute,
   uploadRoadsGeometry,
-  uploadRouteGeometry,
 } from '../api'
 import { AdminLogin } from '../components/AdminLogin'
 import { AdminAssignments } from '../components/AdminAssignments'
 import { AdminUsers } from '../components/AdminUsers'
 import { CatalogImports } from '../components/CatalogImports'
+import { RouteDrawing } from '../components/RouteDrawing'
 import { EmptyState, ErrorBanner } from '../components/common/Feedback'
 import { Select } from '../components/common/Select'
 import { Tabs } from '../components/common/Tabs'
@@ -119,6 +119,7 @@ export function AdminPage() {
   const [cityDraft, setCityDraft] = useState<CityDraft>(EMPTY_CITY)
   const [routeDraft, setRouteDraft] = useState<RouteDraft>(EMPTY_ROUTE)
   const [editingRoute, setEditingRoute] = useState<string | null>(null)
+  const [drawingRoute, setDrawingRoute] = useState<string | null>(null)
   const [routeEdit, setRouteEdit] = useState<RouteDraft>(EMPTY_ROUTE)
   const [cityEdit, setCityEdit] = useState<CityDraft | null>(null)
 
@@ -256,11 +257,10 @@ export function AdminPage() {
       return `Дорожный слой «${updated.name}» загружен, рамка города пересчитана.`
     })
 
-  const uploadRoute = (route: Route, file: File) =>
-    run(async () => {
-      await uploadRouteGeometry(citySlug, route.slug, file)
-      return `Линия маршрута «${route.name}» загружена.`
-    })
+  // Какой маршрут рисуем — выводим из списка, который на экране сейчас, а не
+  // держим отдельно: город можно переключить, не выходя из режима рисования,
+  // и слаг от прежнего города не должен пережить переключение.
+  const drawnRoute = detail?.routes.find((route) => route.slug === drawingRoute) ?? null
 
   const startRouteEdit = (route: Route) => {
     setEditingRoute(route.slug)
@@ -581,7 +581,26 @@ export function AdminPage() {
                 </>
               ))}
 
-              {tab === 'routes' && (
+              {/* Рисование занимает вкладку целиком: карте нужна вся ширина,
+                  а вести линию, когда рядом формы, — промахиваться мимо неё. */}
+              {tab === 'routes' && drawnRoute && (
+                <div className="city-scope-block">
+                  <h3>Линия маршрута «{drawnRoute.name}»</h3>
+                  <RouteDrawing
+                    citySlug={citySlug}
+                    route={drawnRoute}
+                    onSaved={(message) => {
+                      setDrawingRoute(null)
+                      if (message) {
+                        setNotice(message)
+                        setVersion((current) => current + 1)
+                      }
+                    }}
+                  />
+                </div>
+              )}
+
+              {tab === 'routes' && !drawnRoute && (
                 <>
                   <div className="city-scope-block">
                     <h3>Новый маршрут</h3>
@@ -780,19 +799,13 @@ export function AdminPage() {
                                 >
                                   Правка
                                 </button>
-                                <label className="secondary file-button">
-                                  {route.has_geometry ? 'Заменить линию' : 'Загрузить линию'}
-                                  <input
-                                    type="file"
-                                    accept={GEOJSON_ACCEPT}
-                                    disabled={busy}
-                                    onChange={(event) => {
-                                      const file = event.target.files?.[0]
-                                      if (file) void uploadRoute(route, file)
-                                      event.target.value = ''
-                                    }}
-                                  />
-                                </label>
+                                <button
+                                  className="secondary"
+                                  disabled={busy}
+                                  onClick={() => setDrawingRoute(route.slug)}
+                                >
+                                  {route.has_geometry ? 'Перерисовать линию' : 'Нарисовать линию'}
+                                </button>
                                 <button
                                   className={route.is_active ? 'geozone-delete' : 'primary'}
                                   disabled={busy}

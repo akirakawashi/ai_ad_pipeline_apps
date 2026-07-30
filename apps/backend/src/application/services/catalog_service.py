@@ -32,7 +32,13 @@ from application.services.metrics_rollup import rollup_brands, rollup_totals
 from application.services.pipeline_run_service import PipelineRunService
 from domain.entities import PipelineRunStatus
 from domain.geometry import InvalidGeometryError as DomainGeometryError
-from domain.geometry import bounds_of, parse_feature_collection
+from domain.geometry import (
+    bounds_of,
+    parse_feature_collection,
+    parse_stroke,
+    route_line_collection,
+)
+from domain.route_snapping import RoadGraph, RouteSnappingError, snap_stroke
 
 # Слаг живёт в URL, поэтому только то, что в URL не портится.
 SLUG_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{1,63}$")
@@ -260,14 +266,43 @@ class CatalogService:
             raise CatalogNotFoundError("Дорожный слой города не загружен.")
         return geometry
 
-    def set_route_geometry(
+    def draw_route_geometry(
         self,
         city_slug: str,
         route_slug: str,
         *,
-        content: bytes,
+        stroke: object,
     ) -> RouteDTO:
-        geometry = _parse_geometry(content)
+        """Нарисованная от руки линия → маршрут по настоящим дорогам города.
+
+        Загрузки geojson для маршрута больше нет: линию рисуют поверх дорожного
+        слоя, а `route_snapping` кладёт её на сеть. Причина не в удобстве — так
+        маршрут впервые получается **упорядоченной ломаной**. Файл из OSM давал
+        мешок отрезков без порядка и с ответвлениями, из которого нельзя было
+        взять ни начало, ни длину.
+
+        Дорожный слой города здесь обязателен: рисовать не по чему, если сети
+        нет. Это единственное место, где слой читается ради расчёта, а не ради
+        отрисовки, — и потому единственное, где его вес (до полутора мегабайт)
+        оправдан. Граф строится заново на каждый вызов: ~60 мс на город, а
+        рисование маршрута — действие редкое и ручное. Появится нужда — кэш
+        ляжет сюда же, не задевая ни домен, ни ручку.
+        """
+        roads = self._repository.get_roads_geometry(city_slug)
+        if roads is None:
+            raise InvalidGeometryError(
+                "У города не загружен дорожный слой — по нему нечего вести маршрут."
+            )
+        # Домен не знает про HTTP и говорит своими ошибками; наружу все три
+        # причины («точки не те», «сеть пустая», «линия мимо дорог») должны
+        # выйти одинаково — как 400 с человеческим текстом.
+        try:
+            points = parse_stroke(stroke)
+            graph = RoadGraph.from_feature_collection(roads.geometry)
+            geometry = route_line_collection(snap_stroke(graph, points))
+        except (DomainGeometryError, RouteSnappingError) as error:
+            raise InvalidGeometryError(str(error)) from error
+
         if not self._repository.set_route_geometry(
             city_slug,
             route_slug,

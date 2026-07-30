@@ -1,16 +1,21 @@
 """Проверка geojson и рамка города по нему. Чистые функции, без I/O.
 
-Геометрия хранится «как пришла» — FeatureCollection из OSM без переработки: её
-рисует фронтенд, а любая нормализация здесь означала бы вторую модель геометрии,
-которую пришлось бы поддерживать наравне с первой.
+Дорожный слой города хранится «как пришёл» — FeatureCollection из OSM без
+переработки: его рисует фронтенд, а любая нормализация здесь означала бы вторую
+модель геометрии, которую пришлось бы поддерживать наравне с первой. Поэтому его
+проверка минимальная и отвечает на один вопрос: это вообще geojson с
+координатами в этом мире, или человек загрузил не тот файл.
 
-Поэтому проверка минимальная и отвечает на один вопрос: это вообще geojson с
-координатами в этом мире, или человек загрузил не тот файл. Геометрической
-осмысленностью (соединены ли куски, идут ли по дороге) домен не занимается —
-именно поэтому ось маршрута отложена отдельным решением.
+С линией маршрута иначе, и разница принципиальная. Её больше не загружают
+файлом — её рисуют поверх дорожного слоя, а `route_snapping` кладёт нарисованное
+на настоящие дороги. Поэтому маршрут приходит сюда уже в одном-единственном
+виде: одна упорядоченная ломаная от начала до конца. Из этого вида и собирается
+FeatureCollection для хранения — см. `route_line_collection`.
 """
 
 from __future__ import annotations
+
+from collections.abc import Sequence
 
 from domain.catalog import CityBounds
 
@@ -79,6 +84,62 @@ def parse_feature_collection(raw: object) -> dict:
     if not coordinates:
         raise InvalidGeometryError("Ни у одного объекта нет координат.")
     return raw
+
+
+def parse_stroke(raw: object) -> list[tuple[float, float]]:
+    """Точки нарисованной линии → проверенный список координат.
+
+    Форму (список пар чисел) держит модель запроса; здесь — то, что относится к
+    смыслу: точек хотя бы две и все они на этой планете. Проверка та же, что и
+    для файла: перепутанные местами широта и долгота дают координату за краем
+    мира, и лучше сказать об этом словами, чем строить маршрут по мусору.
+    """
+    if not isinstance(raw, (list, tuple)):
+        raise InvalidGeometryError("Линия не передана.")
+    points: list[tuple[float, float]] = []
+    for item in raw:
+        if (
+            not isinstance(item, (list, tuple))
+            or len(item) < 2
+            or isinstance(item[0], bool)
+            or isinstance(item[1], bool)
+            or not isinstance(item[0], (int, float))
+            or not isinstance(item[1], (int, float))
+        ):
+            raise InvalidGeometryError("Точка линии должна быть парой чисел.")
+        longitude, latitude = float(item[0]), float(item[1])
+        if not (-180.0 <= longitude <= 180.0 and -90.0 <= latitude <= 90.0):
+            raise InvalidGeometryError("Точка линии выходит за пределы Земли.")
+        points.append((longitude, latitude))
+    if len(points) < 2:
+        raise InvalidGeometryError("В линии должно быть хотя бы две точки.")
+    return points
+
+
+def route_line_collection(path: Sequence[tuple[float, float]]) -> dict:
+    """Ломаная маршрута → FeatureCollection ровно с одной линией.
+
+    Одна линия, а не набор кусков, — в этом весь смысл перехода на рисование.
+    Пока маршрут грузили файлом из OSM, он был мешком отрезков без порядка, и
+    фронтенд раскладывал их эвристикой «ближайший конец от самой западной
+    точки». Нарисованный маршрут упорядочен по построению: точки идут так, как
+    вела рука, и у маршрута появляются начало, конец и длина.
+    """
+    if len(path) < 2:
+        raise InvalidGeometryError("В маршруте должно быть хотя бы две точки.")
+    return {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "properties": {},
+                "geometry": {
+                    "type": "LineString",
+                    "coordinates": [[point[0], point[1]] for point in path],
+                },
+            }
+        ],
+    }
 
 
 def bounds_of(collection: dict) -> CityBounds | None:

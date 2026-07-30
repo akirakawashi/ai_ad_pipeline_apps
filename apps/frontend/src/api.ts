@@ -287,12 +287,24 @@ export function uploadRoadsGeometry(
   return uploadGeometry(`/cities/${citySlug}/roads-geometry`, file)
 }
 
-export function uploadRouteGeometry(
+/**
+ * Отправляет нарисованную от руки линию: сервер кладёт её на дороги города и
+ * сохраняет маршрут. Загрузки geojson для маршрута больше нет — линию рисуют.
+ *
+ * Идёт через apiFetch, а не через uploadGeometry: тело обычный JSON, значит
+ * пароль подставится сам и 401 обработается как везде. Ручная возня с
+ * adminHeaders() нужна только тем трём функциям, что строят multipart или
+ * разбирают пустой 204.
+ */
+export function drawRouteGeometry(
   citySlug: string,
   routeSlug: string,
-  file: File,
+  stroke: [number, number][],
 ): Promise<Route> {
-  return uploadGeometry(`/cities/${citySlug}/routes/${routeSlug}/geometry`, file)
+  return apiFetch(`/cities/${citySlug}/routes/${routeSlug}/geometry`, {
+    method: 'POST',
+    body: JSON.stringify({ stroke }),
+  })
 }
 
 export function getRoadsGeometry(citySlug: string): Promise<unknown> {
