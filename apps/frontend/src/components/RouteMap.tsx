@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
 
 type Position = [number, number]
 
@@ -262,7 +262,7 @@ export function RouteMap({
   }, [])
 
   const handleWheel = useCallback(
-    (event: ReactWheelEvent<SVGSVGElement>) => {
+    (event: WheelEvent) => {
       if (!zoomable) return
       event.preventDefault()
       setView((current) => {
@@ -284,6 +284,18 @@ export function RouteMap({
     },
     [zoomable, toUserSpace, clampView],
   )
+
+  // Колесо вешаем нативно, а не через onWheel. React отдаёт wheel **пассивным**
+  // слушателем на корне, поэтому preventDefault() внутри onWheel молча не
+  // срабатывает: карта приближалась бы, но страница под ней продолжала бы
+  // прокручиваться. Отсюда и passive: false — только так прокрутку удаётся
+  // остановить, пока курсор над картой.
+  useEffect(() => {
+    const svg = svgRef.current
+    if (!svg || !zoomable) return
+    svg.addEventListener('wheel', handleWheel, { passive: false })
+    return () => svg.removeEventListener('wheel', handleWheel)
+  }, [zoomable, handleWheel])
 
   // --- рисование и панорамирование -----------------------------------------
   // Оба живут на одних и тех же событиях указателя, поэтому и состояние одно.
@@ -448,7 +460,6 @@ export function RouteMap({
         role="img"
         aria-labelledby="routeMapTitle routeMapDesc"
         className={`${zoomable ? 'is-zoomable' : ''}${drawing ? ' is-drawing-mode' : ''}`}
-        onWheel={handleWheel}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={finishGesture}
