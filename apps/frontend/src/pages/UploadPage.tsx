@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getAssignment, getCities, getCity, getRouteAssignments } from '../api'
+import { DateField } from '../components/common/DateField'
 import { FileCard } from '../components/common/FileCard'
 import { ErrorBanner, InfoBanner } from '../components/common/Feedback'
 import { PageHeader } from '../components/common/PageHeader'
@@ -148,7 +149,7 @@ export function UploadPage({ citySlug, routeSlug, assignmentId }: UploadPageProp
   if (!pinned && !selectedCity) missingUploadFields.push('город')
   if (!pinned && !selectedRoute) missingUploadFields.push('маршрут')
   if (!destinationReady) missingUploadFields.push('задание')
-  if (!operatorId) missingUploadFields.push('оператора')
+  if (!operatorId) missingUploadFields.push('сотрудника')
   const missingUploadLabel =
     missingUploadFields.length > 1
       ? `${missingUploadFields.slice(0, -1).join(', ')} и ${
@@ -257,10 +258,10 @@ export function UploadPage({ citySlug, routeSlug, assignmentId }: UploadPageProp
 
         <div className="destination-fields">
           <UserSelect
-            label="Оператор"
+            label="Кто загрузил"
             value={operatorId}
             disabled={upload.busy}
-            placeholder="Кто снимал"
+            placeholder="Кто загрузил"
             onChange={setOperatorId}
           />
         </div>
@@ -279,7 +280,7 @@ export function UploadPage({ citySlug, routeSlug, assignmentId }: UploadPageProp
         <section
           className={`upload-panel${upload.busy ? ' busy' : ''}${
             upload.dragActive ? ' drag-active' : ''
-          }`}
+          }${upload.items.length ? ' has-files' : ''}`}
           {...upload.dragHandlers}
         >
           <div className="upload-icon">↑</div>
@@ -338,25 +339,24 @@ export function UploadPage({ citySlug, routeSlug, assignmentId }: UploadPageProp
                   }
                 >
                   {/* Дата у каждого файла своя: одна съёмка — один проезд, и
-                      партию нередко забирают с карты за несколько дней. Значение
-                      подставлено из метаданных, но метаданные врут после
-                      копирования — поэтому дату видно, а не прячем в подсказку. */}
-                  <label className="upload-file-date">
+                      партию нередко забирают с карты за несколько дней.
+                      Автоподстановки нет: метка файла после копирования не
+                      доказывает, когда видео действительно сняли. */}
+                  <div className="upload-file-date">
                     <span>
                       Когда снято <b aria-hidden="true">*</b>
                     </span>
-                    <input
-                      type="date"
-                      className={`text-input${item.shotDate ? '' : ' is-invalid'}`}
+                    <DateField
                       value={item.shotDate}
                       required
-                      aria-invalid={!item.shotDate}
+                      invalid={!item.shotDate}
+                      clearable={false}
+                      placeholder="ДД.ММ.ГГГГ"
+                      ariaLabel={`Когда снято: ${item.file.name}`}
                       disabled={upload.busy || item.status === 'done'}
-                      onChange={(event) =>
-                        upload.setShotDate(item.key, event.target.value)
-                      }
+                      onChange={(value) => upload.setShotDate(item.key, value)}
                     />
-                  </label>
+                  </div>
                   {!item.shotDate && (
                     <span className="upload-file-error">Укажите дату съёмки.</span>
                   )}

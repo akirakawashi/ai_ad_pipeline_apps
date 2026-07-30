@@ -194,7 +194,7 @@ only feed the pipeline's own `report.html`.
 | Change how a catalogue pack is uploaded or a revision rolled back | `components/CatalogImports.tsx` (admin only). `CatalogPage.tsx` is the read-only directory and must stay that way |
 | Add a section to the admin panel | a component under `components/`, mounted from `AdminPage.tsx`. City-scoped → a tab in `CITY_TABS`; not city-scoped → a page-level section in `AdminSection` (like `AdminUsers.tsx`). Keep the two switchers visually different — underlined text for sections, pill tabs inside a city — or they read as one level. Guard its writes with `require_admin` in the same change |
 | Change the people directory | `user_service.py` → `users.py` router → `AdminUsers.tsx` — creation, renaming and hiding all live there. `UserSelect.tsx` only selects; do not put a create form back into it (see §10) |
-| Change how the shooting date is entered | `useVideoUpload.ts` (`shotDate` per queued file, `shotStartedAt()` decides what is sent) → the date field in `UploadPage.tsx` → `createRun` in `api.ts` → `CreateRunRequest` / `UpdateShootingRequest` → `pipeline_run_service` → repository → the `PipelineRun` model and `0001_schema`. Date↔ISO conversion belongs in `utils/formatters.ts` and nowhere else — see the timezone trap in §10. Preserve the invariant at every layer: create requires `shot_started_at`, PATCH may omit it but may not send `null`, and the database column is `NOT NULL` |
+| Change how the shooting date is entered | `useVideoUpload.ts` (`shotDate` per queued file, `shotStartedAt()` decides what is sent) → `DateField.tsx` + its mount in `UploadPage.tsx` → `createRun` in `api.ts` → `CreateRunRequest` / `UpdateShootingRequest` → `pipeline_run_service` → repository → the `PipelineRun` model and `0001_schema`. Use the shared `DateField`, never a native `<input type="date">`: the browser owns that popup and renders it outside the product theme. Date↔ISO conversion belongs in `utils/formatters.ts` and nowhere else — see the timezone trap in §10. Preserve the invariant at every layer: create requires `shot_started_at`, PATCH may omit it but may not send `null`, and the database column is `NOT NULL` |
 | Change what the overlay card shows | `viewer/payload.py` + `OverlayObjectPayload` in `pipeline_contracts/artifacts.py` + `VideoOverlayPlayer.tsx` |
 
 ---
@@ -433,11 +433,11 @@ is collected, and calls `pytest.exit` when postgres is unreachable. There is no 
   is parsed as UTC midnight by spec, while `new Date(2026, 4, 3)` is local midnight. West of Greenwich the
   first one lands on the previous day, so a person picking the 3rd would store the 2nd — no error, no
   warning, just a shooting on the wrong day. Hence `isoFromDateInput` in `utils/formatters.ts` builds the
-  date from numbers, and `dateInputFromIso` derives the field value from `localInputFromIso` instead of
-  slicing the ISO string (the ISO date is in UTC, so an evening drive would read as yesterday's).
-  **Both directions must stay in `formatters.ts`** — a second copy of this conversion is how the bug
-  comes back. `shot_started_at` is also the axis the route date filter will use, so a day off here is a
-  shooting that falls out of the wrong period.
+  date from numbers. Keep this conversion there — a second copy is how the bug comes back.
+  `shot_started_at` is also the axis the route date filter uses, so a day off here is a shooting that
+  falls out of the wrong period. **The upload date is never inferred:** every queued file starts with an
+  empty required date. In particular, do not bring back `File.lastModified`; after a copy from a memory
+  card it can describe the copy, not the shooting.
 * **The route's date period is filtered on the server, and that is not an accident.** The route summary
   already ships every shooting separately, so filtering it in the browser looks free — it is not. Mean,
   median, std and the per-brand zero-fill ("a brand missing from a shooting is a zero, not a skip") would

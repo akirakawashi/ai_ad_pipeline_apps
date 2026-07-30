@@ -138,6 +138,8 @@ interface DateFieldProps {
   label?: string
   placeholder?: string
   disabled?: boolean
+  required?: boolean
+  invalid?: boolean
   /** Границы выбора, «ГГГГ-ММ-ДД». Дни за ними видны, но не нажимаются. */
   min?: string
   max?: string
@@ -152,6 +154,8 @@ export function DateField({
   label,
   placeholder = 'Выберите дату',
   disabled = false,
+  required = false,
+  invalid = false,
   min,
   max,
   clearable = true,
@@ -229,10 +233,12 @@ export function DateField({
         type="button"
         className={`date-field-trigger${open ? ' is-open' : ''}${
           value ? '' : ' is-empty'
-        }`}
+        }${invalid ? ' is-invalid' : ''}`}
         disabled={disabled}
         aria-haspopup="dialog"
         aria-expanded={open}
+        aria-invalid={invalid}
+        aria-required={required}
         aria-label={ariaLabel ?? label}
         onClick={toggle}
       >

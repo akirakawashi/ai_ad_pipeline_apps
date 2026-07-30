@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState, type DragEvent } from 'react'
 import { completeUpload, createRun, uploadVideo } from '../api'
-import { dateInputFromIso, isoFromDateInput } from '../utils/formatters'
+import { isoFromDateInput } from '../utils/formatters'
 
 export type UploadItemStatus = 'queued' | 'uploading' | 'done' | 'error'
 
@@ -20,23 +20,15 @@ export interface UploadItem {
   runId?: string
 }
 
-function fileTimestamp(file: File): string {
-  return new Date(file.lastModified).toISOString()
-}
-
 /**
  * Что уходит на сервер как время съёмки.
  *
- * Дату человек ставит сам, поля времени в форме нет — для отчётов нужен день.
- * Но если дату не трогали, отдаём метку файла целиком: там есть часы, и по ним
- * съёмки одного дня встают в правильном порядке. Как только дату поменяли,
- * время из файла становится враньём — у копии с карты памяти это момент
- * копирования, — поэтому отдаём полночь: «время не указано» честнее, чем
- * правдоподобная выдумка.
+ * Дату человек обязательно ставит сам для каждого файла. Время из файла не
+ * используем: `lastModified` после переноса с карты памяти может быть временем
+ * копирования. Поля времени в форме нет, поэтому отправляем начало выбранного
+ * дня в локальном часовом поясе.
  */
 function shotStartedAt(item: UploadItem): string {
-  const fromFile = fileTimestamp(item.file)
-  if (item.shotDate === dateInputFromIso(fromFile)) return fromFile
   const fromInput = isoFromDateInput(item.shotDate)
   if (!fromInput) throw new Error('Укажите дату съёмки.')
   return fromInput
@@ -91,7 +83,7 @@ export function useVideoUpload({
       const incoming = Array.from(fileList).map((file) => ({
         key: makeKey(file),
         file,
-        shotDate: dateInputFromIso(fileTimestamp(file)),
+        shotDate: '',
         status: 'queued' as UploadItemStatus,
         progress: 0,
       }))

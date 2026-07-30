@@ -93,18 +93,6 @@ export function localInputFromIso(value: string | null): string {
   return new Date(parsed.getTime() - offset).toISOString().slice(0, 16)
 }
 
-/**
- * ISO → «ГГГГ-ММ-ДД» для <input type="date"> по МЕСТНОЙ дате.
- *
- * Отрезаем от значения для datetime-local, а не считаем заново: перевод в
- * местное время там уже сделан, и вторая его копия рано или поздно разошлась бы
- * с первой. Резать сам ISO нельзя — там дата в UTC, и вечерняя съёмка по
- * местному времени показалась бы вчерашней.
- */
-export function dateInputFromIso(value: string | null): string {
-  return localInputFromIso(value).slice(0, 10)
-}
-
 /** Значение календарного поля «ГГГГ-ММ-ДД» → короткая подпись «ДД.ММ.ГГГГ». */
 export function formatDateInput(value: string): string {
   const [year, month, day] = value.split('-').map(Number)

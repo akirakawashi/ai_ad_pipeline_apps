@@ -10,7 +10,7 @@ import {
 } from '../utils/formatters'
 
 /**
- * Реквизиты съёмки: кто снимал и когда.
+ * Реквизиты съёмки: кто загрузил видео и когда его сняли.
  *
  * Время начала подставляется при загрузке из метаданных файла и потому
  * правится: у копии с карты памяти это время копирования, а не записи.
@@ -74,11 +74,11 @@ export function ShootingFacts({
             />
           </div>
           <UserSelect
-            label="Оператор"
+            label="Кто загрузил"
             value={operatorId}
             current={run.operator}
             disabled={busy}
-            placeholder="Кто снимал"
+            placeholder="Кто загрузил"
             onChange={setOperatorId}
           />
         </div>
@@ -105,7 +105,7 @@ export function ShootingFacts({
   return (
     <dl className="assignment-facts">
       <div>
-        <dt>Оператор</dt>
+        <dt>Кто загрузил</dt>
         <dd>{run.operator?.full_name ?? '—'}</dd>
       </div>
       <div>
