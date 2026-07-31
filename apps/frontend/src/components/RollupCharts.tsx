@@ -106,9 +106,9 @@ export function RollupCharts({
     <div className="charts-grid">
       <section className="panel chart-card">
         <header>
-          <h3>Объектов за съёмку</h3>
+          <h3>Объектов за видео</h3>
           <p>
-            {aggregate === 'median' ? 'Медиана' : 'Среднее'} по съёмкам. Усы —
+            {aggregate === 'median' ? 'Медиана' : 'Среднее'} по видео. Усы —
             разброс между ними.
           </p>
         </header>
@@ -123,7 +123,7 @@ export function RollupCharts({
               itemStyle={tooltipItemStyle}
               labelStyle={tooltipLabelStyle}
             />
-            <Bar dataKey="objects" name="За съёмку" radius={[6, 6, 0, 0]}>
+            <Bar dataKey="objects" name="За видео" radius={[6, 6, 0, 0]}>
               {brandRows.map((row) => (
                 <Cell key={row.brand_key} fill={brandColor(row.brand_key)} />
               ))}
@@ -142,7 +142,7 @@ export function RollupCharts({
         <header>
           <h3>Доля заметности</h3>
           <p>
-            Сколько внимания забирает каждый бренд за съёмку.
+            Сколько внимания забирает каждый бренд за видео.
             {aggregate === 'median' &&
               ' Под медианой доли не сходятся в 100 %: медиана суммы не равна' +
                 ' сумме медиан.'}
@@ -175,9 +175,9 @@ export function RollupCharts({
 
       <section className="panel chart-card wide-chart">
         <header>
-          <h3>Сравнение съёмок</h3>
+          <h3>Сравнение видео</h3>
           <p>
-            Каждый столбец — одна съёмка. Выбивающаяся съёмка видна сразу;
+            Каждый столбец — одно видео. Выбивающееся видео видно сразу;
             смотрите на его длительность в подсказке.
           </p>
         </header>

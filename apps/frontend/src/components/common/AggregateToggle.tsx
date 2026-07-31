@@ -24,7 +24,7 @@ export function AggregateToggle({
       value={value}
       options={OPTIONS}
       onChange={(next) => onChange(next as Aggregate)}
-      ariaLabel="Как считать показатели за съёмку"
+      ariaLabel="Как считать показатели за видео"
     />
   )
 }

@@ -128,14 +128,14 @@ function PeriodPicker({
         <form
           className="period-filter-popover"
           role="dialog"
-          aria-label="Период съёмок"
+          aria-label="Период записи"
           onSubmit={(event) => {
             event.preventDefault()
             apply()
           }}
         >
           <header className="period-filter-popover-head">
-            <h3>Период съёмок</h3>
+            <h3>Период записи</h3>
             <p>Начальная и конечная даты входят в выбор.</p>
           </header>
           {/* Границы ограничивают друг друга: конец не выбрать раньше начала.
@@ -215,10 +215,10 @@ export function RouteSummaryPanel({
         <EmptyState
           text={
             filtered
-              ? 'За выбранный период съёмок нет. Расширьте окно или сбросьте его.'
+              ? 'За выбранный период видео нет. Расширьте окно или сбросьте его.'
               : waiting > 0
-                ? `Метрики маршрута появятся, когда обработается первая съёмка. Сейчас в работе ${waiting}.`
-                : 'По маршруту ещё нет обработанных съёмок.'
+                ? `Метрики маршрута появятся, когда обработается первое видео. Сейчас в работе ${waiting}.`
+                : 'По маршруту ещё нет обработанных видео.'
           }
         />
       </>
@@ -230,11 +230,11 @@ export function RouteSummaryPanel({
       {heading}
       <MetricsPanel aggregate={aggregate} onAggregateChange={onAggregateChange}>
         <Metric
-          label="Заметность за съёмку"
+          label="Заметность за видео"
           value={formatStat(totals.visibility_per_shooting, aggregate)}
         />
         <Metric
-          label="Объектов за съёмку"
+          label="Объектов за видео"
           value={formatStat(totals.objects_per_shooting, aggregate)}
         />
         <Metric
@@ -248,7 +248,7 @@ export function RouteSummaryPanel({
 
       {waiting > 0 && (
         <p className="assignment-pending-note">
-          Считаем по {totals.shootings_completed} готовым съёмкам. Ещё {waiting} в
+          Считаем по {totals.shootings_completed} готовым видео. Ещё {waiting} в
           работе — цифры изменятся после обработки.
         </p>
       )}
@@ -257,9 +257,9 @@ export function RouteSummaryPanel({
 
       <section className="panel objects-panel">
         <header>
-          <h2>Съёмки маршрута</h2>
+          <h2>Видео маршрута</h2>
           <p>
-            Каждое видео отдельно, по порядку съёмки. Разброс в цифрах выше — это
+            Каждое видео отдельно, по дате записи. Разброс в цифрах выше — это
             разброс между этими строками.
           </p>
         </header>

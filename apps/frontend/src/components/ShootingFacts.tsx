@@ -39,7 +39,7 @@ export function ShootingFacts({
   const save = () => {
     const shotStartedAt = isoFromLocalInput(startAt)
     if (!shotStartedAt) {
-      setError('Укажите начало съёмки.')
+      setError('Укажите начало записи.')
       return
     }
     setBusy(true)
@@ -59,10 +59,10 @@ export function ShootingFacts({
   if (editing) {
     return (
       <section className="panel assignment-form">
-        <h2>Реквизиты съёмки</h2>
+        <h2>Реквизиты видео</h2>
         <div className="assignment-form-fields">
           <div className="field">
-            Начало съёмки *
+            Начало записи *
             <input
               type="datetime-local"
               className={`text-input${startAt ? '' : ' is-invalid'}`}
@@ -109,11 +109,11 @@ export function ShootingFacts({
         <dd>{run.operator?.full_name ?? '—'}</dd>
       </div>
       <div>
-        <dt>Начало съёмки</dt>
+        <dt>Начало записи</dt>
         <dd>{formatDateTime(run.shot_started_at)}</dd>
       </div>
       <div>
-        <dt>Окончание съёмки</dt>
+        <dt>Окончание записи</dt>
         <dd>{formatDateTime(run.shot_finished_at)}</dd>
       </div>
       <div>

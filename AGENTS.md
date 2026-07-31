@@ -278,6 +278,16 @@ is collected, and calls `pytest.exit` when postgres is unreachable. There is no 
 * **Repositories** own transactions but do not commit; services call `commit()`/`rollback()`.
 * **Comments** explain *why*, in Russian, and are dense in this codebase — match that density and
   keep them truthful when you edit the code they describe.
+* **On screen the unit of account is «видео»; in the code and the comments it stays «съёмка».**
+  Since 31.07.2026 no user-facing string says «съёмка» — the people who upload and read are holding
+  a file, and a second word for it bought them nothing. Internally the two are not the same thing:
+  a «съёмка» is a row in `pipeline_runs` with an assignment, a date, an operator, a processing status
+  and artifacts, and the video is what sits in MinIO — comments routinely need both in one sentence
+  («исходное видео съёмки»), which a blanket rename would turn into nonsense. So: identifiers stay
+  `shooting*`, comments and `docs/` stay «съёмка», **new UI strings must say «видео»**. Where the
+  word meant the *act* rather than the record — «начало съёмки», «дата съёмки» — the screen says
+  **«запись»**, because «начало видео» reads as a timestamp inside the file. Three strings had to be
+  rewritten rather than substituted, and they are listed in the changelog entry for that date.
 * **Frontend:** no state library, no router library; `fetch` wrapper in `api.ts`, types mirrored by
   hand in `types.ts`. Keep them in sync with backend response DTOs manually.
 * **Server data fetched by an on-page selection is stored with a tag saying whose it is, and read

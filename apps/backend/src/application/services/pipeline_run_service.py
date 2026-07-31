@@ -214,7 +214,7 @@ class PipelineRunService:
         run = self._repository.update_shooting(run_id, fields=fields)
         if run is None:
             self._repository.rollback()
-            raise PipelineRunNotFoundError("Съёмка не найдена.")
+            raise PipelineRunNotFoundError("Видео не найдено.")
         self._repository.commit()
         return run
 

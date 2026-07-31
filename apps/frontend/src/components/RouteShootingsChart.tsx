@@ -70,9 +70,9 @@ export function RouteShootingsChart({
   return (
     <section className="panel chart-card wide-chart">
       <header>
-        <h3>Заметность по съёмкам</h3>
+        <h3>Заметность по видео</h3>
         <p>
-          Столбец — одно видео, по порядку съёмки. Цвет — задание, в которое оно
+          Столбец — одно видео, по дате записи. Цвет — задание, в которое оно
           входит.
         </p>
       </header>

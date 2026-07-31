@@ -26,7 +26,7 @@ import {
 const POLL_INTERVAL_MS = 20000
 
 const VIEW_TABS = [
-  { value: 'work', label: 'Съёмки' },
+  { value: 'work', label: 'Видео' },
   { value: 'analytics', label: 'Аналитика' },
 ]
 
@@ -157,7 +157,7 @@ export function AssignmentPage({
               className="primary"
               onClick={() => navigate(uploadPath({ assignmentId: assignment.id }))}
             >
-              Добавить съёмку
+              Добавить видео
             </button>
           </div>
         }
@@ -220,9 +220,9 @@ export function AssignmentPage({
       ) : (
         <section className="panel objects-panel">
           <header>
-            <h2>Съёмки</h2>
+            <h2>Видео</h2>
             <p>
-              Каждое видео — отдельная съёмка маршрута. Откройте, чтобы увидеть разбор.
+              Каждое видео — один проезд по маршруту. Откройте, чтобы увидеть разбор.
             </p>
           </header>
           {runs.length ? (
@@ -261,7 +261,7 @@ function AssignmentAnalytics({
       <EmptyState
         text={
           waiting > 0
-            ? `Метрики появятся, когда обработается первая съёмка. Сейчас в работе ${waiting}.`
+            ? `Метрики появятся, когда обработается первое видео. Сейчас в работе ${waiting}.`
             : 'В задании пока нет видео.'
         }
       />
@@ -272,20 +272,20 @@ function AssignmentAnalytics({
     <>
       <MetricsPanel aggregate={aggregate} onAggregateChange={onAggregateChange}>
         <Metric
-          label="Объектов за съёмку"
+          label="Объектов за видео"
           value={formatStat(totals.objects_per_shooting, aggregate)}
         />
         <Metric
-          label="Заметность за съёмку"
+          label="Заметность за видео"
           value={formatStat(totals.visibility_per_shooting, aggregate)}
         />
-        <Metric label="Съёмок" value={totals.shootings_total} />
+        <Metric label="Видео" value={totals.shootings_total} />
         <Metric label="Отснято" value={formatDuration(totals.duration_sec)} />
       </MetricsPanel>
 
       {waiting > 0 && (
         <p className="assignment-pending-note">
-          Считаем по {totals.shootings_completed} готовым съёмкам. Ещё {waiting} в
+          Считаем по {totals.shootings_completed} готовым видео. Ещё {waiting} в
           работе — данные обновятся после обработки.
         </p>
       )}

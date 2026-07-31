@@ -28,7 +28,7 @@ export function MetricsPanel({
   return (
     <section className="metrics-panel">
       <header className="metrics-panel-head">
-        <span>Оценка за съёмку</span>
+        <span>Оценка за видео</span>
         <AggregateToggle value={aggregate} onChange={onAggregateChange} />
       </header>
       <div className="metrics-panel-grid">{children}</div>

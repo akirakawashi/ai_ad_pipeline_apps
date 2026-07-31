@@ -71,7 +71,7 @@ export function CitiesPage() {
       <PageHeader
         eyebrow="Города"
         title="Города и маршруты"
-        description="Выберите город, затем маршрут — внутри лежат задания со съёмками."
+        description="Выберите город, затем маршрут — внутри лежат задания с видео."
       />
 
       {loading && <RunsSkeleton />}

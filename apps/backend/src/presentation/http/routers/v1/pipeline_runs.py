@@ -41,7 +41,7 @@ def create_run(
 @router.patch("/{run_id}", response_model=OkResponse[PipelineRunResponse])
 def update_shooting(
     payload: UpdateShootingRequest,
-    run_id: str = Path(description="Идентификатор съёмки"),
+    run_id: str = Path(description="Идентификатор видео"),
     service: PipelineRunService = Depends(get_run_service),
 ) -> OkResponse[PipelineRunResponse]:
     result = service.update_shooting(run_id, fields=payload.changed_fields())

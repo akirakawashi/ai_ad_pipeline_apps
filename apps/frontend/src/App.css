@@ -2653,6 +2653,21 @@ button:disabled,
   pointer-events: stroke;
 }
 
+/* Рамку фокуса от мыши гасим, клавиатурную оставляем. Причина в том, как
+   браузер обводит SVG: рамка идёт не по линии, а по её габаритному
+   прямоугольнику, то есть по клику на маршрут поперёк всей карты появлялся
+   белый прямоугольник во весь кадр. Совсем убрать outline нельзя — tabIndex
+   на этой линии стоит ровно ради обхода с клавиатуры, и без рамки было бы
+   непонятно, какой маршрут выбран. */
+.target-route-path:focus {
+  outline: none;
+}
+
+.target-route-path:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .target-route-glow,
 .target-route-intro {
   fill: none;

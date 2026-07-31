@@ -181,8 +181,8 @@ export function UploadPage({ citySlug, routeSlug, assignmentId }: UploadPageProp
     <div className="page narrow-page">
       <PageHeader
         eyebrow={eyebrow}
-        title="Загрузка съёмок"
-        description={`Съёмки попадут в выбранное задание. До ${MAX_FILES} штук.`}
+        title="Загрузка видео"
+        description={`Видео попадут в выбранное задание. До ${MAX_FILES} штук.`}
       />
 
       {catalogError && <ErrorBanner text={catalogError} />}
@@ -250,7 +250,7 @@ export function UploadPage({ citySlug, routeSlug, assignmentId }: UploadPageProp
             {/* assignmentsReady обязателен: без него баннер мигал бы «нет
                 заданий» на каждой смене маршрута, пока список ещё грузится. */}
             {routeChosen && assignmentsReady && !assignments.length && (
-              <InfoBanner text="На этом маршруте нет заданий. Заведите задание на странице маршрута: съёмки загружаются в готовое задание." />
+              <InfoBanner text="На этом маршруте нет заданий. Заведите задание на странице маршрута: видео загружаются в готовое задание." />
             )}
 
           </>
@@ -358,7 +358,7 @@ export function UploadPage({ citySlug, routeSlug, assignmentId }: UploadPageProp
                     />
                   </div>
                   {!item.shotDate && (
-                    <span className="upload-file-error">Укажите дату съёмки.</span>
+                    <span className="upload-file-error">Укажите дату записи.</span>
                   )}
                   {item.status === 'uploading' && (
                     <ProgressBar

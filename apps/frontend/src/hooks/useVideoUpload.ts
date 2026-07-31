@@ -30,7 +30,7 @@ export interface UploadItem {
  */
 function shotStartedAt(item: UploadItem): string {
   const fromInput = isoFromDateInput(item.shotDate)
-  if (!fromInput) throw new Error('Укажите дату съёмки.')
+  if (!fromInput) throw new Error('Укажите дату записи.')
   return fromInput
 }
 

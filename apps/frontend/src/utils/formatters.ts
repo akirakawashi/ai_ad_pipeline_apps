@@ -138,8 +138,10 @@ export function pluralRoutes(count: number) {
   return plural(count, 'маршрут', 'маршрута', 'маршрутов')
 }
 
+/** «Видео» не склоняется, поэтому все три формы совпадают — счётчик всё равно
+ *  идёт через `plural`, чтобы вызывающий код не знал про исключения. */
 export function pluralShootings(count: number) {
-  return plural(count, 'съёмка', 'съёмки', 'съёмок')
+  return plural(count, 'видео', 'видео', 'видео')
 }
 
 export function pluralZones(count: number) {

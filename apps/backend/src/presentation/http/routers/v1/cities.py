@@ -241,11 +241,11 @@ def get_route_summary(
     route_slug: str = Path(description="Слаг маршрута в пределах города"),
     shot_from: AwareDatetime | None = Query(
         default=None,
-        description="Начало периода по времени съёмки, включительно",
+        description="Начало периода по времени записи, включительно",
     ),
     shot_to: AwareDatetime | None = Query(
         default=None,
-        description="Конец периода по времени съёмки, исключительно",
+        description="Конец периода по времени записи, исключительно",
     ),
     service: CatalogService = Depends(get_catalog_service),
 ) -> OkResponse[RouteSummaryResponse]:

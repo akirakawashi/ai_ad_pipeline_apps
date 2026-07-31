@@ -99,7 +99,7 @@ class UpdateShootingRequest(ApiModel):
     ) -> AwareDatetime:
         """Поле можно не менять, но очистить обязательную дату нельзя."""
         if value is None:
-            raise ValueError("Дата съёмки обязательна.")
+            raise ValueError("Дата записи обязательна.")
         return value
 
     def changed_fields(self) -> dict[str, object]:
