@@ -40,6 +40,16 @@ const ZOOM_MAX = 40
 const EDGE_BAND_PX = 56
 const EDGE_SPEED_PX = 2.5
 
+/**
+ * Сколько пикселей руке позволено сдвинуться, чтобы жест всё ещё считался
+ * кликом, а не протяжкой.
+ *
+ * Порог по расстоянию, а не по времени: клик в нужную точку карты человек
+ * ставит медленно и прицельно, и по длительности он неотличим от короткого
+ * штриха. А вот дрожь при нажатии кнопки — это единицы пикселей всегда.
+ */
+const CLICK_SLOP_PX = 4
+
 function toWebMercator([lon, lat]: Position): Position {
   const safeLat = Math.max(-85.05112878, Math.min(85.05112878, lat))
   const lonRadians = (lon * Math.PI) / 180
@@ -180,12 +190,22 @@ export interface RouteMapProps {
   /** Колесо приближает, перетаскивание двигает. По умолчанию карта неподвижна. */
   zoomable?: boolean
   /**
-   * Режим рисования: перетаскивание ведёт линию вместо панорамирования.
-   * Готовый штрих отдаётся в onStrokeDrawn как пары [долгота, широта].
+   * Режим рисования: левая кнопка ведёт линию вместо панорамирования.
+   *
+   * Линия рисуется по кускам: протяжка даёт след, одиночный клик — одну точку,
+   * и то и другое **дописывается к уже нарисованному**. Карта поэтому не знает,
+   * закончена линия или нет: она отдаёт очередной кусок в `onSegmentDrawn` и
+   * ждёт следующего. Копит куски и решает, когда хватит, тот, кто её монтирует.
    */
   drawing?: boolean
-  onStrokeDrawn?: (stroke: Position[]) => void
-  /** Сырая линия «как вела рука» — показывается, пока её не подтвердили. */
+  onSegmentDrawn?: (segment: Position[]) => void
+  /**
+   * Уже нарисованное — сырая линия «как вела рука», пока её не подтвердили.
+   *
+   * Карта не просто показывает её, а продолжает от её конца: и живой след, и
+   * резинка за курсором начинаются от последней точки. Иначе каждый кусок
+   * выглядел бы отдельной линией, хотя на сервер уходит одна.
+   */
   stroke?: Position[] | null
 }
 
@@ -201,7 +221,7 @@ export function RouteMap({
   onSelect,
   zoomable = false,
   drawing = false,
-  onStrokeDrawn,
+  onSegmentDrawn,
   stroke = null,
 }: RouteMapProps) {
   const projector = useMemo(() => createProjector([roads, ...routes]), [roads, routes])
@@ -328,7 +348,14 @@ export function RouteMap({
   // Оба живут на одних и тех же событиях указателя, поэтому и состояние одно.
   const gesture = useRef<
     | { kind: 'pan'; lastClient: Position }
-    | { kind: 'draw'; points: Position[]; lastClient: Position }
+    | {
+        kind: 'draw'
+        points: Position[]
+        lastClient: Position
+        /** Где нажали — от неё считается, клик это или всё-таки протяжка. */
+        downClient: Position
+        moved: boolean
+      }
     | null
   >(null)
   const edgePush = useRef<Position>([0, 0])
@@ -342,10 +369,44 @@ export function RouteMap({
   // пути ставится напрямую по ссылке. Через состояние каждое движение мыши
   // перерисовывало бы полторы тысячи путей дорожного слоя.
   const livePathRef = useRef<SVGPathElement | null>(null)
+  // Резинка от конца нарисованного за курсором. Живёт мимо React по той же
+  // причине, что и живой след, и вдобавок обязана исчезать сразу — она
+  // показывает намерение, а не результат.
+  const rubberPathRef = useRef<SVGPathElement | null>(null)
+
+  // Конец уже нарисованного в координатах картинки: от него продолжается и
+  // след, и резинка. Пересчитывается вместе с проекцией, а не при каждом
+  // движении мыши.
+  const tail = useMemo(
+    () => (stroke && stroke.length > 0 ? project(stroke[stroke.length - 1]) : null),
+    [stroke, project],
+  )
+  const tailRef = useRef<Position | null>(tail)
+  useEffect(() => {
+    tailRef.current = tail
+  }, [tail])
 
   const showLiveStroke = useCallback((points: Position[]) => {
-    livePathRef.current?.setAttribute('d', points.length > 1 ? pointsToPath(points) : '')
+    // Ведём от конца нарисованного: рука начинает новый кусок, а видеть человек
+    // должен одну линию — она такой и уедет на сервер.
+    const tailPoint = tailRef.current
+    const full = tailPoint ? [tailPoint, ...points] : points
+    livePathRef.current?.setAttribute('d', full.length > 1 ? pointsToPath(full) : '')
   }, [])
+
+  const showRubber = useCallback((point: Position | null) => {
+    const tailPoint = tailRef.current
+    rubberPathRef.current?.setAttribute(
+      'd',
+      point && tailPoint ? pointsToPath([tailPoint, point]) : '',
+    )
+  }, [])
+
+  // Резинка гаснет, как только режим рисования выключили или конец линии
+  // сдвинулся (шаг назад, сброс): она тянется от точки, которой уже нет.
+  useEffect(() => {
+    showRubber(null)
+  }, [drawing, tail, showRubber])
 
   // Карта едет сама, когда рука с линией подходит к краю кадра. Без этого
   // сорокакилометровый маршрут пришлось бы вести через двадцать экранов, не
@@ -408,13 +469,24 @@ export function RouteMap({
       kind: 'draw',
       points: [point],
       lastClient: [event.clientX, event.clientY],
+      downClient: [event.clientX, event.clientY],
+      moved: false,
     }
+    showRubber(null)
     showLiveStroke([point])
   }
 
   const handlePointerMove = (event: ReactPointerEvent<SVGSVGElement>) => {
     const active = gesture.current
-    if (!active) return
+    if (!active) {
+      // Рука ничего не ведёт, но линия начата — тянем за курсором резинку.
+      // Без неё клики ставятся вслепую: куда пойдёт следующий кусок, видно
+      // только после того, как он уже поставлен.
+      if (drawing && tailRef.current) {
+        showRubber(toUserSpace(event.clientX, event.clientY, view))
+      }
+      return
+    }
 
     if (active.kind === 'pan') {
       const svg = svgRef.current
@@ -429,6 +501,15 @@ export function RouteMap({
     }
 
     active.lastClient = [event.clientX, event.clientY]
+    if (
+      !active.moved &&
+      Math.hypot(
+        event.clientX - active.downClient[0],
+        event.clientY - active.downClient[1],
+      ) > CLICK_SLOP_PX
+    ) {
+      active.moved = true
+    }
     const point = toUserSpace(event.clientX, event.clientY, view)
     if (!point) return
     const previous = active.points[active.points.length - 1]
@@ -459,8 +540,12 @@ export function RouteMap({
     }
     if (active?.kind !== 'draw') return
     showLiveStroke([])
-    if (active.points.length < 2) return
-    onStrokeDrawn?.(active.points.map((point) => projector.unproject(point)))
+    // Клик — это кусок из одной точки, и он полноправный: на сложном узле, где
+    // вести мышью с зажатой кнопкой рискованно, линия набирается кликами по
+    // поворотам. Раньше такой жест выбрасывался как «слишком короткий штрих».
+    const points = active.moved ? active.points : active.points.slice(0, 1)
+    if (active.moved && points.length < 2) return
+    onSegmentDrawn?.(points.map((point) => projector.unproject(point)))
   }
 
   const introSegmentRefs = useRef<SVGPathElement[][]>([])
@@ -523,6 +608,8 @@ export function RouteMap({
         onPointerMove={handlePointerMove}
         onPointerUp={finishGesture}
         onPointerCancel={finishGesture}
+        // Курсор ушёл с карты — резинке тянуться не за чем.
+        onPointerLeave={() => showRubber(null)}
       >
         <title id="routeMapTitle">Схема дорог и маршрутов</title>
         <desc id="routeMapDesc">Векторная карта с маршрутами, проложенными по экспортированным OSM-сегментам.</desc>
@@ -621,7 +708,9 @@ export function RouteMap({
 
         {/* Сырой штрих поверх всего: и тот, что рука ведёт прямо сейчас (его
             ставит showLiveStroke мимо React), и уже нарисованный, пока его не
-            подтвердили. Видно, что нарисовано, а не только что получилось. */}
+            подтвердили. Видно, что нарисовано, а не только что получилось.
+            Резинка — третьим слоем и намеренно бледнее: это ещё не линия. */}
+        <path ref={rubberPathRef} className="hand-stroke is-rubber" />
         <path ref={livePathRef} className="hand-stroke" />
         {strokePath && <path d={strokePath} className="hand-stroke is-settled" />}
       </svg>

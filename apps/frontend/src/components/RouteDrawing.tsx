@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { drawRouteGeometry, getRoadsGeometry, getRouteGeometry } from '../api'
 import type { Route } from '../types'
@@ -16,8 +16,20 @@ type Stroke = [number, number][]
  * (`domain/route_snapping.py`). Пока подтверждения нет, на карте видно ровно то,
  * что нарисовала рука, — сырую линию.
  *
+ * **«Целиком» не значит «за один жест».** Линия набирается кусками: протяжка
+ * даёт след, одиночный клик — точку, и то и другое дописывается к уже
+ * нарисованному. Сорок километров одной непрерывной протяжкой — это сорок
+ * километров без права отпустить кнопку, а на сложном узле рука нужна свободной:
+ * приблизить, оглядеться, поставить три клика по поворотам. Отсюда и разделение
+ * ролей у клавиш: Esc гасит режим рисования, **ничего не стирая**, Ctrl+Z
+ * убирает последний кусок, Enter подтверждает.
+ *
  * Попадать в дорогу точно не нужно: сервер кладёт линию на сеть сам, и промах
- * в пару десятков метров ничего не меняет.
+ * в пару десятков метров ничего не меняет. А вот между двумя кликами он проложит
+ * **кратчайший** путь — поэтому клик ставится на каждом повороте, а не только в
+ * начале и в конце. Это не вкусовщина, а замер: при кликах через 300 м длина
+ * сходится с эталоном в пределах 4 % у шести маршрутов из семи, а при кликах
+ * через 800 м расходится уже на четверть (`tests/test_route_snapping.py`).
  */
 export function RouteDrawing({
   citySlug,
@@ -38,7 +50,19 @@ export function RouteDrawing({
     roads: GeoFeatureCollection | null
     existing: GeoFeatureCollection | null
   } | null>(null)
-  const [stroke, setStroke] = useState<Stroke | null>(null)
+  // Линия хранится кусками, а не одним списком точек, ровно ради шага назад:
+  // куском отменяется то же, что было сделано одним действием — клик или след
+  // протяжки. На сервер уходит склейка, там про куски никто не знает.
+  const [segments, setSegments] = useState<Stroke[]>([])
+  // История на один шаг: отменить последнее действие можно, отменить отменённое
+  // — нет. Так решено намеренно (полноценная история тут не окупается), и
+  // единственное, что для этого нужно, — помнить, был ли шаг назад уже сделан.
+  const [undone, setUndone] = useState(false)
+  // Рисование можно приостановить, не потеряв нарисованное: карта перестаёт
+  // принимать клики, резинка гаснет, линия остаётся. Это то состояние, в котором
+  // спокойно жмут «Подтвердить», не рискуя добавить лишнюю точку случайным
+  // кликом мимо кнопки.
+  const [paused, setPaused] = useState(false)
   // Проложенная линия, вернувшаяся с сервера. Пока она есть, экран показывает
   // результат, а не приглашает рисовать.
   const [result, setResult] = useState<GeoFeatureCollection | null>(null)
@@ -47,6 +71,9 @@ export function RouteDrawing({
 
   const key = `${citySlug}/${route.slug}`
   const current = loaded?.key === key ? loaded : null
+  const stroke = useMemo(() => segments.flat(), [segments])
+  const canConfirm = stroke.length >= 2 && !saving
+  const canUndo = segments.length > 0 && !undone && !result && !saving
 
   useEffect(() => {
     let cancelled = false
@@ -66,8 +93,20 @@ export function RouteDrawing({
     }
   }, [citySlug, route.slug, route.has_geometry])
 
-  const confirm = async () => {
-    if (!stroke) return
+  const addSegment = useCallback((segment: Stroke) => {
+    setSegments((previous) => [...previous, segment])
+    // Новый кусок — новый шаг, который можно отменить. Иначе шаг назад работал
+    // бы один раз за весь сеанс рисования.
+    setUndone(false)
+  }, [])
+
+  const undo = useCallback(() => {
+    setSegments((previous) => previous.slice(0, -1))
+    setUndone(true)
+  }, [])
+
+  const confirm = useCallback(async () => {
+    if (stroke.length < 2) return
     setSaving(true)
     setError('')
     try {
@@ -90,13 +129,49 @@ export function RouteDrawing({
     } finally {
       setSaving(false)
     }
-  }
+  }, [citySlug, key, route.slug, stroke])
 
   const redraw = () => {
-    setStroke(null)
+    setSegments([])
+    setUndone(false)
+    setPaused(false)
     setResult(null)
     setError('')
   }
+
+  // Клавиши — только ускорители: всё, что они делают, есть на кнопках рядом, и
+  // на кнопках же написано, какая клавиша что делает. Невидимых правил тут быть
+  // не должно — экран открывают раз в несколько месяцев, заводя новый город.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+      // Рядом на странице живут поля ввода админки: пока курсор в них, клавиши
+      // принадлежат им, а не карте.
+      if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
+
+      if (event.key === 'Escape') {
+        // Esc не стирает — он опускает руку. Нарисованное остаётся на карте,
+        // и его можно подтверждать, не боясь дописать лишний клик.
+        if (paused || result) return
+        event.preventDefault()
+        setPaused(true)
+        return
+      }
+      if (event.key === 'Enter' && !result) {
+        if (!canConfirm) return
+        event.preventDefault()
+        void confirm()
+        return
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
+        if (!canUndo) return
+        event.preventDefault()
+        undo()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [canConfirm, canUndo, confirm, paused, result, undo])
 
   if (!current) {
     return <p className="muted">Загружаем карту города…</p>
@@ -118,9 +193,17 @@ export function RouteDrawing({
           линию, и штрих рядом, а что делать дальше — написано на кнопках. */}
       {!result && (
         <p className="muted">
-          {stroke
-            ? 'Линия нарисована. «Подтвердить» — проложить её по дорогам и посмотреть, что вышло.'
-            : 'Ведите линию по маршруту, не отпуская левую кнопку мыши. Колесо приближает, средняя кнопка двигает карту, у края она едет сама. Точно попадать в дорогу не нужно — линия ляжет на дороги сама.'}
+          {paused ? (
+            'Рисование остановлено, линия сохранена на карте. «Подтвердить» — проложить её по дорогам, «Продолжить» — дорисовать дальше.'
+          ) : (
+            <>
+              Ведите линию мышью с зажатой левой кнопкой — или ставьте клики там, где вести
+              неудобно. Кнопку можно отпускать: линия продолжится с того места, где вы
+              остановились. Колесо приближает, средняя кнопка двигает карту, у края она едет сама.
+              Точно попадать в дорогу не нужно, но между двумя кликами маршрут пойдёт кратчайшим
+              путём — поэтому клик на каждом повороте и хотя бы раз в пару кварталов.
+            </>
+          )}
         </p>
       )}
 
@@ -136,9 +219,9 @@ export function RouteDrawing({
         onHoverChange={() => {}}
         onSelect={() => {}}
         zoomable
-        drawing={!stroke && !result}
-        onStrokeDrawn={setStroke}
-        stroke={stroke}
+        drawing={!paused && !result}
+        onSegmentDrawn={addSegment}
+        stroke={stroke.length > 0 ? stroke : null}
       />
 
       <div className="route-drawing-actions">
@@ -154,17 +237,37 @@ export function RouteDrawing({
           <button
             type="button"
             className="primary"
-            onClick={confirm}
-            disabled={!stroke || saving}
+            onClick={() => void confirm()}
+            disabled={!canConfirm}
           >
-            {saving ? 'Прокладываем…' : 'Подтвердить'}
+            {saving ? 'Прокладываем…' : 'Подтвердить (Enter)'}
+          </button>
+        )}
+        {!result &&
+          (paused ? (
+            <button type="button" className="ghost-button" onClick={() => setPaused(false)}>
+              Продолжить
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="ghost-button"
+              onClick={() => setPaused(true)}
+              disabled={saving}
+            >
+              Остановить рисование (Esc)
+            </button>
+          ))}
+        {!result && (
+          <button type="button" className="ghost-button" onClick={undo} disabled={!canUndo}>
+            Шаг назад (Ctrl+Z)
           </button>
         )}
         <button
           type="button"
           className="ghost-button"
           onClick={redraw}
-          disabled={(!stroke && !result) || saving}
+          disabled={(segments.length === 0 && !result) || saving}
         >
           Перерисовать
         </button>

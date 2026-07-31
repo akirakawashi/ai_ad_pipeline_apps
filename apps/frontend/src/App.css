@@ -2745,6 +2745,15 @@ button:disabled,
   stroke: rgba(255, 255, 255, 0.55);
 }
 
+/* Резинка от конца линии за курсором: намерение, а не нарисованное. Отсюда и
+   тоньше, и бледнее — спутать её с линией нельзя, иначе непонятно, что уже
+   поставлено, а что только примеряется. */
+.hand-stroke.is-rubber {
+  stroke: rgba(255, 255, 255, 0.3);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 6;
+}
+
 .route-drawing {
   display: flex;
   flex-direction: column;

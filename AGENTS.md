@@ -200,7 +200,7 @@ only feed the pipeline's own `report.html`.
 | Change what the route/assignment page shows, or add a tab | `PageView` in `routing.ts` (`?view=analytics`, absent means work) → `routePath` / `assignmentPath` → `VIEW_TABS` in `RoutePage.tsx` / `AssignmentPage.tsx`. **The rollup request is gated on the tab** — that is what makes it lazy; do not hoist it out of that condition. `App.tsx` deliberately keeps the tab out of the page `key` so switching does not remount and refetch |
 | Add a city/route field, change geometry handling | `domain/geometry.py` (validation only) → `models.py` → `sql_catalog_repository` → `catalog_service` → `cities.py` router → `AdminPage.tsx`. Geometry must stay out of list responses |
 | Change how a route's line is drawn or snapped | `domain/route_snapping.py` — graph building, candidate search, Viterbi, stitching, and `SnappingConfig`. Quality is measured, not eyeballed: [tests/test_route_snapping.py](tests/test_route_snapping.py) traces all seven real routes. Read the two traps in §10 before touching the graph or the tests |
-| Change the drawing surface (zoom, pan, the stroke itself) | `RouteMap.tsx` (`zoomable` / `drawing` / `onStrokeDrawn` props; the live stroke is written straight to the DOM by `showLiveStroke`, deliberately bypassing React) → `RouteDrawing.tsx` (the three buttons and the confirm call) → `AdminPage.tsx` mounts it on the «Маршруты» tab. **The wheel handler is a native listener with `passive: false`, not `onWheel`** — React registers `wheel` passively on the root, so `preventDefault()` inside `onWheel` is silently ignored and the page keeps scrolling while the map zooms under the cursor. Moving it back to `onWheel` looks tidier and breaks exactly that |
+| Change the drawing surface (zoom, pan, the stroke itself) | `RouteMap.tsx` (`zoomable` / `drawing` / `onSegmentDrawn` props; the live stroke and the rubber band are written straight to the DOM by `showLiveStroke` / `showRubber`, deliberately bypassing React) → `RouteDrawing.tsx` (the draft, the keys and the confirm call) → `AdminPage.tsx` mounts it on the «Маршруты» tab. **The map emits *pieces*, it does not own the line** — a drag gives a trail, a click gives one point, and `RouteDrawing` accumulates them; see the draft trap in §10. **The wheel handler is a native listener with `passive: false`, not `onWheel`** — React registers `wheel` passively on the root, so `preventDefault()` inside `onWheel` is silently ignored and the page keeps scrolling while the map zooms under the cursor. Moving it back to `onWheel` looks tidier and breaks exactly that |
 | Change who can see hidden cities/routes/assignments | `include_inactive` threads through `list_cities` / `get_city` / `list_assignments` / `get_assignment` (repository → service → router → `api.ts`). Only the admin panel passes `true` |
 | Change catalogue parsing (new column, new format) | `infrastructure/catalog/parser.py` only; the row/point types live in `domain/catalog.py` |
 | Retune catalogue distance thresholds | `MERGE_DISTANCE_M` / `DIFF_DISTANCE_M` / `CITY_BOUNDS_MARGIN_M` in `domain/catalog.py` |
@@ -373,6 +373,30 @@ is collected, and calls `pytest.exit` when postgres is unreachable. There is no 
   `sa.table` uses a plain `postgresql.JSONB`, which writes Python `None` as the JSON literal `null`,
   and the model's `none_as_null=True` does not apply because `bulk_insert` goes around the model.
   That is the §10 JSONB trap in its least visible form: the flag would read `true` on an empty line.
+* **The drawn line is a draft that survives `pointerup` — the map has no idea when it is finished.**
+  Until 31.07.2026 one drag *was* the line: `pointerup` fired `onStrokeDrawn` and `drawing` went
+  false. That made a 40 km route a 40 km hostage of one held mouse button — you could not release to
+  zoom, to look around, or to breathe, and a junction you could not safely drag through had no
+  answer at all. Now `RouteMap` emits **pieces** (`onSegmentDrawn`): a drag gives its trail, a click
+  under `CLICK_SLOP_PX` gives one point, and `RouteDrawing` appends both to a draft that ends only
+  on «Подтвердить». Four things hold this together and are easy to break one at a time: the draft is
+  stored **as segments**, not as a flat point list, because that is what makes «Шаг назад» undo one
+  *action* (a whole trail or a single click) instead of one point; the live stroke and the rubber
+  band are both drawn **from the last draft point**, or each piece would look like a separate line;
+  `paused` (Esc) stops input **without clearing anything**, which is the only state in which
+  «Подтвердить» cannot be spoiled by a stray click; and undo is deliberately **one step deep** —
+  the owner asked for exactly that, so `undone` blocks the second Ctrl+Z until a new piece arrives.
+  The keys are accelerators only, and their names are printed on the buttons — this screen is opened
+  once every few months, when a new city is set up, and nothing here may be invisible.
+* **Clicking is cheap, but a rare click is not — the snapper fills the gap with the *shortest* path.**
+  Between two stroke points the matcher is free to choose the road, so a line set by sparse clicks
+  quietly straightens out the places where the real route made a detour. Measured on the seven real
+  routes with the same ±20 m hand error: clicking at every 20° turn and at least every 300 m keeps
+  the length within 0.1–3.8 % (worst 11.7 %), every 400 m already reaches 12.4 %, and every 800 m
+  drifts to +25 % / −21 %. `test_route_set_by_clicks_recovers_too` in
+  [tests/test_route_snapping.py](tests/test_route_snapping.py) pins the first regime, and the hint on
+  screen states it in words. If someone asks to «упростить» the drawing so fewer clicks are needed,
+  that is this trade-off being asked for again — bring the measurement, not an opinion.
 * **Snapping lives on the backend because the computation happens once, on «Подтвердить».** The
   stroke is matched to the road network for the stroke *as a whole* — where each point lands depends
   on where the line goes next — so it cannot run incrementally while the hand is still moving. Given

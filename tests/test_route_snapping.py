@@ -141,6 +141,40 @@ def _hand(
     return stroke
 
 
+def _clicks(
+    points: list[tuple[float, float]],
+    *,
+    turn_degrees: float = 20.0,
+    span_m: float = 300.0,
+) -> list[tuple[float, float]]:
+    """Эталон → редкие точки: клик на изломе и не реже, чем раз в `span_m`.
+
+    Так линию набирают кликами: щёлкают по поворотам, а не по каждому метру.
+    Один проход — копим ход линии от последней поставленной точки и ставим
+    новую, когда направление ушло дальше `turn_degrees` или когда прошли
+    `span_m`.
+    """
+    result = [points[0]]
+    anchor = points[0]
+    heading: float | None = None
+    for point in points[1:-1]:
+        run = _distance_m(anchor, point)
+        # Слишком близкие точки дают шумный азимут: направление по отрезку в
+        # десяток метров — это дрожь эталона, а не поворот улицы.
+        if run < 25.0:
+            continue
+        bearing = math.degrees(math.atan2(point[1] - anchor[1], point[0] - anchor[0]))
+        if heading is None:
+            heading = bearing
+        turn = abs((bearing - heading + 180.0) % 360.0 - 180.0)
+        if turn >= turn_degrees or run >= span_m:
+            result.append(point)
+            anchor = point
+            heading = None
+    result.append(points[-1])
+    return result
+
+
 def _mean_offset_m(
     path: list[tuple[float, float]],
     reference: list[tuple[float, float]],
@@ -201,6 +235,36 @@ class TestSnapStroke:
         inflation = abs(path_length_m(path) / reference_length - 1.0)
         assert inflation < 0.15, f"длина разошлась с эталоном на {inflation:.0%}"
         assert _mean_offset_m(path, reference) < 25.0
+
+    @pytest.mark.parametrize(("city", "index"), CASES)
+    def test_route_set_by_clicks_recovers_too(self, graphs, city, index) -> None:
+        """Линия, набранная кликами по поворотам, ложится не хуже протяжки.
+
+        Кликами линию набирают там, где вести мышью с зажатой кнопкой опасно:
+        на развязке, у края экрана, при сильном приближении. Для снаппера это
+        тот же штрих — он всё равно прореживает его равномерно по длине, — но
+        между кликами он волен идти **кратчайшим** путём, поэтому цена редкого
+        клика ложится не на точность попадания в дорогу, а на выбор дороги.
+
+        Замер (промах руки те же ±20 м) показал, что решает именно частота:
+
+        * клик на повороте 20° и не реже 300 м — длина в пределах 0.1–3.8 %
+          у шести маршрутов из семи, худший +11.7 %, отклонение 16–25 м;
+        * на повороте 25° и не реже 400 м — уже до +12.4 %;
+        * на повороте 35° и не реже 800 м — до +25 % и −21 %: маршрут начинает
+          спрямляться там, где настоящий делал крюк.
+
+        Отсюда и подсказка на экране: клик на каждом повороте, а не только в
+        начале и в конце. Проверяем первый режим — он и есть обещание.
+        """
+        stroke = _hand(_clicks(_corridor(city, index)), sigma_m=20.0)
+
+        path = snap_stroke(graphs[city], stroke)
+
+        reference = _corridor(city, index)
+        inflation = abs(path_length_m(path) / path_length_m(reference) - 1.0)
+        assert inflation < 0.15, f"длина разошлась с эталоном на {inflation:.0%}"
+        assert _mean_offset_m(path, reference) < 30.0
 
     @pytest.mark.parametrize(("city", "index"), CASES)
     def test_result_is_a_continuous_ordered_line(self, graphs, city, index) -> None:
