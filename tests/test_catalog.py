@@ -17,20 +17,30 @@ def test_city_detail_carries_routes(client):
     assert len(city["routes"]) == 4
 
 
-def test_route_reports_geometry_by_flag_not_content(client):
+def test_geometry_reported_by_flag_not_content(client):
     """Геометрия в списки не попадает: строка отдаёт только признак наличия.
 
     Линия маршрута — десятки килобайт, дорожный слой города — полтора мегабайта;
-    в карточке города им места нет.
+    в карточке города им места нет. Проверяется на городе: у него слой засеян,
+    поэтому виден интересный случай — признак True, а содержимого рядом нет.
     """
     city = payload(client.get("/api/v1/cities/simferopol"))
-    route = city["routes"][0]
-    # У сидов геометрия есть — тем и ценно: признак True, а содержимого нет.
-    assert route["has_geometry"] is True
-    assert "geometry" not in route
     assert city["has_roads_geometry"] is True
     assert "roads_geometry" not in city
+    route = city["routes"][0]
+    assert "geometry" not in route
     assert "description" in route
+
+
+def test_seeded_route_has_no_line_until_it_is_drawn(client):
+    """Сид заводит маршрут без линии — её рисуют поверх дорожного слоя.
+
+    Признак должен быть именно False, а не True при пустой линии: колонка
+    оставлена незаполненной, а не записана как JSON-литерал `null`, иначе
+    `IS NOT NULL` истинно и карточка обещает линию, которой нет.
+    """
+    city = payload(client.get("/api/v1/cities/simferopol"))
+    assert [route["has_geometry"] for route in city["routes"]] == [False] * 4
 
 
 def test_unknown_city_is_404(client):

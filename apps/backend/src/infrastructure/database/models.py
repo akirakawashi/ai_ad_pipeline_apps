@@ -477,6 +477,9 @@ class CatalogImport(SQLModel, table=True):
             nullable=False,
         ),
     )
+    # Без своего индекса: колонка идёт первой в составном
+    # `ix_catalog_imports_city_current (cities_id, is_current)`, который
+    # отвечает и на «ревизии города», и на «текущая ревизия города».
     cities_id: str = Field(
         sa_column=Column(
             String(36),
@@ -484,7 +487,6 @@ class CatalogImport(SQLModel, table=True):
                 "cities.cities_id",
                 ondelete="CASCADE",
             ),
-            index=True,
             nullable=False,
         ),
     )
@@ -743,12 +745,16 @@ class PipelineRun(SQLModel, table=True):
         ),
     )
 
+    # Своего индекса у статуса нет намеренно: он первой колонкой входит в
+    # составной `ix_pipeline_runs_queue (status, created_at)`, а Postgres берёт
+    # составной индекс и по левому префиксу. Отдельный дублировал бы его —
+    # обновлялся бы на каждой вставке и не отвечал бы ни на один запрос, на
+    # который не отвечает составной.
     status: str = Field(
         default=PipelineRunStatus.UPLOADING.value,
         sa_column=Column(
             String(32),
             default=PipelineRunStatus.UPLOADING.value,
-            index=True,
             nullable=False,
         ),
     )
@@ -808,14 +814,6 @@ class PipelineRun(SQLModel, table=True):
         sa_column=Column(Integer, nullable=True),
     )
 
-    worker_id: str | None = Field(
-        default=None,
-        sa_column=Column(
-            String(255),
-            index=True,
-            nullable=True,
-        ),
-    )
     created_at: datetime | None = Field(
         default=None,
         sa_column=Column(
@@ -863,13 +861,6 @@ class PipelineRun(SQLModel, table=True):
         cascade_delete=True,
         sa_relationship_kwargs={
             "order_by": "PipelineArtifact.created_at",
-        },
-    )
-    events: list["PipelineRunEvent"] = Relationship(
-        back_populates="run",
-        cascade_delete=True,
-        sa_relationship_kwargs={
-            "order_by": "PipelineRunEvent.created_at",
         },
     )
 
@@ -959,6 +950,23 @@ class PipelineArtifact(SQLModel, table=True):
 
 
 class PipelineRunEvent(SQLModel, table=True):
+    """След обработки: стадия, процент и сообщение на каждый шаг воркера.
+
+    Таблица **только на запись**. Ход обработки интерфейс показывает по полям
+    самой съёмки (`stage`, `progress`, `status_message`) — они всегда содержат
+    последнее состояние, и второй источник тех же данных ему не нужен. Эти
+    строки нужны, когда обработка сломалась и надо посмотреть, на чём именно:
+    читают их запросом к базе, а не через API.
+
+    Поэтому у неё нет связи с `PipelineRun` ни в одну сторону. Связь была, и
+    единственным её следом были `noload(PipelineRun.events)` в четырёх запросах
+    подряд — страховка от ленивой подгрузки того, что никто не читает. Если
+    когда-нибудь понадобится показывать журнал обработки на экране, `Relationship`
+    добавляется обратно двумя строками; до тех пор её отсутствие и есть гарантия,
+    что журнал не поедет в ответ случайно. Удаление съёмки уносит события
+    каскадом на уровне базы (`ondelete="CASCADE"`), ORM для этого не нужна.
+    """
+
     __tablename__ = "pipeline_run_events"
 
     pipeline_run_events_id: str = Field(
@@ -1002,5 +1010,3 @@ class PipelineRunEvent(SQLModel, table=True):
             index=True,
         ),
     )
-
-    run: PipelineRun | None = Relationship(back_populates="events")

@@ -288,9 +288,11 @@ def test_product_reads_stay_open(anonymous_client):
     assert anonymous_client.get(CITIES).status_code == 200
     assert anonymous_client.get(f"{CITIES}/simferopol").status_code == 200
     assert anonymous_client.get(f"{CITIES}/simferopol/roads-geometry").status_code == 200
+    # 404, а не 200: у сидового маршрута линии нет, пока её не нарисуют. Здесь
+    # важно ровно одно — что это не 401: карту маршрута читает весь продукт.
     assert (
         anonymous_client.get(f"{CITIES}/simferopol/routes/route-1/geometry").status_code
-        == 200
+        == 404
     )
     assert anonymous_client.get("/api/v1/runs").status_code == 200
 

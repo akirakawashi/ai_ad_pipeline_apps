@@ -10,9 +10,10 @@ from __future__ import annotations
 from datetime import datetime
 
 import pytest
-from sqlmodel import Session, text
+from sqlmodel import Session, select, text
 
 from conftest import payload
+from infrastructure.database.models import PipelineRunEvent
 from infrastructure.database.session import engine
 
 
@@ -309,3 +310,23 @@ class TestFilters:
         items = payload(client.get("/api/v1/runs?page_size=50"))["items"]
         assert items[0]["assignment"]["assignment_id"] == assignment["id"]
         assert items[0]["operator"]["id"] == operator["id"]
+
+
+class TestProcessingLog:
+    """Журнал обработки: таблица, у которой есть только запись.
+
+    Ход обработки интерфейс берёт из полей самой съёмки, а `pipeline_run_events`
+    читают запросом к базе, когда надо понять, на чём всё сломалось. Читателя в
+    коде у неё нет — значит, если запись однажды отвалится, заметить это будет
+    нечем. Этот тест и есть тот, кто заметит.
+    """
+
+    def test_creating_a_shooting_writes_an_event(self, client, assignment):
+        run = payload(create_run(client, assignment_id=assignment["id"]))
+        with Session(engine) as session:
+            rows = session.exec(
+                select(PipelineRunEvent).where(
+                    PipelineRunEvent.pipeline_runs_id == run["run_id"]
+                )
+            ).all()
+        assert [(row.stage, row.progress) for row in rows] == [("upload", 0)]

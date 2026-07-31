@@ -9,7 +9,6 @@ from sqlmodel import Session, select
 from application.common.dto import (
     PipelineArtifactDTO,
     PipelineRunDTO,
-    PipelineRunEventDTO,
 )
 from domain.entities import PipelineArtifactType, PipelineRunStage, PipelineRunStatus
 from domain.geozones import GeozoneInterval
@@ -60,17 +59,6 @@ def _artifact_to_dto(artifact: PipelineArtifact) -> PipelineArtifactDTO:
     )
 
 
-def _event_to_dto(event: PipelineRunEvent) -> PipelineRunEventDTO:
-    return PipelineRunEventDTO(
-        id=event.pipeline_run_events_id,
-        run_id=event.pipeline_runs_id,
-        stage=_stage(event.stage),
-        progress=event.progress,
-        message=event.message,
-        created_at=event.created_at,
-    )
-
-
 def _shot_finished_at(run: PipelineRun) -> datetime | None:
     """Конец съёмки не хранится: старт плюс длительность самого видео.
 
@@ -114,7 +102,6 @@ def _run_to_dto(run: PipelineRun, *, with_refs: bool = False) -> PipelineRunDTO:
         completed_at=run.completed_at,
         updated_at=run.updated_at,
         artifacts=[_artifact_to_dto(item) for item in run.artifacts],
-        events=[_event_to_dto(item) for item in run.events],
     )
 
 
@@ -200,7 +187,6 @@ class SqlPipelineRunRepository:
             .where(*filters)
             .options(
                 selectinload(PipelineRun.artifacts),
-                noload(PipelineRun.events),
                 selectinload(PipelineRun.assignment)
                 .selectinload(Assignment.route)
                 .defer(Route.geometry)
@@ -219,7 +205,6 @@ class SqlPipelineRunRepository:
         run_id: str,
         *,
         with_artifacts: bool = True,
-        with_events: bool = False,
         include_hidden: bool = False,
     ) -> PipelineRunDTO | None:
         """Съёмка для показа. None — нет её или скрыто задание, в которое она сдана.
@@ -237,7 +222,6 @@ class SqlPipelineRunRepository:
         run = self._get_model(
             run_id,
             with_artifacts=with_artifacts,
-            with_events=with_events,
             with_refs=True,
         )
         if run is None:
@@ -329,17 +313,26 @@ class SqlPipelineRunRepository:
         return _artifact_to_dto(artifact)
 
     def lock_assignment(self, assignment_id: str) -> bool:
-        """Блокирует строку задания до конца транзакции. False — задания нет.
+        """Блокирует строку задания. False, если задания нет или оно скрыто.
 
-        Без этого два параллельных create_run, каждый насчитав MAX-1,
-        оба вставят строку и лимит будет превышен.
+        Блокировка — против гонки: без неё два параллельных create_run, каждый
+        насчитав MAX-1, оба вставят строку и лимит будет превышен.
+
+        Скрытое здесь неотличимо от несуществующего намеренно: в выпадашке его
+        уже нет, но идентификатор живёт в адресе страницы загрузки — открытая со
+        вчера вкладка иначе долила бы видео в спрятанную кампанию.
+
+        Это проверка **начала** загрузки, и только его. Завершение
+        (`complete_upload`) скрытое задание пропускает: файл к тому моменту уже
+        в хранилище, и отказ оставил бы строку висеть в `uploading` рядом с
+        осиротевшим объектом.
         """
         assignment = self._session.exec(
             select(Assignment)
             .where(Assignment.assignments_id == assignment_id)
             .with_for_update()
         ).first()
-        return assignment is not None
+        return assignment is not None and assignment.is_active
 
     def count_assignment_runs(self, assignment_id: str) -> int:
         total = self._session.exec(
@@ -366,7 +359,7 @@ class SqlPipelineRunRepository:
             )
         )
 
-    def claim_next(self, worker_id: str) -> PipelineRunDTO | None:
+    def claim_next(self) -> PipelineRunDTO | None:
         statement = (
             select(PipelineRun)
             .where(PipelineRun.status == PipelineRunStatus.QUEUED.value)
@@ -383,7 +376,6 @@ class SqlPipelineRunRepository:
         run.stage = PipelineRunStage.PREPARING.value
         run.progress = 1
         run.status_message = "Готовим видео к анализу"
-        run.worker_id = worker_id
         run.started_at = datetime.now(timezone.utc)
         self.add_event(
             run.pipeline_runs_id,
@@ -485,7 +477,6 @@ class SqlPipelineRunRepository:
         run_id: str,
         *,
         with_artifacts: bool = True,
-        with_events: bool = False,
         with_refs: bool = False,
     ) -> PipelineRun | None:
         statement = select(PipelineRun).where(PipelineRun.pipeline_runs_id == run_id)
@@ -493,10 +484,6 @@ class SqlPipelineRunRepository:
             statement = statement.options(selectinload(PipelineRun.artifacts))
         else:
             statement = statement.options(noload(PipelineRun.artifacts))
-        if with_events:
-            statement = statement.options(selectinload(PipelineRun.events))
-        else:
-            statement = statement.options(noload(PipelineRun.events))
         if with_refs:
             statement = statement.options(
                 selectinload(PipelineRun.assignment)

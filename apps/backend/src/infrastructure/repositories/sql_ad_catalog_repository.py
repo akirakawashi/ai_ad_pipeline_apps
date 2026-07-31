@@ -139,10 +139,6 @@ class SqlAdCatalogRepository:
         self._session.refresh(catalog_import)
         return _import_to_dto(catalog_import)
 
-    def get_import(self, import_id: str) -> CatalogImportDTO | None:
-        model = self._import_by_id(import_id)
-        return _import_to_dto(model) if model is not None else None
-
     def list_imports(self, city_slug: str) -> list[CatalogImportDTO] | None:
         city = self._city_by_slug(city_slug)
         if city is None:

@@ -145,7 +145,3 @@ export function pluralShootings(count: number) {
 export function pluralZones(count: number) {
   return plural(count, 'участок', 'участка', 'участков')
 }
-
-export function pluralVideos(count: number) {
-  return plural(count, 'видео', 'видео', 'видео')
-}

@@ -57,15 +57,6 @@ class PipelineArtifactDTO(ApplicationDTO):
     created_at: datetime | None
 
 
-class PipelineRunEventDTO(ApplicationDTO):
-    id: str
-    run_id: str
-    stage: PipelineRunStage
-    progress: int = Field(ge=0, le=100)
-    message: str | None
-    created_at: datetime | None
-
-
 class PipelineRunDTO(ApplicationDTO):
     run_id: str
     source_name: str
@@ -100,8 +91,10 @@ class PipelineRunDTO(ApplicationDTO):
     # такого ответа: так отдают воркер и `GET /assignments/{id}/runs`.
     assignment: RunAssignmentRefDTO | None = None
     operator: UserDTO | None = None
+    # Артефакты нужны самому бэкенду, а не браузеру: из них берутся ключи
+    # tracks.csv, detections.csv, overlay.json и исходного видео. В ответ они
+    # не уезжают — читать их в интерфейсе нечем и незачем.
     artifacts: list[PipelineArtifactDTO] = Field(default_factory=list)
-    events: list[PipelineRunEventDTO] = Field(default_factory=list)
 
 
 class CreateRunDTO(ApplicationDTO):
@@ -115,11 +108,6 @@ class PaginatedRunsDTO(ApplicationDTO):
     page: int
     page_size: int
     total: int
-
-
-class ArtifactUrlDTO(ApplicationDTO):
-    artifact_id: str
-    url: str
 
 
 class PlaybackDTO(ApplicationDTO):

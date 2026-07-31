@@ -728,7 +728,6 @@ class SqlCatalogRepository:
             .where(PipelineRun.assignments_id == assignment_id)
             .options(
                 selectinload(PipelineRun.artifacts),
-                noload(PipelineRun.events),
                 noload(PipelineRun.assignment),
             )
             .order_by(PipelineRun.created_at)
@@ -785,33 +784,10 @@ class SqlCatalogRepository:
                 .defer(Route.geometry)
                 .selectinload(Route.city)
                 .defer(City.roads_geometry),
-                noload(PipelineRun.events),
             )
             .order_by(PipelineRun.shot_started_at)
         ).all()
         return [_run_to_dto(run, with_refs=True) for run in runs]
-
-    def lock_assignment(self, assignment_id: str) -> bool:
-        """Блокирует строку задания. False, если задания нет или оно скрыто.
-
-        Скрытое здесь неотличимо от несуществующего намеренно: в выпадашке его
-        уже нет, но идентификатор живёт в адресе страницы загрузки — открытая
-        со вчера вкладка иначе долила бы видео в спрятанную кампанию.
-        """
-        assignment = self._session.exec(
-            select(Assignment)
-            .where(Assignment.assignments_id == assignment_id)
-            .with_for_update()
-        ).first()
-        return assignment is not None and assignment.is_active
-
-    def count_assignment_runs(self, assignment_id: str) -> int:
-        total = self._session.exec(
-            select(func.count(PipelineRun.pipeline_runs_id)).where(
-                PipelineRun.assignments_id == assignment_id
-            )
-        ).one()
-        return int(total)
 
     # --- геозоны ------------------------------------------------------------
 

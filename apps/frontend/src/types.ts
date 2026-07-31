@@ -1,20 +1,3 @@
-export interface Artifact {
-  id: string
-  artifact_type: string
-  object_key: string
-  content_type: string
-  size_bytes: number
-  created_at: string
-}
-
-export interface RunEvent {
-  id: string
-  stage: string
-  progress: number
-  message: string | null
-  created_at: string
-}
-
 /** Человек из справочника: постановщик задания или оператор съёмки. */
 export interface User {
   id: string
@@ -274,8 +257,6 @@ export interface PipelineRun {
    */
   assignment: RunAssignmentRef | null
   operator: User | null
-  artifacts: Artifact[]
-  events: RunEvent[]
 }
 
 /** Тело PATCH съёмки. Ход обработки этим не меняется. */

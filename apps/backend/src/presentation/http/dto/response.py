@@ -14,32 +14,28 @@ from pydantic import (
 
 from application.common.dto import (
     AdStructureDTO,
-    ArtifactUrlDTO,
     BrandSummaryDTO,
     CatalogImportDTO,
     CatalogImportReportDTO,
     CityDetailDTO,
     CityDTO,
-    CityRefDTO,
     RollupBrandDTO,
     RollupTotalsDTO,
     RouteShootingMetricsDTO,
     ShootingMetricsDTO,
-    AssignmentStatusCountsDTO,
     GeozoneDTO,
     OverlayPayloadDTO,
     PaginatedAdStructuresDTO,
     PlaybackDTO,
     RouteDTO,
     AssignmentDTO,
-    RouteRefDTO,
     RunAssignmentRefDTO,
     RunObjectDTO,
     RunSummaryTotalsDTO,
     RunTimelinePointDTO,
     UserDTO,
 )
-from domain.entities import PipelineArtifactType, PipelineRunStage, PipelineRunStatus
+from domain.entities import PipelineRunStage, PipelineRunStatus
 
 T = TypeVar("T")
 
@@ -118,31 +114,6 @@ class CreateRunResponse(ApiModel):
     run_id: str
     status: PipelineRunStatus
     upload: UploadTargetResponse
-
-
-class RunArtifactResponse(ApiModel):
-    id: str = Field(validation_alias=AliasChoices("id", "pipeline_artifacts_id"))
-    artifact_type: PipelineArtifactType
-    object_key: str
-    content_type: str
-    size_bytes: int
-    created_at: datetime | None
-
-
-class RunEventResponse(ApiModel):
-    id: str = Field(validation_alias=AliasChoices("id", "pipeline_run_events_id"))
-    stage: PipelineRunStage
-    progress: int
-    message: str | None
-    created_at: datetime | None
-
-
-class CityRefResponse(CityRefDTO):
-    pass
-
-
-class RouteRefResponse(RouteRefDTO):
-    pass
 
 
 class RunAssignmentRefResponse(RunAssignmentRefDTO):
@@ -281,10 +252,6 @@ class CityDetailResponse(CityDetailDTO):
     pass
 
 
-class AssignmentStatusCountsResponse(AssignmentStatusCountsDTO):
-    pass
-
-
 class AssignmentResponse(AssignmentDTO):
     pass
 
@@ -401,8 +368,6 @@ class PipelineRunResponse(ApiModel):
     shot_finished_at: datetime | None = None
     assignment: RunAssignmentRefResponse | None = None
     operator: UserResponse | None = None
-    artifacts: list[RunArtifactResponse] = Field(default_factory=list)
-    events: list[RunEventResponse] = Field(default_factory=list)
 
 
 class PaginatedRunsResponse(ApiModel):
@@ -443,10 +408,6 @@ class RunTimelineResponse(ApiModel):
     run_id: str
     bucket_seconds: int
     points: list[RunTimelinePointResponse]
-
-
-class ArtifactUrlResponse(ArtifactUrlDTO):
-    pass
 
 
 class PlaybackResponse(PlaybackDTO):

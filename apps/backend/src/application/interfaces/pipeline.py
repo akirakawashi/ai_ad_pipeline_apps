@@ -92,7 +92,6 @@ class PipelineRunRepository(Protocol):
         run_id: str,
         *,
         with_artifacts: bool = True,
-        with_events: bool = False,
         include_hidden: bool = False,
     ) -> PipelineRunDTO | None:
         """Съёмка для показа. None — нет её или её задание скрыто.
@@ -121,7 +120,7 @@ class PipelineRunRepository(Protocol):
         size_bytes: int,
     ) -> PipelineArtifactDTO: ...
 
-    def claim_next(self, worker_id: str) -> PipelineRunDTO | None: ...
+    def claim_next(self) -> PipelineRunDTO | None: ...
 
     def update_progress(
         self,

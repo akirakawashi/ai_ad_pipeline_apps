@@ -13,7 +13,6 @@ from pandas.errors import EmptyDataError
 from pydantic import BaseModel
 
 from application.common.dto import (
-    ArtifactUrlDTO,
     BrandSummaryDTO,
     CreateRunDTO,
     OverlayPayloadDTO,
@@ -199,7 +198,7 @@ class PipelineRunService:
         )
 
     def get_run(self, run_id: str) -> PipelineRunDTO:
-        return self._require_run(run_id, with_events=True)
+        return self._require_run(run_id)
 
     def update_shooting(
         self,
@@ -218,31 +217,6 @@ class PipelineRunService:
             raise PipelineRunNotFoundError("Съёмка не найдена.")
         self._repository.commit()
         return run
-
-    def get_artifacts(self, run_id: str) -> list[PipelineArtifactDTO]:
-        run = self._require_run(run_id)
-        return run.artifacts
-
-    def get_artifact_url(
-        self,
-        run_id: str,
-        artifact_id: str,
-    ) -> ArtifactUrlDTO:
-        run = self._require_run(run_id)
-        artifact = next(
-            (
-                item
-                for item in run.artifacts
-                if item.id == artifact_id
-            ),
-            None,
-        )
-        if artifact is None:
-            raise PipelineRunNotFoundError("Файл результата не найден.")
-        return ArtifactUrlDTO(
-            artifact_id=artifact.id,
-            url=self._storage.presigned_get(artifact.object_key),
-        )
 
     def get_playback(self, run_id: str) -> PlaybackDTO:
         """Ссылка на исходное видео — рамки плеер рисует сам.
@@ -461,13 +435,11 @@ class PipelineRunService:
         run_id: str,
         *,
         with_artifacts: bool = True,
-        with_events: bool = False,
         include_hidden: bool = False,
     ) -> PipelineRunDTO:
         run = self._repository.get(
             run_id,
             with_artifacts=with_artifacts,
-            with_events=with_events,
             include_hidden=include_hidden,
         )
         if run is None:

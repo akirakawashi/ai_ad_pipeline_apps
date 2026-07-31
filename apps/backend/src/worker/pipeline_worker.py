@@ -37,6 +37,9 @@ class PipelineWorker:
     def __init__(self) -> None:
         self._config = get_settings()
         self._storage: WorkerObjectStorage = MinioStorage(self._config.object_storage)
+        # Только для лога: узнать, какой процесс поднялся, если их запущено
+        # несколько. В базу больше не пишется — колонка `pipeline_runs.worker_id`
+        # заполнялась при захвате и не читалась ни одним запросом.
         self._worker_id = f"{socket.gethostname()}:{os.getpid()}"
         self._models: PipelineModels | None = None
 
@@ -51,7 +54,7 @@ class PipelineWorker:
     def process_next(self) -> bool:
         with create_session() as session:
             repository = SqlPipelineRunRepository(session)
-            run = repository.claim_next(self._worker_id)
+            run = repository.claim_next()
             if run is None:
                 return False
             repository.commit()

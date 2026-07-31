@@ -1,8 +1,12 @@
 """Притягивание нарисованной линии к дорожной сети.
 
-Проверяется на настоящих данных: дорожные слои Симферополя и Севастополя и семь
-маршрутов из сид-миграции. Синтетики тут ровно столько, сколько нужно, чтобы
-изобразить руку — сам маршрут и сами дороги подлинные.
+Проверяется на настоящих данных: дорожные слои Симферополя и Севастополя лежат
+в сид-миграции, а семь эталонных маршрутов — рядом, в `fixtures/routes/`. Оба
+набора выгружены из OSM, но живут порознь не случайно: слой города база заводит
+сама, а линии маршрутов сид больше не сеет — их рисуют в админке. Здесь старая
+выгрузка осталась ровно тем, чем была полезна: эталоном, с которым сверяется
+построенная линия. Синтетики тут ровно столько, сколько нужно, чтобы изобразить
+руку — сам маршрут и сами дороги подлинные.
 
 Как устроена имитация руки. Берётся эталонный маршрут, и от него откладывается
 **плавное** отклонение: шум задаётся редкими узлами (раз в несколько сотен
@@ -35,7 +39,7 @@ from domain.route_snapping import (
     snap_stroke,
 )
 
-GEOMETRY_DIR = (
+ROADS_DIR = (
     Path(__file__).resolve().parents[1]
     / "apps"
     / "backend"
@@ -43,15 +47,21 @@ GEOMETRY_DIR = (
     / "seed_data"
     / "geometry"
 )
+ROUTES_DIR = Path(__file__).resolve().parent / "fixtures" / "routes"
 
-# Сколько маршрутов лежит у каждого города — те же, что заводит сид-миграция.
+# Сколько эталонов лежит у каждого города — по числу маршрутов из сид-миграции.
 ROUTES = {"simferopol": 4, "sevastopol": 3}
 
 METERS_PER_DEGREE = 111_320.0
 
 
-def _load(city: str, name: str) -> dict:
-    return json.loads((GEOMETRY_DIR / city / name).read_text(encoding="utf-8"))
+def _roads(city: str) -> dict:
+    return json.loads((ROADS_DIR / city / "export.geojson").read_text(encoding="utf-8"))
+
+
+def _reference(city: str, index: int) -> dict:
+    path = ROUTES_DIR / city / f"route_{index}.geojson"
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def _distance_m(first: tuple[float, float], second: tuple[float, float]) -> float:
@@ -65,22 +75,20 @@ def _distance_m(first: tuple[float, float], second: tuple[float, float]) -> floa
 @pytest.fixture(scope="module")
 def graphs() -> dict[str, RoadGraph]:
     """Графы обоих городов строятся один раз на модуль: это десятки миллисекунд."""
-    return {
-        city: RoadGraph.from_feature_collection(_load(city, "export.geojson"))
-        for city in ROUTES
-    }
+    return {city: RoadGraph.from_feature_collection(_roads(city)) for city in ROUTES}
 
 
 def _corridor(city: str, index: int) -> list[tuple[float, float]]:
-    """Эталон: маршрут из сида, вытянутый в одну простую ломаную.
+    """Эталон: старая выгрузка маршрута, вытянутая в одну простую ломаную.
 
-    Сами файлы маршрутов — мешки отрезков с ответвлениями (ровно та беда, ради
-    которой заводится рисование), поэтому за эталон берём коридор: самый
-    удалённый друг от друга пары концов и кратчайший путь между ними.
+    Сами файлы — мешки отрезков с ответвлениями (ровно та беда, ради которой
+    заведено рисование и из-за которой они выброшены из сида), поэтому за эталон
+    берём коридор: самую удалённую друг от друга пару концов и кратчайший путь
+    между ними.
     """
     features = [
         feature
-        for feature in _load(city, f"route_{index}.geojson")["features"]
+        for feature in _reference(city, index)["features"]
         if feature.get("geometry", {}).get("type") == "LineString"
     ]
     graph = RoadGraph.from_feature_collection(

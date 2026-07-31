@@ -80,7 +80,6 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('catalog_imports_id'),
     sa.UniqueConstraint('cities_id', 'revision', name='uq_catalog_imports_city_revision')
     )
-    op.create_index(op.f('ix_catalog_imports_cities_id'), 'catalog_imports', ['cities_id'], unique=False)
     op.create_index('ix_catalog_imports_city_current', 'catalog_imports', ['cities_id', 'is_current'], unique=False)
     op.create_index(op.f('ix_catalog_imports_created_at'), 'catalog_imports', ['created_at'], unique=False)
     op.create_index(op.f('ix_catalog_imports_status'), 'catalog_imports', ['status'], unique=False)
@@ -174,7 +173,6 @@ def upgrade() -> None:
     sa.Column('duration_sec', sa.Float(), nullable=True),
     sa.Column('width', sa.Integer(), nullable=True),
     sa.Column('height', sa.Integer(), nullable=True),
-    sa.Column('worker_id', sa.String(length=255), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('upload_completed_at', sa.DateTime(timezone=True), nullable=True),
@@ -189,8 +187,6 @@ def upgrade() -> None:
     op.create_index(op.f('ix_pipeline_runs_created_at'), 'pipeline_runs', ['created_at'], unique=False)
     op.create_index(op.f('ix_pipeline_runs_operator_users_id'), 'pipeline_runs', ['operator_users_id'], unique=False)
     op.create_index('ix_pipeline_runs_queue', 'pipeline_runs', ['status', 'created_at'], unique=False)
-    op.create_index(op.f('ix_pipeline_runs_status'), 'pipeline_runs', ['status'], unique=False)
-    op.create_index(op.f('ix_pipeline_runs_worker_id'), 'pipeline_runs', ['worker_id'], unique=False)
     op.create_table('pipeline_artifacts',
     sa.Column('pipeline_artifacts_id', sa.String(length=36), nullable=False),
     sa.Column('pipeline_runs_id', sa.String(length=36), nullable=False),
@@ -229,8 +225,6 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_pipeline_artifacts_pipeline_runs_id'), table_name='pipeline_artifacts')
     op.drop_index(op.f('ix_pipeline_artifacts_artifact_type'), table_name='pipeline_artifacts')
     op.drop_table('pipeline_artifacts')
-    op.drop_index(op.f('ix_pipeline_runs_worker_id'), table_name='pipeline_runs')
-    op.drop_index(op.f('ix_pipeline_runs_status'), table_name='pipeline_runs')
     op.drop_index('ix_pipeline_runs_queue', table_name='pipeline_runs')
     op.drop_index(op.f('ix_pipeline_runs_operator_users_id'), table_name='pipeline_runs')
     op.drop_index(op.f('ix_pipeline_runs_created_at'), table_name='pipeline_runs')
@@ -251,7 +245,6 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_catalog_imports_status'), table_name='catalog_imports')
     op.drop_index(op.f('ix_catalog_imports_created_at'), table_name='catalog_imports')
     op.drop_index('ix_catalog_imports_city_current', table_name='catalog_imports')
-    op.drop_index(op.f('ix_catalog_imports_cities_id'), table_name='catalog_imports')
     op.drop_table('catalog_imports')
     op.drop_index(op.f('ix_users_full_name'), table_name='users')
     op.drop_table('users')

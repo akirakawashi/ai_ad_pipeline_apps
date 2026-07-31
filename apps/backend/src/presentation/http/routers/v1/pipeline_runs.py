@@ -6,7 +6,6 @@ from application.services.pipeline_run_service import PipelineRunService
 from domain.entities import PipelineRunStatus
 from presentation.http.dependencies import get_run_service
 from presentation.http.dto.response import (
-    ArtifactUrlResponse,
     CreateRunRequest,
     CreateRunResponse,
     OkResponse,
@@ -14,7 +13,6 @@ from presentation.http.dto.response import (
     PaginatedRunsResponse,
     PipelineRunResponse,
     PlaybackResponse,
-    RunArtifactResponse,
     RunObjectsResponse,
     RunSummaryResponse,
     RunTimelineResponse,
@@ -95,17 +93,6 @@ def get_run(
 
 
 @router.get(
-    "/{run_id}/status",
-    response_model=OkResponse[PipelineRunResponse],
-)
-def get_run_status(
-    run_id: str = Path(description="Pipeline run id"),
-    service: PipelineRunService = Depends(get_run_service),
-) -> OkResponse[PipelineRunResponse]:
-    return OkResponse(data=PipelineRunResponse.model_validate(service.get_run(run_id)))
-
-
-@router.get(
     "/{run_id}/summary",
     response_model=OkResponse[RunSummaryResponse],
 )
@@ -174,36 +161,4 @@ def get_run_playback(
 ) -> OkResponse[PlaybackResponse]:
     return OkResponse(
         data=PlaybackResponse.model_validate(service.get_playback(run_id))
-    )
-
-
-@router.get(
-    "/{run_id}/artifacts",
-    response_model=OkResponse[list[RunArtifactResponse]],
-)
-def get_run_artifacts(
-    run_id: str = Path(description="Pipeline run id"),
-    service: PipelineRunService = Depends(get_run_service),
-) -> OkResponse[list[RunArtifactResponse]]:
-    return OkResponse(
-        data=[
-            RunArtifactResponse.model_validate(item)
-            for item in service.get_artifacts(run_id)
-        ]
-    )
-
-
-@router.get(
-    "/{run_id}/artifacts/{artifact_id}/url",
-    response_model=OkResponse[ArtifactUrlResponse],
-)
-def get_artifact_url(
-    run_id: str = Path(description="Pipeline run id"),
-    artifact_id: str = Path(description="Artifact id"),
-    service: PipelineRunService = Depends(get_run_service),
-) -> OkResponse[ArtifactUrlResponse]:
-    return OkResponse(
-        data=ArtifactUrlResponse.model_validate(
-            service.get_artifact_url(run_id, artifact_id)
-        )
     )

@@ -176,17 +176,3 @@ export function uploadPath(options: {
   const suffix = query.toString()
   return suffix ? `/upload?${suffix}` : '/upload'
 }
-
-export function workspaceTitle(route: Route) {
-  if (route.page === 'home') return 'Анализ заметности рекламы'
-  if (route.page === 'upload') return 'Загрузка видео'
-  if (route.page === 'run') return 'Результат'
-  if (route.page === 'archive') return 'Города и маршруты'
-  if (route.page === 'catalog') return 'Каталог конструкций'
-  if (route.page === 'admin') return 'Админ-панель'
-  if (route.page === 'manual') return 'Как завести город'
-  if (route.page === 'city') return 'Маршруты города'
-  if (route.page === 'route') return 'Задания маршрута'
-  if (route.page === 'assignment') return 'Задание'
-  return 'Все видео'
-}

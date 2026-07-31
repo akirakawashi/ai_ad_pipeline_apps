@@ -68,7 +68,7 @@ Three target brands: `mts`, `plus7`, `miranda`. Everything else collapses to `ot
 | `apps/backend/src/infrastructure/` | SQLModel models, SQL repositories, MinIO storage, `catalog/parser.py` (xlsx/xls/csv). |
 | `apps/backend/src/presentation/http/` | FastAPI routers, request/response DTOs, DI, exception handlers, `security.py` (the admin password). |
 | `apps/backend/src/worker/` | Queue worker that runs the ML pipeline out-of-process. |
-| `apps/backend/alembic/` | Migrations. Exactly two since the 28.07.2026 squash: `0001_schema` (all ten tables) and `0002_seed` (two cities, seven routes **with their geometry** — tests depend on these). `seed_data/geometry/` holds the nine geojson files the seed reads; they are migration assets, not leftovers — delete them and a from-scratch database comes up with an empty map. While there is no production database the chain is squashed rather than extended; the day real data exists, that stops and history is append-only. |
+| `apps/backend/alembic/` | Migrations. Exactly two since the 28.07.2026 squash: `0001_schema` (all ten tables) and `0002_seed` (two cities **with their road layers**, seven routes **without lines** — tests depend on these). `seed_data/geometry/<city>/export.geojson` holds the two road layers the seed reads; they are migration assets, not leftovers — delete them and a from-scratch database comes up with an empty map. Route lines are drawn in the admin panel, not seeded (31.07.2026, see §10); the seven `route_N.geojson` that used to live here are now reference fixtures in `tests/fixtures/routes/`. While there is no production database the chain is squashed rather than extended; the day real data exists, that stops and history is append-only. |
 | `apps/frontend/src/` | React 19 + Vite + Recharts. Hand-rolled router (`routing.ts`), no react-router. |
 | `scripts/` | `dev.sh` — brings up the whole stack. |
 | `tests/` | pytest. Needs a live Postgres; MinIO is faked. |
@@ -139,7 +139,8 @@ On the backend `visibility_value` means **S·α·β**. They are different number
 3. `POST /runs/{run_id}/upload-complete` → registers the `source_video` artifact, status `queued`.
    The one read that still answers for a hidden assignment: the file is already stored.
 4. Worker `claim_next` (`SELECT … FOR UPDATE SKIP LOCKED`) → status `processing`, downloads the
-   video, runs the pipeline, reporting progress into `pipeline_runs` + `pipeline_run_events`.
+   video, runs the pipeline, reporting progress into `pipeline_runs` + `pipeline_run_events`. The
+   second of those is **write-only** — see §10.
 5. Pipeline stages: detection → tracking → classification → final aggregation → business rules →
    artifacts.
 6. Worker uploads everything under `runs/{run_id}/artifacts/…`. Crops are uploaded but **not**
@@ -147,7 +148,10 @@ On the backend `visibility_value` means **S·α·β**. They are different number
    frame_stride / width / height and **`duration_sec = frame_count / fps`** — β depends on this
    value.
 7. Reads: `GET /runs/{id}/summary` and `/objects` parse **`tracks.csv`** from MinIO and apply β on
-   the fly; `/timeline` parses `detections.csv`; `/overlay` returns `overlay.json`.
+   the fly; `/timeline` parses `detections.csv`; `/overlay` returns `overlay.json`. `pipeline_runs`
+   has exactly six read endpoints — `/{id}`, `/summary`, `/objects`, `/timeline`, `/overlay`,
+   `/playback` — and `api.ts` calls all six. Keep it that way; the three that nobody called were
+   deleted on 30.07.2026 (see §10).
 8. Rollup calls `get_summary` per completed shooting → **mean and median, plus std** across
    shootings, all three in one response (`MetricStat`); the UI toggle picks which centre to show.
    Two entry points, one code path: `/assignments/{id}/summary` (shootings of one assignment) and
@@ -157,15 +161,17 @@ On the backend `visibility_value` means **S·α·β**. They are different number
    can shorten the route's list before the rollup — the date period and a hidden assignment — and
    neither changes how it computes (see §10).
 9. Route/city geometry lives in the DB (`routes.geometry`, `cities.roads_geometry`) and is served by
-   `/cities/{c}/roads-geometry` and `/cities/{c}/routes/{r}/geometry` with weak `ETag`s. **The seeded
-   cities and routes get their geometry from `0002_seed`**, which reads the nine geojson files in
-   `apps/backend/alembic/seed_data/geometry/` and computes each city's bounds from its roads layer —
-   so an empty database comes up with a working map and no manual step. **The two sides arrive
-   differently, and that is the point:** a city's road layer is still uploaded as a geojson file
-   (`PUT /cities/{c}/roads-geometry`, recomputes the bounds in the same operation), while a route's
-   line is **drawn by hand over that layer** (`POST /cities/{c}/routes/{r}/geometry`, body
+   `/cities/{c}/roads-geometry` and `/cities/{c}/routes/{r}/geometry` with weak `ETag`s. **The two
+   sides arrive differently, and that is the point:** a city's road layer is uploaded as a geojson
+   file (`PUT /cities/{c}/roads-geometry`, recomputes the bounds in the same operation), while a
+   route's line is **drawn by hand over that layer** (`POST /cities/{c}/routes/{r}/geometry`, body
    `{"stroke": [[lon, lat], …]}`). The stroke is snapped onto the real road network by
-   `domain/route_snapping.py`; uploading a route geojson is gone (30.07.2026, see §10).
+   `domain/route_snapping.py`; uploading a route geojson is gone (30.07.2026, see §10). **The seed
+   follows that split:** `0002_seed` reads the two `export.geojson` road layers and computes each
+   city's bounds from them, so an empty database comes up with a working map — but it seeds no route
+   lines at all, because a line is something you draw (31.07.2026, see §10). Consequence to expect on
+   a fresh database: roads are there, every route says «линии нет», and
+   `GET /cities/{c}/routes/{r}/geometry` answers 404 until someone draws it.
 10. Frontend renders charts from `/summary`, `/objects`, `/timeline`, and the player from
    `/overlay` + `/playback`.
 
@@ -185,10 +191,10 @@ only feed the pipeline's own `report.html`.
 | Change β semantics / zone model | `apps/backend/src/domain/geozones.py` + `_apply_beta` in `pipeline_run_service.py` + `RouteGeozone` model |
 | Change how zones are entered or edited | `apps/frontend/src/components/RouteGeozones.tsx` — one panel for both mounts (city page without video, shooting card with it); percent↔fraction lives in `toFraction`/`percentText` there |
 | Add an endpoint | router in `presentation/http/routers/v1/` → response DTO in `presentation/http/dto/response.py` → service → repository interface → SQL repository |
-| Add a DB table/column | `infrastructure/database/models.py`, then **the owner writes the migration** (existing convention) |
+| Add a DB table/column | `infrastructure/database/models.py`, then the schema change goes **into `0001_schema`**, not into a third migration — there is still no production database (see §3). Generate it only when asked; **the owner applies it**, and the owner must wipe the volume for an edited `0001_schema` to take effect. Verify with `alembic check` against a scratch database: `pytest` proves the code runs on the migrated schema but not that the migration matches the models |
 | Change how an assignment **or a route** aggregates shootings | `application/services/metrics_rollup.py` — the only place that decides how shootings collapse (today: mean + median + std), shared by both levels. Which shootings reach it is decided earlier, in `list_route_runs`; do not move that decision here or the other way round |
 | Change how an assignment is created, edited or hidden | `components/AdminAssignments.tsx` (the only mount of `AssignmentForm.tsx` — route picker, create, edit, hide/show) → `createAssignment` / `updateAssignment` / `getRouteAssignments` in `api.ts` → `assignments.py` + `cities.py` routers (both writes behind `require_admin`) → `catalog_service` → `sql_catalog_repository`. `RoutePage.tsx` and `AssignmentPage.tsx` only display; do not put a form back into either |
-| Change what a hidden assignment hides | `is_active` threads through **eight** reads: `list_assignments`, `get_assignment`, `_assignment_counts_by_route`, `_video_counts_by_route`, the two city-level counters in `list_cities`, `list_route_runs` (this is the metric) and `lock_assignment`, plus `list_runs` and `get` in `sql_pipeline_run_repository.py`. Miss one and you get half-hidden: a card gone from the list but its video still counted — see §10 |
+| Change what a hidden assignment hides | `is_active` threads through **nine** reads. Seven in `sql_catalog_repository.py`: `list_assignments`, `get_assignment`, `_assignment_counts_by_route`, `_video_counts_by_route`, the two city-level counters in `list_cities`, and `list_route_runs` (this is the metric). Three in `sql_pipeline_run_repository.py`: `list_runs`, `get`, and `lock_assignment` — the last one guards the upload and **must stay in that file**, next to its only caller; see the twin trap in §10. Miss one and you get half-hidden: a card gone from the list but its video still counted |
 | Change the route's date period | `list_route_runs` in `sql_catalog_repository.py` (the `[shot_from, shot_to)` window) → `get_route_summary` in `catalog_service.py` → `cities.py` router → `getRouteSummary` in `api.ts` → `PeriodPicker` in `RouteSummaryPanel.tsx`, with the window itself in the URL (`routePath`). Date↔instant conversion lives in `utils/formatters.ts`. **The filter stays on the server** — see §10 |
 | Change which centre estimate the UI shows, or add a third one | `MetricStatDTO` → `_stat()` in `metrics_rollup.py` → `MetricStat` in `types.ts` → `statValue`/`formatStat` in `utils/formatters.ts` → `AggregateToggle.tsx`, which is mounted only by `MetricsPanel.tsx` (the summary tiles and the toggle are one card, and the caption «Оценка за съёмку» names the **toggle**, not the tiles — two of the four tiles are totals the estimate does not touch). The choice itself never reaches the backend, and it is held by the **page** (`RoutePage` / `AssignmentPage`), not by the panel — the panel unmounts on a tab switch and the selection has to survive that |
 | Change what the route/assignment page shows, or add a tab | `PageView` in `routing.ts` (`?view=analytics`, absent means work) → `routePath` / `assignmentPath` → `VIEW_TABS` in `RoutePage.tsx` / `AssignmentPage.tsx`. **The rollup request is gated on the tab** — that is what makes it lazy; do not hoist it out of that condition. `App.tsx` deliberately keeps the tab out of the page `key` so switching does not remount and refetch |
@@ -352,9 +358,21 @@ is collected, and calls `pytest.exit` when postgres is unreachable. There is no 
   order at all. `RouteMap.tsx` therefore carried `orderRouteSegments`, a "nearest endpoint from the
   westernmost point" heuristic, purely so the thing could be animated. A drawn route is **one
   ordered LineString** by construction — it has a start, an end and a length — so that heuristic is
-  gone with the upload. Two consequences: `route_line_collection` in `domain/geometry.py` is the
-  only writer of route geometry, and the seeded routes are still bags until someone redraws them
-  (they still render; each segment is simply its own path).
+  gone with the upload. Consequence: `route_line_collection` in `domain/geometry.py` is the only
+  writer of route geometry.
+* **The seed stops at the road layer — routes come up with no line, on purpose.** For three days
+  after the upload was removed, `0002_seed` still seeded the seven old OSM bags: the routes rendered,
+  so nothing looked broken, and that was the problem — a seeded bag has no order, no start and no
+  length, and it claims `has_geometry: true` on a route nobody has drawn. Removed on 31.07.2026. The
+  seven files are not deleted: as *seed* they lied, as *fixtures* they are the only real-data
+  yardstick the snapper has, so they moved to `tests/fixtures/routes/` and
+  [tests/test_route_snapping.py](tests/test_route_snapping.py) keeps tracing all seven. Two things to
+  keep straight if you touch the seed: the road layers stay (`export.geojson` is a genuine migration
+  asset — without it there is nothing to draw on and no city bounds for the catalogue parser), and
+  `geometry` must be **omitted from the insert**, never passed as `None` — the migration's
+  `sa.table` uses a plain `postgresql.JSONB`, which writes Python `None` as the JSON literal `null`,
+  and the model's `none_as_null=True` does not apply because `bulk_insert` goes around the model.
+  That is the §10 JSONB trap in its least visible form: the flag would read `true` on an empty line.
 * **Snapping lives on the backend because the computation happens once, on «Подтвердить».** The
   stroke is matched to the road network for the stroke *as a whole* — where each point lands depends
   on where the line goes next — so it cannot run incrementally while the hand is still moving. Given
@@ -492,9 +510,50 @@ is collected, and calls `pytest.exit` when postgres is unreachable. There is no 
   `add_artifact`) have no filter and must not grow one — a hidden assignment would otherwise mean a
   queued video nobody claims and nobody hears about again. The one deliberate exception is
   `complete_upload`, which passes `include_hidden=True`: the file is already in MinIO, and refusing
-  there would strand the row in `uploading` next to an orphaned object. Same reason `lock_assignment`
-  returns `False` for a hidden assignment — that check belongs to *starting* an upload, not
-  finishing one.
+  there would strand the row in `uploading` next to an orphaned object. Same reason
+  `SqlPipelineRunRepository.lock_assignment` returns `False` for a hidden assignment — that check
+  belongs to *starting* an upload, not finishing one.
+* **A single-column index whose column is the first column of a composite one is dead weight, not a
+  fallback.** Postgres serves a leftmost-prefix lookup from the composite, so
+  `ix_pipeline_runs_status` next to `ix_pipeline_runs_queue (status, created_at)` — and
+  `ix_catalog_imports_cities_id` next to `ix_catalog_imports_city_current (cities_id, is_current)` —
+  answered nothing the composite did not, while being rewritten on every insert. Both were dropped on
+  30.07.2026 along with `pipeline_runs.worker_id` (written by `claim_next`, read by no query — the
+  worker still builds an id, but only for its log line). The models now carry a comment at each site
+  saying why there is no `index=True`; do not "restore" one. **Before adding `index=True`, check
+  `__table_args__` for a composite that already starts with that column.**
+* **`pipeline_run_events` is a write-only table, and the only thing guarding it is one test.** The
+  worker appends a row per stage; nothing in the product reads them. Progress on screen comes from
+  the run's own `stage` / `progress` / `status_message`, which always hold the latest state — a
+  second source of the same thing is what the events read path was, and it served `GET
+  /runs/{id}/status`, an endpoint byte-identical to `GET /runs/{id}` that `api.ts` never called.
+  Deleted on 30.07.2026 along with `/artifacts` and `/artifacts/{id}/url` (also uncalled), the
+  `events` field on the run DTO and response, `PipelineRunEventDTO`, `RunEventResponse`,
+  `ArtifactUrlDTO`/`Response`, `with_events` through three layers, and **the `events` `Relationship`
+  on both models** — whose only remaining trace was `noload(PipelineRun.events)` repeated in four
+  queries to stop a lazy load of something nobody read. Two consequences to keep straight: **the
+  writes stay** (`add_event` from seven call sites — that is the trail you read by SQL when a run
+  breaks), and because no code path reads the table any more, a broken insert would now be silent.
+  `TestProcessingLog` in [tests/test_shootings.py](tests/test_shootings.py) exists for exactly that
+  and must not be deleted as "a test of nothing". If a processing log ever needs to appear on screen,
+  add the `Relationship` back — it is two lines — rather than reviving the endpoint.
+* **`artifacts` on `PipelineRunDTO` is for the backend, not the browser.** It stays on the
+  application DTO because `_find_artifact` resolves `tracks.csv`, `detections.csv`, `overlay.json`
+  and the source video out of it — that is how `/summary`, `/objects`, `/timeline`, `/overlay` and
+  `/playback` all work. It is deliberately **absent from `PipelineRunResponse`**: no screen can do
+  anything with an object key, and `api.ts` has no artifact functions at all. Do not "expose it for
+  completeness" — that is what was just removed.
+* **A repository method written into the wrong class is invisible: nothing fails, the check simply
+  never runs.** `lock_assignment` existed twice for a day — the correct version, with the
+  `is_active` check, in `SqlCatalogRepository`, and a version without it in
+  `SqlPipelineRunRepository`. Only the second was ever called: `PipelineRunService` holds an
+  `IPipelineRunRepository`, and `ICatalogRepository` never declared the method at all, so the good
+  copy was unreachable from any interface. Both files compile, both typecheck, and uploading into a
+  hidden assignment kept working while every other screen hid it. `count_assignment_runs` had drifted
+  the same way, byte-identical in both classes. **The rule this leaves:** before adding a method to a
+  repository, check which Protocol the calling service actually holds — the two SQL repositories
+  share a session and several models, so a method lands plausibly in either, and the wrong one is
+  silent. A cross-repository duplicate is a defect by itself, never a convenience.
 * **A date-only string is UTC to `new Date()`, and that silently moves the day.** `new Date('2026-05-03')`
   is parsed as UTC midnight by spec, while `new Date(2026, 4, 3)` is local midnight. West of Greenwich the
   first one lands on the previous day, so a person picking the 3rd would store the 2nd — no error, no

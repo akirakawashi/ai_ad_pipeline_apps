@@ -24,7 +24,6 @@ from application.common.dto.catalog import (
 )
 from application.common.dto.base import ApplicationDTO
 from application.common.dto.pipeline import (
-    ArtifactUrlDTO,
     BrandSummaryDTO,
     CityRefDTO,
     CreateRunDTO,
@@ -36,7 +35,6 @@ from application.common.dto.pipeline import (
     PaginatedRunsDTO,
     PipelineArtifactDTO,
     PipelineRunDTO,
-    PipelineRunEventDTO,
     PlaybackDTO,
     RouteRefDTO,
     RunAssignmentRefDTO,
@@ -53,7 +51,6 @@ from application.common.dto.users import UserDTO
 __all__ = [
     "AdStructureDTO",
     "ApplicationDTO",
-    "ArtifactUrlDTO",
     "CatalogImportDTO",
     "CatalogImportReportDTO",
     "MetricStatDTO",
@@ -88,7 +85,6 @@ __all__ = [
     "PaginatedRunsDTO",
     "PipelineArtifactDTO",
     "PipelineRunDTO",
-    "PipelineRunEventDTO",
     "PlaybackDTO",
     "RunObjectDTO",
     "RunObjectsDTO",

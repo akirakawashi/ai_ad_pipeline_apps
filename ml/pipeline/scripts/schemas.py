@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 import numpy as np
 
@@ -96,11 +95,6 @@ class DetectionRecord:
     def bbox_xyxy(self) -> tuple[float, float, float, float]:
         return (self.bbox_x1, self.bbox_y1, self.bbox_x2, self.bbox_y2)
 
-    def to_row(self) -> dict[str, Any]:
-        from .artifacts import DetectionCsvRow
-
-        return DetectionCsvRow.model_validate(self).to_csv_row()
-
 
 @dataclass
 class TrackRecord:
@@ -127,11 +121,6 @@ class TrackRecord:
     final_status_reason: str
     track_confirmed: bool
     manual_review_required: bool
-
-    def to_row(self) -> dict[str, Any]:
-        from .artifacts import TrackCsvRow
-
-        return TrackCsvRow.model_validate(self).to_csv_row()
 
 
 DetectionMap = dict[int, list[DetectionRecord]]
