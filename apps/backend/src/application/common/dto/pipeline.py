@@ -57,15 +57,6 @@ class PipelineArtifactDTO(ApplicationDTO):
     created_at: datetime | None
 
 
-class PipelineRunEventDTO(ApplicationDTO):
-    id: str
-    run_id: str
-    stage: PipelineRunStage
-    progress: int = Field(ge=0, le=100)
-    message: str | None
-    created_at: datetime | None
-
-
 class PipelineRunDTO(ApplicationDTO):
     run_id: str
     source_name: str
@@ -91,15 +82,19 @@ class PipelineRunDTO(ApplicationDTO):
     updated_at: datetime | None
     # --- реквизиты съёмки ---------------------------------------------------
     # Не путать со started_at / completed_at выше: те про обработку видео.
-    shot_started_at: datetime | None = None
-    # Не хранится: shot_started_at + duration_sec. None, пока нет одного из двух.
+    shot_started_at: datetime
+    # Не хранится: shot_started_at + duration_sec. None, пока нет длительности.
     shot_finished_at: datetime | None = None
     # Заполняются только там, где связи загружены явно (_run_to_dto(with_refs=...)).
-    # None означает «Без задания» либо «связь не запрашивали».
+    # None означает «связь не запрашивали», и только это: задание у съёмки есть
+    # всегда — колонка обязательная. Поле остаётся необязательным именно ради
+    # такого ответа: так отдают воркер и `GET /assignments/{id}/runs`.
     assignment: RunAssignmentRefDTO | None = None
-    operator: UserDTO | None = None
+    uploaded_by: UserDTO | None = None
+    # Артефакты нужны самому бэкенду, а не браузеру: из них берутся ключи
+    # tracks.csv, detections.csv, overlay.json и исходного видео. В ответ они
+    # не уезжают — читать их в интерфейсе нечем и незачем.
     artifacts: list[PipelineArtifactDTO] = Field(default_factory=list)
-    events: list[PipelineRunEventDTO] = Field(default_factory=list)
 
 
 class CreateRunDTO(ApplicationDTO):
@@ -115,14 +110,8 @@ class PaginatedRunsDTO(ApplicationDTO):
     total: int
 
 
-class ArtifactUrlDTO(ApplicationDTO):
-    artifact_id: str
-    url: str
-
-
 class PlaybackDTO(ApplicationDTO):
     source_url: str | None
-    annotated_url: str | None
 
 
 class BrandSummaryDTO(BrandTrackSummaryRow):

@@ -3,6 +3,10 @@
 Плановое окно задаёт постановщик, фактическое выводится из времён съёмок.
 Отдельно проверяем разделение отображаемого и хранимого названия: в этом месте
 уже был дефект, когда автозаголовок молча становился постоянным.
+
+Заводят и правят задание только в админ-панели — сценарии пароля живут в
+test_admin_auth.py, здесь клиент ходит с ним по умолчанию. Скрытие проверяется
+в TestHiding: удаления у задания нет и не будет, на нём висят съёмки с CASCADE.
 """
 
 from __future__ import annotations
@@ -172,6 +176,76 @@ class TestPatch:
         assert response.status_code == 404
 
 
+class TestHiding:
+    """Скрытие задания. Удаления нет: на нём висят съёмки с CASCADE.
+
+    Проверяем обе половины двери. Скрытое исчезает отовсюду, включая прямую
+    ссылку, — иначе «скрыто» означало бы лишь «убрано из списка», а сохранённая
+    вкладка обходила бы это молча. И скрытое возвращается той же ручкой: скрытие
+    без возврата — односторонняя дверь, на которой в этом проекте уже погорели
+    города.
+    """
+
+    def test_disappears_from_route_list(self, client, assignments_url):
+        created = payload(client.post(assignments_url, json={}))
+        client.patch(f"/api/v1/assignments/{created['id']}", json={"is_active": False})
+
+        listed = payload(client.get(assignments_url))
+        assert listed["total"] == 0
+        assert listed["items"] == []
+
+    def test_admin_sees_it_and_knows_it_is_hidden(self, client, assignments_url):
+        created = payload(client.post(assignments_url, json={}))
+        client.patch(f"/api/v1/assignments/{created['id']}", json={"is_active": False})
+
+        listed = payload(client.get(f"{assignments_url}?include_inactive=true"))
+        assert [item["id"] for item in listed["items"]] == [created["id"]]
+        assert listed["items"][0]["is_active"] is False
+
+    def test_direct_link_is_404(self, client, assignments_url):
+        created = payload(client.post(assignments_url, json={}))
+        client.patch(f"/api/v1/assignments/{created['id']}", json={"is_active": False})
+
+        url = f"/api/v1/assignments/{created['id']}"
+        assert client.get(url).status_code == 404
+        assert client.get(f"{url}?include_inactive=true").status_code == 200
+        # Сводка и список съёмок ходят через ту же проверку.
+        assert client.get(f"{url}/summary").status_code == 404
+        assert client.get(f"{url}/runs").status_code == 404
+
+    def test_restore_brings_it_back(self, client, assignments_url):
+        created = payload(client.post(assignments_url, json={}))
+        client.patch(f"/api/v1/assignments/{created['id']}", json={"is_active": False})
+
+        restored = client.patch(
+            f"/api/v1/assignments/{created['id']}", json={"is_active": True}
+        )
+        assert restored.status_code == 200
+        assert payload(restored)["is_active"] is True
+        assert payload(client.get(assignments_url))["total"] == 1
+
+    def test_route_card_stops_counting_it(self, client, city_route, assignments_url):
+        """Счётчик на карточке маршрута не должен спорить со списком под ней."""
+        city_slug, route_slug = city_route
+        created = payload(client.post(assignments_url, json={}))
+        client.patch(f"/api/v1/assignments/{created['id']}", json={"is_active": False})
+
+        city = payload(client.get(f"/api/v1/cities/{city_slug}"))
+        route = next(item for item in city["routes"] if item["slug"] == route_slug)
+        assert route["assignment_count"] == 0
+
+    def test_null_is_refused(self, client, assignments_url):
+        """Колонка NOT NULL: null должен отбиваться разбором, а не базой."""
+        created = payload(client.post(assignments_url, json={}))
+        response = client.patch(
+            f"/api/v1/assignments/{created['id']}", json={"is_active": None}
+        )
+        assert response.status_code == 422
+
+    def test_new_assignment_is_visible(self, client, assignments_url):
+        assert payload(client.post(assignments_url, json={}))["is_active"] is True
+
+
 class TestActualWindow:
     def test_empty_without_shootings(self, client, assignments_url):
         created = payload(client.post(assignments_url, json={}))
@@ -205,6 +279,7 @@ def test_summary_counts_shootings(client, assignments_url):
             "content_type": "video/mp4",
             "size_bytes": 1024,
             "assignment_id": created["id"],
+            "shot_started_at": "2026-08-02T09:30:00Z",
         },
     )
     summary = payload(client.get(f"/api/v1/assignments/{created['id']}/summary"))

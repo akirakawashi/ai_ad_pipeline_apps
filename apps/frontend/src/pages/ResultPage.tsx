@@ -6,7 +6,7 @@ import {
   getRunSummary,
   getRunTimeline,
 } from '../api'
-import { GeozoneMarker } from '../components/GeozoneMarker'
+import { RouteGeozones } from '../components/RouteGeozones'
 import { RunCharts } from '../components/RunCharts'
 import { ShootingFacts } from '../components/ShootingFacts'
 import { VideoOverlayPlayer } from '../components/VideoOverlayPlayer'
@@ -19,7 +19,7 @@ import {
   ObjectsSkeleton,
   PlayerSkeleton,
 } from '../components/common/Skeletons'
-import { navigate } from '../routing'
+import { assignmentPath, navigate } from '../routing'
 import type {
   OverlayPayload,
   PipelineRun,
@@ -104,7 +104,7 @@ export function ResultPage({
             {run.assignment && (
               <button
                 className="secondary"
-                onClick={() => navigate(`/assignments/${run.assignment!.assignment_id}`)}
+                onClick={() => navigate(assignmentPath(run.assignment!.assignment_id))}
               >
                 К заданию
               </button>
@@ -152,12 +152,12 @@ export function ResultPage({
         <PlayerSkeleton />
       )}
 
-      {run.assignment && playback?.source_url && (
-        <GeozoneMarker
+      {run.assignment && (
+        <RouteGeozones
           citySlug={run.assignment.city.slug}
           routeSlug={run.assignment.route.slug}
           routeName={run.assignment.route.name}
-          sourceUrl={playback.source_url}
+          sourceUrl={playback?.source_url ?? undefined}
         />
       )}
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, type CSSProperties } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
 
 type Position = [number, number]
 
@@ -18,15 +18,47 @@ export interface GeoFeatureCollection {
   features: GeoFeature[]
 }
 
-type Projector = (coordinate: Position) => Position
+interface Projector {
+  project: (coordinate: Position) => Position
+  unproject: (point: Position) => Position
+}
 
 const VIEWBOX = { width: 1420, height: 1085, padding: 55 }
+
+/** Пределы приближения. Единица — вся карта в кадре, 40 — примерно квартал. */
+const ZOOM_MIN = 1
+const ZOOM_MAX = 40
+
+/**
+ * Полоса у края кадра, в которой карта едет сама, пока ведёшь линию.
+ *
+ * Скорость — предел в пикселях за кадр, и он намеренно мал: линию ведут
+ * аккуратно, а уезжающая из-под руки карта сбивает прицел сильнее, чем помогает.
+ * Внутри полосы скорость растёт пропорционально глубине захода: коснулся
+ * кромки — карта почти стоит, вжался в самый край — ползёт.
+ */
+const EDGE_BAND_PX = 56
+const EDGE_SPEED_PX = 2.5
+
+/**
+ * Сколько пикселей руке позволено сдвинуться, чтобы жест всё ещё считался
+ * кликом, а не протяжкой.
+ *
+ * Порог по расстоянию, а не по времени: клик в нужную точку карты человек
+ * ставит медленно и прицельно, и по длительности он неотличим от короткого
+ * штриха. А вот дрожь при нажатии кнопки — это единицы пикселей всегда.
+ */
+const CLICK_SLOP_PX = 4
 
 function toWebMercator([lon, lat]: Position): Position {
   const safeLat = Math.max(-85.05112878, Math.min(85.05112878, lat))
   const lonRadians = (lon * Math.PI) / 180
   const latRadians = (safeLat * Math.PI) / 180
   return [lonRadians, Math.log(Math.tan(Math.PI / 4 + latRadians / 2))]
+}
+
+function fromWebMercator([x, y]: Position): Position {
+  return [(x * 180) / Math.PI, ((2 * Math.atan(Math.exp(y)) - Math.PI / 2) * 180) / Math.PI]
 }
 
 function collectCoordinates(collection: GeoFeatureCollection): Position[] {
@@ -59,21 +91,46 @@ function createProjector(collections: GeoFeatureCollection[]): Projector {
   const xOffset = (VIEWBOX.width - usedWidth) / 2
   const yOffset = (VIEWBOX.height - usedHeight) / 2
 
-  return (coordinate: Position) => {
-    const [mercatorX, mercatorY] = toWebMercator(coordinate)
-    const x = xOffset + (mercatorX - minX) * scale
-    const y = yOffset + (maxY - mercatorY) * scale
-    return [x, y]
+  return {
+    project: (coordinate: Position) => {
+      const [mercatorX, mercatorY] = toWebMercator(coordinate)
+      return [xOffset + (mercatorX - minX) * scale, yOffset + (maxY - mercatorY) * scale]
+    },
+    // Обратный ход нужен рисованию: рука ведёт линию в координатах картинки, а
+    // на сервер уходят долгота и широта. Без него штрих остался бы пикселями.
+    unproject: ([x, y]: Position) =>
+      fromWebMercator([minX + (x - xOffset) / scale, maxY - (y - yOffset) / scale]),
   }
 }
 
-function lineStringToPath(coordinates: Position[], project: Projector): string {
-  return coordinates
-    .map((coord, index) => {
-      const [x, y] = project(coord)
-      return `${index === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)}`
-    })
+/**
+ * Скорость самохода по одной оси, пикселей за кадр. Ноль — курсор вне кромки.
+ *
+ * Внутри полосы скорость растёт линейно от нуля на её внутренней границе до
+ * предела у самого края экрана, поэтому подъезд начинается незаметно и не
+ * дёргает картинку в момент, когда рука только коснулась кромки.
+ */
+function edgeSpeed(offset: number, size: number): number {
+  if (offset < EDGE_BAND_PX) {
+    const depth = Math.min(1, (EDGE_BAND_PX - offset) / EDGE_BAND_PX)
+    return -EDGE_SPEED_PX * depth
+  }
+  const fromEnd = size - offset
+  if (fromEnd < EDGE_BAND_PX) {
+    const depth = Math.min(1, (EDGE_BAND_PX - fromEnd) / EDGE_BAND_PX)
+    return EDGE_SPEED_PX * depth
+  }
+  return 0
+}
+
+function pointsToPath(points: Position[]): string {
+  return points
+    .map(([x, y], index) => `${index === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)}`)
     .join(' ')
+}
+
+function lineStringToPath(coordinates: Position[], project: Projector['project']): string {
+  return pointsToPath(coordinates.map(project))
 }
 
 function roadClass(properties: Record<string, unknown> = {}): string {
@@ -83,49 +140,20 @@ function roadClass(properties: Record<string, unknown> = {}): string {
   return 'tertiary'
 }
 
-/** Orders disjoint OSM way segments into a single continuous drawing path, nearest-neighbor from the westernmost endpoint. */
-function orderRouteSegments(features: GeoFeature[], project: Projector): string[] {
-  const segments = features
+/**
+ * Линии маршрута → пути для отрисовки, в том порядке, в каком они лежат.
+ *
+ * Раньше здесь стояла раскладка кусков «ближайший конец от самой западной
+ * точки»: маршрут приходил из OSM мешком отрезков без порядка, и по-другому
+ * прочесть его было нельзя. Нарисованный маршрут упорядочен по построению —
+ * это одна линия от начала до конца, — поэтому эвристика удалена вместе с
+ * загрузкой geojson. Мешок (маршруты, нарисованные до перехода) тоже рисуется:
+ * просто каждый кусок отдельным путём, как и был.
+ */
+function routePaths(features: GeoFeature[], project: Projector['project']): string[] {
+  return features
     .filter((feature) => feature.geometry?.type === 'LineString')
-    .map((feature) => ({ coordinates: feature.geometry.coordinates as Position[] }))
-
-  if (!segments.length) return []
-
-  const endpoints = segments.flatMap(({ coordinates }) => [coordinates[0], coordinates[coordinates.length - 1]])
-  let cursor = endpoints.reduce((westernmost, point) =>
-    project(point)[0] < project(westernmost)[0] ? point : westernmost,
-  )
-  const remaining = [...segments]
-  const orderedPaths: string[] = []
-
-  while (remaining.length) {
-    let bestIndex = 0
-    let shouldReverse = false
-    let bestDistance = Infinity
-
-    for (let index = 0; index < remaining.length; index += 1) {
-      const { coordinates } = remaining[index]
-      const start = project(coordinates[0])
-      const end = project(coordinates[coordinates.length - 1])
-      const cursorPoint = project(cursor)
-      const startDistance = Math.hypot(start[0] - cursorPoint[0], start[1] - cursorPoint[1])
-      const endDistance = Math.hypot(end[0] - cursorPoint[0], end[1] - cursorPoint[1])
-      const distance = Math.min(startDistance, endDistance)
-
-      if (distance < bestDistance) {
-        bestIndex = index
-        shouldReverse = endDistance < startDistance
-        bestDistance = distance
-      }
-    }
-
-    const [{ coordinates }] = remaining.splice(bestIndex, 1)
-    const oriented = shouldReverse ? [...coordinates].reverse() : coordinates
-    orderedPaths.push(lineStringToPath(oriented, project))
-    cursor = oriented[oriented.length - 1]
-  }
-
-  return orderedPaths
+    .map((feature) => lineStringToPath(feature.geometry.coordinates as Position[], project))
 }
 
 interface RouteVar extends CSSProperties {
@@ -140,6 +168,15 @@ export interface MapStructure {
   surfaces_count: number
 }
 
+interface ViewBox {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+const FULL_VIEW: ViewBox = { x: 0, y: 0, width: VIEWBOX.width, height: VIEWBOX.height }
+
 export interface RouteMapProps {
   roads: GeoFeatureCollection
   routes: GeoFeatureCollection[]
@@ -150,6 +187,26 @@ export interface RouteMapProps {
   selectedIndex: number | null
   onHoverChange: (index: number | null) => void
   onSelect: (index: number) => void
+  /** Колесо приближает, перетаскивание двигает. По умолчанию карта неподвижна. */
+  zoomable?: boolean
+  /**
+   * Режим рисования: левая кнопка ведёт линию вместо панорамирования.
+   *
+   * Линия рисуется по кускам: протяжка даёт след, одиночный клик — одну точку,
+   * и то и другое **дописывается к уже нарисованному**. Карта поэтому не знает,
+   * закончена линия или нет: она отдаёт очередной кусок в `onSegmentDrawn` и
+   * ждёт следующего. Копит куски и решает, когда хватит, тот, кто её монтирует.
+   */
+  drawing?: boolean
+  onSegmentDrawn?: (segment: Position[]) => void
+  /**
+   * Уже нарисованное — сырая линия «как вела рука», пока её не подтвердили.
+   *
+   * Карта не просто показывает её, а продолжает от её конца: и живой след, и
+   * резинка за курсором начинаются от последней точки. Иначе каждый кусок
+   * выглядел бы отдельной линией, хотя на сервер уходит одна.
+   */
+  stroke?: Position[] | null
 }
 
 export function RouteMap({
@@ -162,23 +219,44 @@ export function RouteMap({
   selectedIndex,
   onHoverChange,
   onSelect,
+  zoomable = false,
+  drawing = false,
+  onSegmentDrawn,
+  stroke = null,
 }: RouteMapProps) {
-  const project = useMemo(() => createProjector([roads, ...routes]), [roads, routes])
+  const projector = useMemo(() => createProjector([roads, ...routes]), [roads, routes])
+  const project = projector.project
+  const svgRef = useRef<SVGSVGElement | null>(null)
+  const [view, setView] = useState<ViewBox>(FULL_VIEW)
 
-  const roadPaths = useMemo(
-    () =>
-      roads.features
-        .filter((feature) => feature.geometry?.type === 'LineString')
-        .map((feature) => ({
-          d: lineStringToPath(feature.geometry.coordinates as Position[], project),
-          className: roadClass(feature.properties),
-        })),
+  // Дорожный слой — до полутора тысяч линий, и он неподвижен: приближение и
+  // панорамирование меняют viewBox, а не пути. Держим готовое дерево элементов,
+  // иначе каждый кадр жеста пересобирал бы его заново.
+  const roadLayer = useMemo(
+    () => (
+      <g>
+        {roads.features
+          .filter((feature) => feature.geometry?.type === 'LineString')
+          .map((feature, index) => (
+            <path
+              key={index}
+              d={lineStringToPath(feature.geometry.coordinates as Position[], project)}
+              className={`road-path ${roadClass(feature.properties)}`}
+            />
+          ))}
+      </g>
+    ),
     [roads, project],
   )
 
   const routeSegments = useMemo(
-    () => routes.map((route) => orderRouteSegments(route.features, project)),
+    () => routes.map((route) => routePaths(route.features, project)),
     [routes, project],
+  )
+
+  const strokePath = useMemo(
+    () => (stroke && stroke.length > 1 ? lineStringToPath(stroke, project) : null),
+    [stroke, project],
   )
 
   // Точки каталога рисуем той же проекцией, что и дороги: библиотека карт не
@@ -200,6 +278,275 @@ export function RouteMap({
       }),
     [structures, project],
   )
+
+  /** Точка события в координатах картинки, с поправкой на текущий кадр. */
+  const toUserSpace = useCallback(
+    (clientX: number, clientY: number, box: ViewBox): Position | null => {
+      const svg = svgRef.current
+      if (!svg) return null
+      const rect = svg.getBoundingClientRect()
+      if (!rect.width || !rect.height) return null
+      return [
+        box.x + ((clientX - rect.left) / rect.width) * box.width,
+        box.y + ((clientY - rect.top) / rect.height) * box.height,
+      ]
+    },
+    [],
+  )
+
+  const clampView = useCallback((box: ViewBox): ViewBox => {
+    const width = Math.min(
+      VIEWBOX.width / ZOOM_MIN,
+      Math.max(VIEWBOX.width / ZOOM_MAX, box.width),
+    )
+    const height = width * (VIEWBOX.height / VIEWBOX.width)
+    return {
+      width,
+      height,
+      x: Math.min(Math.max(0, box.x), VIEWBOX.width - width),
+      y: Math.min(Math.max(0, box.y), VIEWBOX.height - height),
+    }
+  }, [])
+
+  const handleWheel = useCallback(
+    (event: WheelEvent) => {
+      if (!zoomable) return
+      event.preventDefault()
+      setView((current) => {
+        const anchor = toUserSpace(event.clientX, event.clientY, current)
+        if (!anchor) return current
+        const factor = Math.exp(event.deltaY * 0.0015)
+        const width = current.width * factor
+        const clamped = clampView({ ...current, width })
+        // Точка под курсором остаётся под курсором: приближаемся туда, куда
+        // смотрим, а не в центр кадра.
+        const ratioX = (anchor[0] - current.x) / current.width
+        const ratioY = (anchor[1] - current.y) / current.height
+        return clampView({
+          ...clamped,
+          x: anchor[0] - ratioX * clamped.width,
+          y: anchor[1] - ratioY * clamped.height,
+        })
+      })
+    },
+    [zoomable, toUserSpace, clampView],
+  )
+
+  // Колесо вешаем нативно, а не через onWheel. React отдаёт wheel **пассивным**
+  // слушателем на корне, поэтому preventDefault() внутри onWheel молча не
+  // срабатывает: карта приближалась бы, но страница под ней продолжала бы
+  // прокручиваться. Отсюда и passive: false — только так прокрутку удаётся
+  // остановить, пока курсор над картой.
+  useEffect(() => {
+    const svg = svgRef.current
+    if (!svg || !zoomable) return
+    svg.addEventListener('wheel', handleWheel, { passive: false })
+    return () => svg.removeEventListener('wheel', handleWheel)
+  }, [zoomable, handleWheel])
+
+  // --- рисование и панорамирование -----------------------------------------
+  // Оба живут на одних и тех же событиях указателя, поэтому и состояние одно.
+  const gesture = useRef<
+    | { kind: 'pan'; lastClient: Position }
+    | {
+        kind: 'draw'
+        points: Position[]
+        lastClient: Position
+        /** Где нажали — от неё считается, клик это или всё-таки протяжка. */
+        downClient: Position
+        moved: boolean
+      }
+    | null
+  >(null)
+  const edgePush = useRef<Position>([0, 0])
+  // Кадр нужен и вне рендера — автоподъезд у края работает по таймеру кадров,
+  // а не по событиям указателя, и должен считать от актуального положения.
+  const viewRef = useRef<ViewBox>(view)
+  useEffect(() => {
+    viewRef.current = view
+  }, [view])
+  // Линия, которую рука ведёт прямо сейчас, рисуется в обход React: атрибут
+  // пути ставится напрямую по ссылке. Через состояние каждое движение мыши
+  // перерисовывало бы полторы тысячи путей дорожного слоя.
+  const livePathRef = useRef<SVGPathElement | null>(null)
+  // Резинка от конца нарисованного за курсором. Живёт мимо React по той же
+  // причине, что и живой след, и вдобавок обязана исчезать сразу — она
+  // показывает намерение, а не результат.
+  const rubberPathRef = useRef<SVGPathElement | null>(null)
+
+  // Конец уже нарисованного в координатах картинки: от него продолжается и
+  // след, и резинка. Пересчитывается вместе с проекцией, а не при каждом
+  // движении мыши.
+  const tail = useMemo(
+    () => (stroke && stroke.length > 0 ? project(stroke[stroke.length - 1]) : null),
+    [stroke, project],
+  )
+  const tailRef = useRef<Position | null>(tail)
+  useEffect(() => {
+    tailRef.current = tail
+  }, [tail])
+
+  const showLiveStroke = useCallback((points: Position[]) => {
+    // Ведём от конца нарисованного: рука начинает новый кусок, а видеть человек
+    // должен одну линию — она такой и уедет на сервер.
+    const tailPoint = tailRef.current
+    const full = tailPoint ? [tailPoint, ...points] : points
+    livePathRef.current?.setAttribute('d', full.length > 1 ? pointsToPath(full) : '')
+  }, [])
+
+  const showRubber = useCallback((point: Position | null) => {
+    const tailPoint = tailRef.current
+    rubberPathRef.current?.setAttribute(
+      'd',
+      point && tailPoint ? pointsToPath([tailPoint, point]) : '',
+    )
+  }, [])
+
+  // Резинка гаснет, как только режим рисования выключили или конец линии
+  // сдвинулся (шаг назад, сброс): она тянется от точки, которой уже нет.
+  useEffect(() => {
+    showRubber(null)
+  }, [drawing, tail, showRubber])
+
+  // Карта едет сама, когда рука с линией подходит к краю кадра. Без этого
+  // сорокакилометровый маршрут пришлось бы вести через двадцать экранов, не
+  // отпуская кнопку, — то есть никак.
+  useEffect(() => {
+    if (!drawing) return
+    let frame = 0
+    const step = () => {
+      frame = requestAnimationFrame(step)
+      const [pushX, pushY] = edgePush.current
+      const active = gesture.current
+      // Мёртвая зона: у самой границы полосы скорость почти нулевая, и без
+      // порога это были бы перерисовки на доли пикселя каждый кадр.
+      if (Math.abs(pushX) < 0.05 && Math.abs(pushY) < 0.05) return
+      if (active?.kind !== 'draw') return
+
+      const current = viewRef.current
+      const scale = current.width / VIEWBOX.width
+      const next = clampView({
+        ...current,
+        x: current.x + pushX * scale,
+        y: current.y + pushY * scale,
+      })
+      // Карта упёрлась в край мира — двигаться дальше некуда, и трогать
+      // состояние незачем: иначе рендер на каждый кадр до отпускания кнопки.
+      if (next.x === current.x && next.y === current.y) return
+      viewRef.current = next
+      setView(next)
+
+      // Линия обязана ехать вместе с картой. Указатель стоит на месте, событий
+      // движения нет, а под ним уже другое место — без этой дописки штрих
+      // прерывался бы на всё проехавшее и потом сшивался напрямую, срезая угол.
+      const point = toUserSpace(active.lastClient[0], active.lastClient[1], next)
+      if (point) {
+        active.points.push(point)
+        showLiveStroke(active.points)
+      }
+    }
+    frame = requestAnimationFrame(step)
+    return () => cancelAnimationFrame(frame)
+  }, [drawing, clampView, toUserSpace, showLiveStroke])
+
+  const handlePointerDown = (event: ReactPointerEvent<SVGSVGElement>) => {
+    // Средняя кнопка двигает карту всегда. Без неё во взведённом режиме
+    // рисования подвинуть карту было бы нечем: левая кнопка занята линией, а
+    // выбирать место надо до того, как начал вести.
+    const pans = event.button === 1 || (event.button === 0 && !drawing)
+    if (pans) {
+      if (!zoomable) return
+      event.preventDefault()
+      event.currentTarget.setPointerCapture(event.pointerId)
+      gesture.current = { kind: 'pan', lastClient: [event.clientX, event.clientY] }
+      return
+    }
+    if (event.button !== 0 || !drawing) return
+    const point = toUserSpace(event.clientX, event.clientY, view)
+    if (!point) return
+    event.currentTarget.setPointerCapture(event.pointerId)
+    gesture.current = {
+      kind: 'draw',
+      points: [point],
+      lastClient: [event.clientX, event.clientY],
+      downClient: [event.clientX, event.clientY],
+      moved: false,
+    }
+    showRubber(null)
+    showLiveStroke([point])
+  }
+
+  const handlePointerMove = (event: ReactPointerEvent<SVGSVGElement>) => {
+    const active = gesture.current
+    if (!active) {
+      // Рука ничего не ведёт, но линия начата — тянем за курсором резинку.
+      // Без неё клики ставятся вслепую: куда пойдёт следующий кусок, видно
+      // только после того, как он уже поставлен.
+      if (drawing && tailRef.current) {
+        showRubber(toUserSpace(event.clientX, event.clientY, view))
+      }
+      return
+    }
+
+    if (active.kind === 'pan') {
+      const svg = svgRef.current
+      if (!svg) return
+      const rect = svg.getBoundingClientRect()
+      const scale = view.width / rect.width
+      const dx = (event.clientX - active.lastClient[0]) * scale
+      const dy = (event.clientY - active.lastClient[1]) * scale
+      active.lastClient = [event.clientX, event.clientY]
+      setView((current) => clampView({ ...current, x: current.x - dx, y: current.y - dy }))
+      return
+    }
+
+    active.lastClient = [event.clientX, event.clientY]
+    if (
+      !active.moved &&
+      Math.hypot(
+        event.clientX - active.downClient[0],
+        event.clientY - active.downClient[1],
+      ) > CLICK_SLOP_PX
+    ) {
+      active.moved = true
+    }
+    const point = toUserSpace(event.clientX, event.clientY, view)
+    if (!point) return
+    const previous = active.points[active.points.length - 1]
+    // Точки ближе полутора единиц картинки не несут информации, а на сорока
+    // километрах их набегают десятки тысяч. Прореживание здесь дешевле, чем
+    // разбор такого тела на сервере.
+    if (Math.hypot(point[0] - previous[0], point[1] - previous[1]) >= 1.5) {
+      active.points.push(point)
+      showLiveStroke(active.points)
+    }
+
+    const svg = svgRef.current
+    if (svg) {
+      const rect = svg.getBoundingClientRect()
+      edgePush.current = [
+        edgeSpeed(event.clientX - rect.left, rect.width),
+        edgeSpeed(event.clientY - rect.top, rect.height),
+      ]
+    }
+  }
+
+  const finishGesture = (event: ReactPointerEvent<SVGSVGElement>) => {
+    const active = gesture.current
+    gesture.current = null
+    edgePush.current = [0, 0]
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+    if (active?.kind !== 'draw') return
+    showLiveStroke([])
+    // Клик — это кусок из одной точки, и он полноправный: на сложном узле, где
+    // вести мышью с зажатой кнопкой рискованно, линия набирается кликами по
+    // поворотам. Раньше такой жест выбрасывался как «слишком короткий штрих».
+    const points = active.moved ? active.points : active.points.slice(0, 1)
+    if (active.moved && points.length < 2) return
+    onSegmentDrawn?.(points.map((point) => projector.unproject(point)))
+  }
 
   const introSegmentRefs = useRef<SVGPathElement[][]>([])
   const introGroupRefs = useRef<(SVGGElement | null)[]>([])
@@ -245,7 +592,25 @@ export function RouteMap({
 
   return (
     <div className="map-viewport" aria-label="Схема маршрутов">
-      <svg viewBox={`0 0 ${VIEWBOX.width} ${VIEWBOX.height}`} role="img" aria-labelledby="routeMapTitle routeMapDesc">
+      <svg
+        ref={svgRef}
+        viewBox={`${view.x} ${view.y} ${view.width} ${view.height}`}
+        role="img"
+        aria-labelledby="routeMapTitle routeMapDesc"
+        className={`${zoomable ? 'is-zoomable' : ''}${drawing ? ' is-drawing-mode' : ''}`}
+        // Автоскролл средней кнопкой браузер заводит на mousedown, а не на
+        // pointerdown, — гасить его надо именно здесь, иначе поверх карты
+        // появляется кружок прокрутки и жест панорамирования срывается.
+        onMouseDown={(event) => {
+          if (event.button === 1) event.preventDefault()
+        }}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={finishGesture}
+        onPointerCancel={finishGesture}
+        // Курсор ушёл с карты — резинке тянуться не за чем.
+        onPointerLeave={() => showRubber(null)}
+      >
         <title id="routeMapTitle">Схема дорог и маршрутов</title>
         <desc id="routeMapDesc">Векторная карта с маршрутами, проложенными по экспортированным OSM-сегментам.</desc>
         <defs>
@@ -258,11 +623,7 @@ export function RouteMap({
           </filter>
         </defs>
 
-        <g>
-          {roadPaths.map((road, index) => (
-            <path key={index} d={road.d} className={`road-path ${road.className}`} />
-          ))}
-        </g>
+        {roadLayer}
 
         {structurePoints.length > 0 && (
           <g className="structure-layer">
@@ -289,16 +650,6 @@ export function RouteMap({
             )
           })}
         </g>
-
-        {structurePoints.length > 0 && (
-          <g className="structure-layer">
-            {structurePoints.map((point, index) => (
-              <circle key={index} cx={point.x} cy={point.y} r={point.radius}>
-                <title>{point.title}</title>
-              </circle>
-            ))}
-          </g>
-        )}
 
         <g>
           {routeSegments.map((segments, routeIndex) => {
@@ -328,16 +679,6 @@ export function RouteMap({
           })}
         </g>
 
-        {structurePoints.length > 0 && (
-          <g className="structure-layer">
-            {structurePoints.map((point, index) => (
-              <circle key={index} cx={point.x} cy={point.y} r={point.radius}>
-                <title>{point.title}</title>
-              </circle>
-            ))}
-          </g>
-        )}
-
         <g>
           {routeSegments.map((segments, routeIndex) => {
             const style: RouteVar = { '--route-color': colors[routeIndex] }
@@ -364,6 +705,14 @@ export function RouteMap({
             ))
           })}
         </g>
+
+        {/* Сырой штрих поверх всего: и тот, что рука ведёт прямо сейчас (его
+            ставит showLiveStroke мимо React), и уже нарисованный, пока его не
+            подтвердили. Видно, что нарисовано, а не только что получилось.
+            Резинка — третьим слоем и намеренно бледнее: это ещё не линия. */}
+        <path ref={rubberPathRef} className="hand-stroke is-rubber" />
+        <path ref={livePathRef} className="hand-stroke" />
+        {strokePath && <path d={strokePath} className="hand-stroke is-settled" />}
       </svg>
 
       <div className="legend">

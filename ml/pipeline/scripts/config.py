@@ -149,8 +149,13 @@ class ScoringConfig:
 
 @dataclass(frozen=True)
 class RenderingConfig:
+    """Сглаживание пропусков между детекциями при отрисовке оверлея.
+
+    «Rendering» здесь про рамки в плеере, а не про запись видео: копию видео с
+    вписанными рамками пайплайн больше не собирает.
+    """
+
     gap_fill_max_sec: float = 0.35
-    save_annotated_frames: bool = False
 
 
 @dataclass(frozen=True)

@@ -5,20 +5,33 @@ from datetime import datetime
 from pydantic import Field
 
 from application.common.dto.base import ApplicationDTO
-from application.common.dto.pipeline import CityRefDTO, RouteRefDTO
+from application.common.dto.pipeline import (
+    CityRefDTO,
+    RouteRefDTO,
+    RunAssignmentRefDTO,
+)
 from application.common.dto.users import UserDTO
 from domain.catalog import CatalogImportStatus
 
 
 class RouteDTO(ApplicationDTO):
+    """Маршрут без геометрии — она отдаётся только своим эндпоинтом.
+
+    `has_geometry` вместо самой геометрии: строка списка должна оставаться
+    килобайтами, а линия маршрута это десятки килобайт, дорожный слой города —
+    полтора мегабайта.
+    """
+
     id: str
     slug: str
     name: str
     color_label: str | None
     color_hex: str | None
     description: str | None = None
-    geojson_path: str
+    has_geometry: bool = False
     display_order: int
+    # Скрытый маршрут пропадает из выбора, его задания и съёмки остаются.
+    is_active: bool = True
     assignment_count: int = 0
     video_count: int = 0
 
@@ -33,6 +46,7 @@ class GeozoneDTO(ApplicationDTO):
     id: str
     route_id: str
     name: str
+    description: str = ""
     start_fraction: float
     end_fraction: float
     coefficient: float
@@ -45,8 +59,11 @@ class CityDTO(ApplicationDTO):
     slug: str
     name: str
     region: str | None
-    roads_geojson_path: str | None
+    has_roads_geometry: bool = False
     display_order: int
+    # Скрытый город не виден никому, кроме справочников: там его показывают
+    # приглушённым, чтобы было чем вернуть. Удаления города нет вовсе.
+    is_active: bool = True
     route_count: int = 0
     assignment_count: int = 0
     video_count: int = 0
@@ -54,6 +71,17 @@ class CityDTO(ApplicationDTO):
 
 class CityDetailDTO(CityDTO):
     routes: list[RouteDTO] = Field(default_factory=list)
+
+
+class GeometryDTO(ApplicationDTO):
+    """Геометрия и её версия для ETag.
+
+    Версия — `updated_at` строки: она меняется ровно тогда, когда меняется
+    геометрия, и сравнить её дешевле, чем гонять полтора мегабайта по сети.
+    """
+
+    version: str
+    geometry: dict
 
 
 class AssignmentStatusCountsDTO(ApplicationDTO):
@@ -90,6 +118,8 @@ class AssignmentDTO(ApplicationDTO):
     status_counts: AssignmentStatusCountsDTO = Field(
         default_factory=AssignmentStatusCountsDTO
     )
+    # Скрытое задание видно только в админке: там его и возвращают обратно.
+    is_active: bool = True
     created_at: datetime | None = None
 
 
@@ -111,51 +141,93 @@ class ShootingBrandDTO(ApplicationDTO):
 class ShootingMetricsDTO(ApplicationDTO):
     """Сырые метрики одной съёмки — вход для любой свёртки.
 
-    Этот слой не зависит от того, как бизнес решит считать задание:
-    среднее, медиана, с отбраковкой коротких съёмок или без.
+    Единица учёта во всей аналитике: и задание, и маршрут считаются из списка
+    таких записей напрямую. Уровня «среднее из средних» нет — маршрут не
+    складывается из результатов заданий, он читает те же съёмки.
+
+    Этот слой не зависит от того, как бизнес решит считать свёртку: среднее,
+    медиана, с отбраковкой коротких съёмок или без.
     """
 
     run_id: str
     source_name: str
+    # Когда снимали, а не когда обрабатывали: ось времени в графиках маршрута.
+    shot_started_at: datetime
     duration_sec: float = 0.0
     objects_count: int = 0
     visibility_index: float = 0.0
     brands: list[ShootingBrandDTO] = Field(default_factory=list)
 
 
-class AssignmentStatDTO(ApplicationDTO):
-    """Величина «на съёмку»: среднее и разброс между съёмками."""
+class RouteShootingMetricsDTO(ShootingMetricsDTO):
+    """То же плюс задание: на уровне маршрута его надо показать в списке.
+
+    Внутри задания такое поле было бы шумом — там задание и так одно.
+    """
+
+    assignment: RunAssignmentRefDTO
+
+
+class MetricStatDTO(ApplicationDTO):
+    """Величина «на съёмку»: две оценки центра и разброс между съёмками.
+
+    Среднее и медиана считаются сразу обе, потому что выбор между ними — вопрос
+    показа, а не пересчёта: список съёмок один и тот же, разница только в способе
+    его свернуть. Ходить на сервер ради переключения тумблера незачем.
+
+    Разброс общий для обеих: σ описывает саму выборку съёмок — насколько
+    разошлись проезды, — а не ту оценку центра, которую сейчас смотрят.
+    """
 
     mean: float = 0.0
+    median: float = 0.0
     std: float = 0.0
 
 
-class AssignmentBrandDTO(ApplicationDTO):
+class RollupBrandDTO(ApplicationDTO):
+    """Бренд в свёртке. Доли здесь нет намеренно.
+
+    Доля бренда зависит от того, среднее сейчас смотрят или медиану, а этот
+    выбор живёт в интерфейсе. Считать её на сервере значило бы отдавать две
+    доли и надеяться, что фронт возьмёт ту же, что и для плиток.
+    """
+
     brand: str
-    objects_per_shooting: AssignmentStatDTO = Field(default_factory=AssignmentStatDTO)
-    visibility_per_shooting: AssignmentStatDTO = Field(
-        default_factory=AssignmentStatDTO
-    )
-    # Доля от суммы средних по заданию.
-    visibility_share: float = 0.0
+    objects_per_shooting: MetricStatDTO = Field(default_factory=MetricStatDTO)
+    visibility_per_shooting: MetricStatDTO = Field(default_factory=MetricStatDTO)
 
 
-class AssignmentTotalsDTO(ApplicationDTO):
+class RollupTotalsDTO(ApplicationDTO):
     shootings_total: int = 0
     shootings_completed: int = 0
     # Единственная величина, которую суммируем: это «сколько наснимали».
     duration_sec: float = 0.0
-    objects_per_shooting: AssignmentStatDTO = Field(default_factory=AssignmentStatDTO)
-    visibility_per_shooting: AssignmentStatDTO = Field(
-        default_factory=AssignmentStatDTO
-    )
+    objects_per_shooting: MetricStatDTO = Field(default_factory=MetricStatDTO)
+    visibility_per_shooting: MetricStatDTO = Field(default_factory=MetricStatDTO)
 
 
 class AssignmentSummaryDTO(ApplicationDTO):
     assignment: AssignmentDTO
-    totals: AssignmentTotalsDTO
-    brands: list[AssignmentBrandDTO] = Field(default_factory=list)
+    totals: RollupTotalsDTO
+    brands: list[RollupBrandDTO] = Field(default_factory=list)
     shootings: list[ShootingMetricsDTO] = Field(default_factory=list)
+
+
+class RouteSummaryDTO(ApplicationDTO):
+    """Свёртка маршрута: те же функции, что у задания, но список длиннее.
+
+    `assignments_total` — из скольких заданий собрана эта цифра, то есть сколько
+    различных заданий среди попавших сюда съёмок (а не сколько их на маршруте
+    вообще: под фильтром по периоду это были бы разные числа). Съёмки в
+    `shootings` идут плоским списком по времени съёмки, задания служат
+    подписью, а не ступенькой усреднения.
+    """
+
+    route: RouteDTO
+    assignments_total: int = 0
+    totals: RollupTotalsDTO
+    brands: list[RollupBrandDTO] = Field(default_factory=list)
+    shootings: list[RouteShootingMetricsDTO] = Field(default_factory=list)
 
 
 # --- каталог рекламных конструкций ------------------------------------------

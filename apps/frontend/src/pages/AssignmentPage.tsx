@@ -1,77 +1,64 @@
 import { useEffect, useState } from 'react'
-import { getAssignmentRuns, getAssignmentSummary, updateAssignment } from '../api'
-import { AssignmentCharts } from '../components/AssignmentCharts'
-import { AssignmentForm } from '../components/AssignmentForm'
+import { getAssignment, getAssignmentRuns, getAssignmentSummary } from '../api'
+import { RollupCharts } from '../components/RollupCharts'
 import { EmptyState, ErrorBanner } from '../components/common/Feedback'
 import { Metric } from '../components/common/Metric'
+import { MetricsPanel } from '../components/common/MetricsPanel'
 import { PageHeader } from '../components/common/PageHeader'
 import { RunCard } from '../components/common/RunCard'
 import { RunsSkeleton } from '../components/common/Skeletons'
-import { navigate, uploadPath } from '../routing'
+import { Tabs } from '../components/common/Tabs'
+import { assignmentPath, navigate, uploadPath, type PageView } from '../routing'
 import type {
-  AssignmentPayload,
-  AssignmentStat,
+  Aggregate,
+  Assignment,
   AssignmentSummary,
   PipelineRun,
 } from '../types'
 import {
   formatDuration,
-  formatNumber,
   formatPeriod,
+  formatStat,
   pluralShootings,
 } from '../utils/formatters'
 
 /** Обработка идёт минутами — чаще смотреть незачем. */
 const POLL_INTERVAL_MS = 20000
 
-function stat(value: AssignmentStat, digits = 1): string {
-  if (!value.mean) return '—'
-  const mean = formatNumber(Number(value.mean.toFixed(digits)))
-  if (!value.std) return mean
-  return `${mean} ± ${value.std.toFixed(digits)}`
-}
+const VIEW_TABS = [
+  { value: 'work', label: 'Видео' },
+  { value: 'analytics', label: 'Аналитика' },
+]
 
-export function AssignmentPage({ assignmentId }: { assignmentId: string }) {
-  const [summary, setSummary] = useState<AssignmentSummary | null>(null)
+export function AssignmentPage({
+  assignmentId,
+  view,
+}: {
+  assignmentId: string
+  view: PageView
+}) {
+  // Задание и его съёмки — дешёвые чтения, их держим всегда: из них собрана
+  // шапка. Сводка приезжает отдельно и только под вкладкой аналитики: она
+  // перечитывает tracks.csv каждой готовой съёмки, и платить за это, когда
+  // человек зашёл открыть конкретное видео, незачем.
+  const [assignment, setAssignment] = useState<Assignment | null>(null)
   const [runs, setRuns] = useState<PipelineRun[]>([])
+  const [summary, setSummary] = useState<AssignmentSummary | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  // Пока есть необработанные съёмки — опрашиваем. Все готовы — таймер снимаем,
-  // иначе открытая вкладка вечно тянет CSV каждой съёмки из хранилища.
+  // Пока есть необработанные съёмки — опрашиваем. Все готовы — таймер снимаем.
   const [pending, setPending] = useState(true)
-  const [editing, setEditing] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [formError, setFormError] = useState<string | null>(null)
-
-  const save = (payload: AssignmentPayload) => {
-    setSaving(true)
-    setFormError(null)
-    updateAssignment(assignmentId, payload)
-      .then((updated) => {
-        // Правим только шапку: метрики и съёмки от реквизитов не зависят,
-        // перезапрашивать сводку ради них незачем.
-        setSummary((current) =>
-          current ? { ...current, assignment: updated } : current,
-        )
-        setEditing(false)
-      })
-      .catch((reason) => setFormError(String(reason)))
-      .finally(() => setSaving(false))
-  }
 
   useEffect(() => {
     let disposed = false
     const load = () => {
-      Promise.all([
-        getAssignmentSummary(assignmentId),
-        getAssignmentRuns(assignmentId),
-      ])
-        .then(([summaryValue, runsValue]) => {
+      Promise.all([getAssignment(assignmentId), getAssignmentRuns(assignmentId)])
+        .then(([assignmentValue, runsValue]) => {
           if (disposed) return
-          setSummary(summaryValue)
+          setAssignment(assignmentValue)
           setRuns(runsValue)
           setPending(
-            summaryValue.totals.shootings_completed < summaryValue.totals.shootings_total,
+            assignmentValue.status_counts.completed < assignmentValue.video_count,
           )
         })
         .catch((reason) => {
@@ -94,7 +81,33 @@ export function AssignmentPage({ assignmentId }: { assignmentId: string }) {
     }
   }, [assignmentId, pending])
 
-  if (loading && !summary) {
+  const completed = assignment?.status_counts.completed ?? 0
+  const analytics = view === 'analytics'
+  // Оценка живёт на странице, а не внутри вкладки: иначе уход за видео и
+  // возврат сбрасывали бы медиану на среднее. По той же причине страница не
+  // пересоздаётся при переключении вкладки (см. key в App.tsx).
+  // Среднее по умолчанию: оно слышит каждый проезд. Медиана — чтобы посмотреть
+  // на те же съёмки без влияния выбившегося проезда.
+  const [aggregate, setAggregate] = useState<Aggregate>('mean')
+
+  // Перечитываем сводку не по таймеру, а когда обработалась ещё одна съёмка:
+  // на общем двадцатисекундном опросе она тянула бы CSV всех съёмок задания.
+  useEffect(() => {
+    if (!analytics) return
+    let disposed = false
+    getAssignmentSummary(assignmentId)
+      .then((loaded) => {
+        if (!disposed) setSummary(loaded)
+      })
+      .catch((reason) => {
+        if (!disposed) setError(String(reason))
+      })
+    return () => {
+      disposed = true
+    }
+  }, [analytics, assignmentId, completed])
+
+  if (loading && !assignment) {
     return (
       <div className="page">
         <RunsSkeleton />
@@ -102,7 +115,7 @@ export function AssignmentPage({ assignmentId }: { assignmentId: string }) {
     )
   }
 
-  if (error && !summary) {
+  if (error && !assignment) {
     return (
       <div className="page">
         <PageHeader eyebrow="Города" title="Задание не найдено" />
@@ -111,10 +124,13 @@ export function AssignmentPage({ assignmentId }: { assignmentId: string }) {
     )
   }
 
-  if (!summary) return null
+  if (!assignment) return null
 
-  const { assignment, totals, brands, shootings } = summary
-  const waiting = totals.shootings_total - totals.shootings_completed
+  const total = assignment.video_count
+  const waiting = total - completed
+  // Длительность считаем из съёмок: раньше её приносила сводка, но ради одной
+  // цифры в шапке дёргать пересчёт всего задания — плохая сделка.
+  const recordedSec = runs.reduce((sum, run) => sum + (run.duration_sec ?? 0), 0)
   const color = assignment.route.color_hex ?? undefined
 
   return (
@@ -122,31 +138,28 @@ export function AssignmentPage({ assignmentId }: { assignmentId: string }) {
       <PageHeader
         eyebrow={`${assignment.city.name} · ${assignment.route.name}`}
         title={assignment.title}
-        description={`${pluralShootings(totals.shootings_total)} · отснято ${formatDuration(
-          totals.duration_sec,
-        )} · обработано ${totals.shootings_completed} из ${totals.shootings_total}`}
+        description={`${pluralShootings(total)} · отснято ${formatDuration(
+          recordedSec,
+        )} · обработано ${completed} из ${total}`}
         actions={
-          editing ? undefined : (
-            <div className="page-actions">
-              <button
-                className="secondary"
-                onClick={() =>
-                  navigate(`/archive/${assignment.city.slug}/${assignment.route.slug}`)
-                }
-              >
-                К маршруту
-              </button>
-              <button className="secondary" onClick={() => setEditing(true)}>
-                Реквизиты
-              </button>
-              <button
-                className="primary"
-                onClick={() => navigate(uploadPath({ assignmentId: assignment.id }))}
-              >
-                Добавить съёмку
-              </button>
-            </div>
-          )
+          // Кнопки «Реквизиты» здесь нет: задание правят в админке, там же, где
+          // заводят. Загрузка съёмки осталась — это работа, а не справочник.
+          <div className="page-actions">
+            <button
+              className="secondary"
+              onClick={() =>
+                navigate(`/archive/${assignment.city.slug}/${assignment.route.slug}`)
+              }
+            >
+              К маршруту
+            </button>
+            <button
+              className="primary"
+              onClick={() => navigate(uploadPath({ assignmentId: assignment.id }))}
+            >
+              Добавить видео
+            </button>
+          </div>
         }
       />
 
@@ -160,92 +173,124 @@ export function AssignmentPage({ assignmentId }: { assignmentId: string }) {
 
       {error && <ErrorBanner text={error} />}
 
-      {editing ? (
-        <AssignmentForm
-          initial={assignment}
-          submitLabel="Сохранить"
-          busy={saving}
-          error={formError}
-          onSubmit={save}
-          onCancel={() => {
-            setEditing(false)
-            setFormError(null)
-          }}
-        />
-      ) : (
-        <dl className="assignment-facts">
-          <div>
-            <dt>Постановщик</dt>
-            <dd>{assignment.author?.full_name ?? '—'}</dd>
+      <dl className="assignment-facts">
+        <div>
+          <dt>Постановщик</dt>
+          <dd>{assignment.author?.full_name ?? '—'}</dd>
+        </div>
+        <div>
+          <dt>План</dt>
+          <dd>
+            {formatPeriod(assignment.planned_start_at, assignment.planned_end_at)}
+          </dd>
+        </div>
+        <div>
+          <dt>Факт</dt>
+          <dd>
+            {formatPeriod(assignment.actual_start_at, assignment.actual_end_at)}
+          </dd>
+        </div>
+        {assignment.description && (
+          <div className="assignment-facts-wide">
+            <dt>Описание</dt>
+            <dd>{assignment.description}</dd>
           </div>
-          <div>
-            <dt>План</dt>
-            <dd>
-              {formatPeriod(assignment.planned_start_at, assignment.planned_end_at)}
-            </dd>
-          </div>
-          <div>
-            <dt>Факт</dt>
-            <dd>
-              {formatPeriod(assignment.actual_start_at, assignment.actual_end_at)}
-            </dd>
-          </div>
-          {assignment.description && (
-            <div className="assignment-facts-wide">
-              <dt>Описание</dt>
-              <dd>{assignment.description}</dd>
-            </div>
-          )}
-        </dl>
-      )}
+        )}
+      </dl>
 
-      <div className="summary-grid">
-        <Metric label="Объектов за съёмку" value={stat(totals.objects_per_shooting)} />
-        <Metric
-          label="Заметность за съёмку"
-          value={stat(totals.visibility_per_shooting)}
+      {/* Съёмки и цифры разведены: графиков больше тысячи пикселей, и держать
+          их над списком видео значило бы отправлять в прокрутку каждого, кто
+          зашёл открыть конкретную съёмку. */}
+      <div className="page-view-tabs">
+        <Tabs
+          value={view}
+          options={VIEW_TABS}
+          ariaLabel="Что показывать"
+          onChange={(next) => navigate(assignmentPath(assignmentId, next as PageView))}
         />
-        <Metric label="Съёмок" value={totals.shootings_total} />
-        <Metric label="Отснято" value={formatDuration(totals.duration_sec)} />
       </div>
 
-      {totals.shootings_completed === 0 ? (
-        <EmptyState
-          text={
-            waiting > 0
-              ? `Метрики появятся, когда обработается первая съёмка. Сейчас в работе ${waiting}.`
-              : 'В задании пока нет видео.'
-          }
+      {analytics ? (
+        <AssignmentAnalytics
+          summary={summary}
+          waiting={waiting}
+          aggregate={aggregate}
+          onAggregateChange={setAggregate}
         />
       ) : (
-        <>
-          {waiting > 0 && (
-            <p className="assignment-pending-note">
-              Считаем по {totals.shootings_completed} готовым съёмкам. Ещё {waiting} в
-              работе — данные обновятся после обработки.
+        <section className="panel objects-panel">
+          <header>
+            <h2>Видео</h2>
+            <p>
+              Каждое видео — один проезд по маршруту. Откройте, чтобы увидеть разбор.
             </p>
+          </header>
+          {runs.length ? (
+            <div className="runs-grid">
+              {runs.map((run) => (
+                <RunCard key={run.run_id} run={run} />
+              ))}
+            </div>
+          ) : (
+            <EmptyState text="В задании нет видео." />
           )}
-          <AssignmentCharts brands={brands} shootings={shootings} />
-        </>
+        </section>
+      )}
+    </div>
+  )
+}
+
+/** Вкладка цифр: плитки, переключатель оценки и графики свёртки. */
+function AssignmentAnalytics({
+  summary,
+  waiting,
+  aggregate,
+  onAggregateChange,
+}: {
+  summary: AssignmentSummary | null
+  waiting: number
+  aggregate: Aggregate
+  onAggregateChange: (value: Aggregate) => void
+}) {
+  if (!summary) return <RunsSkeleton />
+
+  const { totals, brands, shootings } = summary
+
+  if (totals.shootings_completed === 0) {
+    return (
+      <EmptyState
+        text={
+          waiting > 0
+            ? `Метрики появятся, когда обработается первое видео. Сейчас в работе ${waiting}.`
+            : 'В задании пока нет видео.'
+        }
+      />
+    )
+  }
+
+  return (
+    <>
+      <MetricsPanel aggregate={aggregate} onAggregateChange={onAggregateChange}>
+        <Metric
+          label="Объектов за видео"
+          value={formatStat(totals.objects_per_shooting, aggregate)}
+        />
+        <Metric
+          label="Заметность за видео"
+          value={formatStat(totals.visibility_per_shooting, aggregate)}
+        />
+        <Metric label="Видео" value={totals.shootings_total} />
+        <Metric label="Отснято" value={formatDuration(totals.duration_sec)} />
+      </MetricsPanel>
+
+      {waiting > 0 && (
+        <p className="assignment-pending-note">
+          Считаем по {totals.shootings_completed} готовым видео. Ещё {waiting} в
+          работе — данные обновятся после обработки.
+        </p>
       )}
 
-      <section className="panel objects-panel">
-        <header>
-          <h2>Съёмки</h2>
-          <p>
-            Каждое видео — отдельная съёмка маршрута. Откройте, чтобы увидеть разбор.
-          </p>
-        </header>
-        {runs.length ? (
-          <div className="runs-grid">
-            {runs.map((run) => (
-              <RunCard key={run.run_id} run={run} />
-            ))}
-          </div>
-        ) : (
-          <EmptyState text="В задании нет видео." />
-        )}
-      </section>
-    </div>
+      <RollupCharts brands={brands} shootings={shootings} aggregate={aggregate} />
+    </>
   )
 }

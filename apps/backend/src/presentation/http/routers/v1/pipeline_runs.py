@@ -6,7 +6,6 @@ from application.services.pipeline_run_service import PipelineRunService
 from domain.entities import PipelineRunStatus
 from presentation.http.dependencies import get_run_service
 from presentation.http.dto.response import (
-    ArtifactUrlResponse,
     CreateRunRequest,
     CreateRunResponse,
     OkResponse,
@@ -14,7 +13,6 @@ from presentation.http.dto.response import (
     PaginatedRunsResponse,
     PipelineRunResponse,
     PlaybackResponse,
-    RunArtifactResponse,
     RunObjectsResponse,
     RunSummaryResponse,
     RunTimelineResponse,
@@ -35,7 +33,7 @@ def create_run(
         size_bytes=request.size_bytes,
         assignment_id=request.assignment_id,
         shot_started_at=request.shot_started_at,
-        operator_user_id=request.operator_user_id,
+        uploaded_by_user_id=request.uploaded_by_user_id,
     )
     return OkResponse(data=CreateRunResponse.model_validate(result))
 
@@ -43,7 +41,7 @@ def create_run(
 @router.patch("/{run_id}", response_model=OkResponse[PipelineRunResponse])
 def update_shooting(
     payload: UpdateShootingRequest,
-    run_id: str = Path(description="Идентификатор съёмки"),
+    run_id: str = Path(description="Идентификатор видео"),
     service: PipelineRunService = Depends(get_run_service),
 ) -> OkResponse[PipelineRunResponse]:
     result = service.update_shooting(run_id, fields=payload.changed_fields())
@@ -70,10 +68,6 @@ def list_runs(
     city_id: str | None = Query(default=None),
     route_id: str | None = Query(default=None),
     assignment_id: str | None = Query(default=None),
-    assigned: bool | None = Query(
-        default=None,
-        description="false — только видео без маршрута",
-    ),
     service: PipelineRunService = Depends(get_run_service),
 ) -> OkResponse[PaginatedRunsResponse]:
     result = service.list_runs(
@@ -83,7 +77,6 @@ def list_runs(
         city_id=city_id,
         route_id=route_id,
         assignment_id=assignment_id,
-        assigned=assigned,
     )
     return OkResponse(data=PaginatedRunsResponse.model_validate(result))
 
@@ -93,17 +86,6 @@ def list_runs(
     response_model=OkResponse[PipelineRunResponse],
 )
 def get_run(
-    run_id: str = Path(description="Pipeline run id"),
-    service: PipelineRunService = Depends(get_run_service),
-) -> OkResponse[PipelineRunResponse]:
-    return OkResponse(data=PipelineRunResponse.model_validate(service.get_run(run_id)))
-
-
-@router.get(
-    "/{run_id}/status",
-    response_model=OkResponse[PipelineRunResponse],
-)
-def get_run_status(
     run_id: str = Path(description="Pipeline run id"),
     service: PipelineRunService = Depends(get_run_service),
 ) -> OkResponse[PipelineRunResponse]:
@@ -179,36 +161,4 @@ def get_run_playback(
 ) -> OkResponse[PlaybackResponse]:
     return OkResponse(
         data=PlaybackResponse.model_validate(service.get_playback(run_id))
-    )
-
-
-@router.get(
-    "/{run_id}/artifacts",
-    response_model=OkResponse[list[RunArtifactResponse]],
-)
-def get_run_artifacts(
-    run_id: str = Path(description="Pipeline run id"),
-    service: PipelineRunService = Depends(get_run_service),
-) -> OkResponse[list[RunArtifactResponse]]:
-    return OkResponse(
-        data=[
-            RunArtifactResponse.model_validate(item)
-            for item in service.get_artifacts(run_id)
-        ]
-    )
-
-
-@router.get(
-    "/{run_id}/artifacts/{artifact_id}/url",
-    response_model=OkResponse[ArtifactUrlResponse],
-)
-def get_artifact_url(
-    run_id: str = Path(description="Pipeline run id"),
-    artifact_id: str = Path(description="Artifact id"),
-    service: PipelineRunService = Depends(get_run_service),
-) -> OkResponse[ArtifactUrlResponse]:
-    return OkResponse(
-        data=ArtifactUrlResponse.model_validate(
-            service.get_artifact_url(run_id, artifact_id)
-        )
     )

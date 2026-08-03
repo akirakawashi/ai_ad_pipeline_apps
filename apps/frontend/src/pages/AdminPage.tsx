@@ -1,0 +1,877 @@
+import { useEffect, useState } from 'react'
+import {
+  createCity,
+  createRoute,
+  forgetAdminSession,
+  hasAdminSession,
+  getCities,
+  getCity,
+  updateCity,
+  updateRoute,
+  uploadRoadsGeometry,
+} from '../api'
+import { AdminLogin } from '../components/AdminLogin'
+import { AdminAssignments } from '../components/AdminAssignments'
+import { AdminUsers } from '../components/AdminUsers'
+import { CatalogImports } from '../components/CatalogImports'
+import { RouteDrawing } from '../components/RouteDrawing'
+import { EmptyState, ErrorBanner } from '../components/common/Feedback'
+import { Select } from '../components/common/Select'
+import { Tabs } from '../components/common/Tabs'
+import { MANUAL_CITY_PATH, navigate } from '../routing'
+import type { City, CityDetail, Route } from '../types'
+import { pluralAssignments, pluralRoutes } from '../utils/formatters'
+
+const GEOJSON_ACCEPT = '.geojson,.json,application/geo+json,application/json'
+
+function errorMessage(reason: unknown): string {
+  return reason instanceof Error ? reason.message : String(reason)
+}
+
+interface CityDraft {
+  slug: string
+  name: string
+  region: string
+}
+
+interface RouteDraft {
+  slug: string
+  name: string
+  color_label: string
+  color_hex: string
+  description: string
+}
+
+/** Разделы страницы. Города со всем городским и люди — вещи разного уровня. */
+type AdminSection = 'cities' | 'people'
+
+/** Вкладки городского блока. Живут в состоянии, а не в адресе: админку не шлют ссылкой. */
+type CityTab = 'city' | 'routes' | 'assignments' | 'catalog'
+
+const CITY_TABS = [
+  { value: 'city', label: 'Город и дороги' },
+  { value: 'routes', label: 'Маршруты' },
+  // Сразу за маршрутами: задание живёт внутри маршрута и без него не бывает.
+  { value: 'assignments', label: 'Задания' },
+  { value: 'catalog', label: 'Каталог' },
+]
+const CITY_TAB_WEIGHTS = [1.45, 1, 0.9, 0.9]
+
+const EMPTY_CITY: CityDraft = { slug: '', name: '', region: '' }
+const EMPTY_ROUTE: RouteDraft = {
+  slug: '',
+  name: '',
+  color_label: '',
+  color_hex: '#05c3a1',
+  description: '',
+}
+
+/**
+ * Все справочники системы, разложенные на два уровня. Разделы страницы («Города»
+ * и «Сотрудники») — вещи разной природы: люди к городу не привязаны, и панелью
+ * под городским блоком они уходили за нижний край экрана. Внутри городов —
+ * вкладки «Город и дороги / Маршруты / Задания / Каталог», всё про выбранный
+ * город.
+ *
+ * Полосы переключателей нарочно выглядят по-разному: разделы — подчёркнутый
+ * текст, вкладки — кнопки-пилюли. Два одинаковых ряда друг под другом читались
+ * бы как один уровень навигации.
+ *
+ * До этой страницы город и маршрут можно было завести только миграцией, а
+ * геометрия лежала файлами внутри фронтенда. Теперь геометрия в базе и
+ * загружается файлом; маршрут без загруженной линии — законное состояние, на нём
+ * уже можно завести задание и разметить зоны.
+ *
+ * Граница проведена по цене ошибки, а не по «сложности»: администрирование —
+ * то, что меняет рамку для всех сразу (город, маршрут, задание, ревизия
+ * каталога, список людей). Операционное — съёмки, загрузка видео, разметка
+ * геозон — осталось на своих экранах без пароля, иначе продуктом стало бы
+ * невозможно пользоваться. Геозоны сюда не переехали ещё и потому, что их
+ * размечают, глядя на видео.
+ *
+ * Задание переехало сюда последним: это рамка, в которой считаются метрики
+ * маршрута, у неё постановщик и плановое окно, и заводить её должен тот, кто за
+ * маршрут отвечает. Загрузка видео при этом осталась открытой — водитель
+ * выбирает готовое задание, а не создаёт своё.
+ *
+ * Удаления города, маршрута и задания нет вовсе — только «Скрыть» и «Показать».
+ * Везде каскад: у города на маршруты, у маршрута на задания, у задания на
+ * съёмки — снос утащил бы всю историю вместе с видео. Скрытое видно **только на
+ * этой странице** — приглушённым и с пометкой. В этом весь смысл: скрыть можно
+ * откуда угодно, а вернуть неоткуда, если справочник прячет скрытое наравне с
+ * остальными экранами.
+ */
+export function AdminPage() {
+  // Пароль проверяет бэкенд; здесь только выбор, что рисовать. Ошибка 401 в
+  // любом запросе гасит сессию в api.ts, поэтому просроченный вход сам вернёт
+  // форму — состояние синхронизируется через reload().
+  const [signedIn, setSignedIn] = useState(hasAdminSession())
+  const [cities, setCities] = useState<City[]>([])
+  const [section, setSection] = useState<AdminSection>('cities')
+  const [citySlug, setCitySlug] = useState('')
+  const [creatingCity, setCreatingCity] = useState(false)
+  const [tab, setTab] = useState<CityTab>('city')
+  const [detail, setDetail] = useState<CityDetail | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  const [copiedCityPath, setCopiedCityPath] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const [cityDraft, setCityDraft] = useState<CityDraft>(EMPTY_CITY)
+  const [routeDraft, setRouteDraft] = useState<RouteDraft>(EMPTY_ROUTE)
+  const [editingRoute, setEditingRoute] = useState<string | null>(null)
+  const [drawingRoute, setDrawingRoute] = useState<string | null>(null)
+  const [routeEdit, setRouteEdit] = useState<RouteDraft>(EMPTY_ROUTE)
+  const [cityEdit, setCityEdit] = useState<CityDraft | null>(null)
+
+  // Счётчик перезагрузок: правки меняют данные на сервере, и экран перечитывает
+  // их тем же путём, что и при смене города.
+  const [version, setVersion] = useState(0)
+  const reload = () => setVersion((current) => current + 1)
+
+  // Пока на экране форма входа, за справочниками не ходим: без пароля бэкенд
+  // ответит 401, и его фраза села бы в `error` — а вход её не гасит, он меняет
+  // только `signedIn`. Получалась панель с баннером «введите логин и пароль»
+  // над уже пройденным входом и пустым списком городов, лечившаяся F5.
+  // Поэтому `signedIn` стоит в зависимостях: успешный вход и есть сигнал
+  // загрузиться, второго пути сюда нет.
+  useEffect(() => {
+    if (!signedIn) return
+    let disposed = false
+    getCities(true)
+      .then((list) => {
+        if (disposed) return
+        setCities(list)
+        setCitySlug((current) => current || list[0]?.slug || '')
+      })
+      .catch((reason) => {
+        if (disposed) return
+        setSignedIn(hasAdminSession())
+        setError(errorMessage(reason))
+      })
+    return () => {
+      disposed = true
+    }
+  }, [signedIn, version])
+
+  useEffect(() => {
+    if (!signedIn || !citySlug) return
+    let disposed = false
+    getCity(citySlug, true)
+      .then((loaded) => !disposed && setDetail(loaded))
+      .catch((reason) => {
+        if (disposed) return
+        setSignedIn(hasAdminSession())
+        setError(errorMessage(reason))
+      })
+    return () => {
+      disposed = true
+    }
+  }, [signedIn, citySlug, version])
+
+  /** Общая обёртка действий: гасим прошлую ошибку, показываем итог, перечитываем. */
+  const run = async (action: () => Promise<string>) => {
+    setBusy(true)
+    setError(null)
+    setNotice(null)
+    try {
+      setNotice(await action())
+      reload()
+    } catch (reason) {
+      // Пароль сменили на сервере — api.ts уже забыл сессию, возвращаем форму.
+      setSignedIn(hasAdminSession())
+      setError(errorMessage(reason))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const addCity = () =>
+    run(async () => {
+      const created = await createCity({
+        slug: cityDraft.slug.trim(),
+        name: cityDraft.name.trim(),
+        region: cityDraft.region.trim() || null,
+        display_order: cities.length + 1,
+      })
+      setCityDraft(EMPTY_CITY)
+      setCreatingCity(false)
+      // Сразу открываем созданный: следующее действие всегда «загрузить в него
+      // дорожный слой», а не «завести ещё один».
+      setCitySlug(created.slug)
+      setTab('city')
+      return `Город «${created.name}» создан. Загрузите дорожный слой.`
+    })
+
+  const saveCity = () =>
+    run(async () => {
+      if (cityEdit === null) return ''
+      const updated = await updateCity(citySlug, {
+        name: cityEdit.name.trim(),
+        region: cityEdit.region.trim() || null,
+      })
+      setCityEdit(null)
+      return `Город «${updated.name}» сохранён.`
+    })
+
+  const toggleCity = (isActive: boolean) =>
+    run(async () => {
+      const updated = await updateCity(citySlug, { is_active: isActive })
+      return isActive
+        ? `Город «${updated.name}» снова доступен всем.`
+        : `Город «${updated.name}» скрыт. Здесь он остался — вернуть можно кнопкой.`
+    })
+
+  const addRoute = () =>
+    run(async () => {
+      const created = await createRoute(citySlug, {
+        slug: routeDraft.slug.trim(),
+        name: routeDraft.name.trim(),
+        color_label: routeDraft.color_label.trim() || null,
+        color_hex: routeDraft.color_hex,
+        description: routeDraft.description.trim() || null,
+        display_order: (detail?.routes.length ?? 0) + 1,
+      })
+      setRouteDraft(EMPTY_ROUTE)
+      return `Маршрут «${created.name}» создан. Осталось загрузить линию.`
+    })
+
+  const saveRoute = () =>
+    run(async () => {
+      if (editingRoute === null) return ''
+      const updated = await updateRoute(citySlug, editingRoute, {
+        name: routeEdit.name.trim(),
+        color_label: routeEdit.color_label.trim() || null,
+        color_hex: routeEdit.color_hex,
+        description: routeEdit.description.trim() || null,
+      })
+      setEditingRoute(null)
+      return `Маршрут «${updated.name}» сохранён.`
+    })
+
+  const toggleRoute = (route: Route) =>
+    run(async () => {
+      const updated = await updateRoute(citySlug, route.slug, {
+        is_active: !route.is_active,
+      })
+      return updated.is_active
+        ? `Маршрут «${updated.name}» снова доступен.`
+        : `Маршрут «${updated.name}» скрыт, его задания и видео на месте.`
+    })
+
+  const uploadRoads = (file: File) =>
+    run(async () => {
+      const updated = await uploadRoadsGeometry(citySlug, file)
+      return `Дорожный слой «${updated.name}» загружен, рамка города пересчитана.`
+    })
+
+  // Какой маршрут рисуем — выводим из списка, который на экране сейчас, а не
+  // держим отдельно: город можно переключить, не выходя из режима рисования,
+  // и слаг от прежнего города не должен пережить переключение.
+  const drawnRoute = detail?.routes.find((route) => route.slug === drawingRoute) ?? null
+
+  const startRouteEdit = (route: Route) => {
+    setEditingRoute(route.slug)
+    setRouteEdit({
+      slug: route.slug,
+      name: route.name,
+      color_label: route.color_label ?? '',
+      color_hex: route.color_hex ?? EMPTY_ROUTE.color_hex,
+      description: route.description ?? '',
+    })
+  }
+
+  const copyCityPath = async (slug: string) => {
+    const path = `/archive/${slug}`
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}${path}`)
+      setCopiedCityPath(path)
+    } catch {
+      setError('Не удалось скопировать адрес города.')
+    }
+  }
+
+  if (!signedIn) {
+    // Ошибку гасим вместе с входом: сюда попадают и по 401 посреди работы
+    // (пароль сменили на сервере), и её фраза пережила бы новый вход — она
+    // живёт в состоянии страницы, а страница не пересоздаётся.
+    return (
+      <AdminLogin
+        onSuccess={() => {
+          setError(null)
+          setSignedIn(true)
+        }}
+      />
+    )
+  }
+
+  return (
+    <div className="page">
+      {/* Кнопка закреплена в углу экрана, а не в потоке страницы: форма
+          длинная, и выход должен быть под рукой на любой её высоте. */}
+      <button
+        className="ghost-button admin-signout"
+        onClick={() => {
+          forgetAdminSession()
+          setSignedIn(false)
+        }}
+      >
+        Выйти
+      </button>
+
+      {/* Разделы страницы. Люди к городу не относятся, и панелью под городским
+          блоком они уходили за нижний край экрана — на широком мониторе их
+          просто не было видно. Полоса нарочно не такая, как вкладки внутри
+          города: подчёркнутый текст против кнопок-пилюль, иначе два уровня
+          переключателей сливаются в один. */}
+      <nav className="admin-sections" aria-label="Разделы админ-панели">
+        <button
+          className={section === 'cities' ? 'is-active' : ''}
+          onClick={() => setSection('cities')}
+        >
+          Города
+        </button>
+        <button
+          className={section === 'people' ? 'is-active' : ''}
+          onClick={() => setSection('people')}
+        >
+          Сотрудники
+        </button>
+      </nav>
+
+      {error && <ErrorBanner text={error} />}
+      {notice && <p className="catalog-hint">{notice}</p>}
+
+      {section === 'people' && <AdminUsers />}
+
+      {/* Выбор города — шапка блока города, а не отдельная карточка над ним.
+          Отдельной карточкой он не читался как то, что переключает всё ниже:
+          было непонятно, почему город именно этот и где его менять. */}
+      {section === 'cities' && (
+        <section className="panel catalog-panel city-scope">
+          <header className="city-scope-head">
+            {/* Выбрать город и завести новый — один и тот же вопрос «какой
+                город», поэтому кнопка стоит вплотную к селектору и одного с ним
+                роста. Разнесённая по краям шапки, она читалась как действие над
+                выбранным городом, а не как способ добавить ещё один. */}
+            <div className="city-scope-city">
+              <div className="field city-scope-picker">
+                Город
+                <Select
+                  ariaLabel="Город"
+                  value={citySlug}
+                  // Пока заводится новый город, переключать выбранный некуда: форма
+                  // осталась бы открытой над чужим городом.
+                  disabled={creatingCity}
+                  options={cities.map((city) => ({
+                    value: city.slug,
+                    // Скрытые видны только здесь, поэтому подписываем прямо в
+                    // списке: иначе непонятно, почему города нет на остальных
+                    // страницах.
+                    label: city.is_active ? city.name : `${city.name} — скрыт`,
+                  }))}
+                  onChange={(slug) => {
+                    setCitySlug(slug)
+                    setEditingRoute(null)
+                    setCityEdit(null)
+                  }}
+                />
+              </div>
+              {/* Форма заведения раскрывается ниже, поэтому во время неё кнопки
+                  нет: три поля занимали первый экран ради действия раз в месяц. */}
+              {!creatingCity && (
+                <button
+                  className="secondary city-scope-add"
+                  disabled={busy}
+                  onClick={() => setCreatingCity(true)}
+                >
+                  + Новый город
+                </button>
+              )}
+            </div>
+            {detail && !creatingCity && (
+              <p className="catalog-state">
+                {pluralRoutes(detail.route_count)} ·{' '}
+                {pluralAssignments(detail.assignment_count)}
+                {detail.has_roads_geometry ? ' · дорожный слой есть' : ' · дорожного слоя нет'}
+                {!detail.is_active && ' · город скрыт'}
+              </p>
+            )}
+            {/* Вкладки — часть шапки, а не содержимого: они переключают то, что
+                ниже, ровно как селектор города переключает сам город. Пока
+                заводится новый город, переключать нечего. */}
+            {detail && !creatingCity && (
+              <div className="city-scope-tabs">
+                <Tabs
+                  ariaLabel="Раздел города"
+                  value={tab}
+                  options={CITY_TABS}
+                  optionWeights={CITY_TAB_WEIGHTS}
+                  onChange={(value) => setTab(value as CityTab)}
+                />
+              </div>
+            )}
+          </header>
+
+          {creatingCity ? (
+            <>
+              <div className="geozone-fields">
+                {/* Не «слаг»: это жаргон, а панелью пользуется маркетинг.
+                    Называем тем, чем оно и является, — куском адреса. */}
+                <label className="field geozone-field-wide">
+                  Адрес города
+                  <span className="admin-url-control">
+                    <span className="admin-url-prefix">/archive/</span>
+                    <input
+                      className="text-input"
+                      autoFocus
+                      aria-label="Имя города в ссылке"
+                      placeholder="kerch"
+                      value={cityDraft.slug}
+                      disabled={busy}
+                      onChange={(event) =>
+                        setCityDraft({ ...cityDraft, slug: event.target.value })
+                      }
+                    />
+                  </span>
+                  <span className="admin-field-hint">
+                    Латиница, цифры и дефисы. После создания изменить нельзя.
+                  </span>
+                </label>
+                <label className="field">
+                  Название
+                  <input
+                    className="text-input"
+                    placeholder="Керчь"
+                    value={cityDraft.name}
+                    disabled={busy}
+                    onChange={(event) =>
+                      setCityDraft({ ...cityDraft, name: event.target.value })
+                    }
+                  />
+                </label>
+                <label className="field">
+                  Регион
+                  <input
+                    className="text-input"
+                    placeholder="Республика Крым"
+                    value={cityDraft.region}
+                    disabled={busy}
+                    onChange={(event) =>
+                      setCityDraft({ ...cityDraft, region: event.target.value })
+                    }
+                  />
+                </label>
+              </div>
+              <div className="geozone-form-actions">
+                <button
+                  className="primary"
+                  disabled={busy || !cityDraft.slug.trim() || !cityDraft.name.trim()}
+                  onClick={addCity}
+                >
+                  Создать город
+                </button>
+                <button
+                  className="ghost-button"
+                  disabled={busy}
+                  onClick={() => {
+                    setCreatingCity(false)
+                    setCityDraft(EMPTY_CITY)
+                  }}
+                >
+                  Отмена
+                </button>
+              </div>
+            </>
+          ) : detail === null ? (
+            <EmptyState text="Выберите город или создайте первый." />
+          ) : (
+            <div className="city-scope-body">
+              {tab === 'city' && (cityEdit === null ? (
+                <>
+                  <div className="city-identity">
+                    <span className="city-identity-region">
+                      {detail.region ?? 'Регион не указан'}
+                    </span>
+                    <span className="city-identity-path">
+                      <code>/archive/{detail.slug}</code>
+                      <button
+                        type="button"
+                        onClick={() => void copyCityPath(detail.slug)}
+                      >
+                        {copiedCityPath === `/archive/${detail.slug}`
+                          ? 'Скопировано'
+                          : 'Копировать'}
+                      </button>
+                    </span>
+                  </div>
+                  <div className="geozone-form-actions">
+                    <button
+                      className="secondary"
+                      disabled={busy}
+                      onClick={() =>
+                        setCityEdit({
+                          slug: detail.slug,
+                          name: detail.name,
+                          region: detail.region ?? '',
+                        })
+                      }
+                    >
+                      Правка
+                    </button>
+                    <label className="secondary file-button">
+                      Загрузить дорожный слой
+                      <input
+                        type="file"
+                        accept={GEOJSON_ACCEPT}
+                        disabled={busy}
+                        onChange={(event) => {
+                          const file = event.target.files?.[0]
+                          if (file) void uploadRoads(file)
+                          event.target.value = ''
+                        }}
+                      />
+                    </label>
+                    {/* Инструкция стоит вплотную к загрузке слоя: файл готовят
+                        в чужом сервисе, и без неё это единственная кнопка,
+                        нажать которую нечем. */}
+                    <button
+                      className="ghost-button"
+                      onClick={() => navigate(MANUAL_CITY_PATH)}
+                    >
+                      Как завести город
+                    </button>
+                    {detail.is_active ? (
+                      <button
+                        className="geozone-delete"
+                        disabled={busy}
+                        onClick={() => void toggleCity(false)}
+                      >
+                        Скрыть город
+                      </button>
+                    ) : (
+                      <button
+                        className="primary"
+                        disabled={busy}
+                        onClick={() => void toggleCity(true)}
+                      >
+                        Показать город
+                      </button>
+                    )}
+                  </div>
+                  {!detail.has_roads_geometry && (
+                    <p className="catalog-hint">
+                      Дорожного слоя нет: карта города пустая, и вести по ней
+                      линию маршрута не по чему. Файл со слоем готовят в
+                      стороннем сервисе — как именно, написано в инструкции.
+                    </p>
+                  )}
+                  {!detail.is_active && (
+                    <p className="catalog-hint">
+                      Город скрыт: его не видно ни в архиве, ни при загрузке видео,
+                      ни в каталоге. Здесь он остаётся всегда — удаления города нет,
+                      иначе вместе с ним ушли бы его задания и видео.
+                    </p>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div className="geozone-fields">
+                    <label className="field">
+                      Название
+                      <input
+                        className="text-input"
+                        value={cityEdit.name}
+                        disabled={busy}
+                        onChange={(event) =>
+                          setCityEdit({ ...cityEdit, name: event.target.value })
+                        }
+                      />
+                    </label>
+                    <label className="field">
+                      Регион
+                      <input
+                        className="text-input"
+                        value={cityEdit.region}
+                        disabled={busy}
+                        onChange={(event) =>
+                          setCityEdit({ ...cityEdit, region: event.target.value })
+                        }
+                      />
+                    </label>
+                  </div>
+                  <div className="geozone-form-actions">
+                    <button className="primary" disabled={busy} onClick={saveCity}>
+                      Сохранить
+                    </button>
+                    <button
+                      className="ghost-button"
+                      disabled={busy}
+                      onClick={() => setCityEdit(null)}
+                    >
+                      Отмена
+                    </button>
+                  </div>
+                </>
+              ))}
+
+              {/* Рисование занимает вкладку целиком: карте нужна вся ширина,
+                  а вести линию, когда рядом формы, — промахиваться мимо неё. */}
+              {tab === 'routes' && drawnRoute && (
+                <div className="city-scope-block">
+                  <h3>Линия маршрута «{drawnRoute.name}»</h3>
+                  <RouteDrawing
+                    citySlug={citySlug}
+                    route={drawnRoute}
+                    onSaved={(message) => {
+                      setDrawingRoute(null)
+                      if (message) {
+                        setNotice(message)
+                        setVersion((current) => current + 1)
+                      }
+                    }}
+                  />
+                </div>
+              )}
+
+              {tab === 'routes' && !drawnRoute && (
+                <>
+                  <div className="city-scope-block">
+                    <h3>Новый маршрут</h3>
+                    <div className="geozone-fields">
+                      <label className="field geozone-field-wide">
+                        Адрес маршрута
+                        <span className="admin-url-control">
+                          <span className="admin-url-prefix">
+                            /archive/{citySlug}/
+                          </span>
+                          <input
+                            className="text-input"
+                            aria-label="Имя маршрута в ссылке"
+                            placeholder="route-1"
+                            value={routeDraft.slug}
+                            disabled={busy}
+                            onChange={(event) =>
+                              setRouteDraft({
+                                ...routeDraft,
+                                slug: event.target.value,
+                              })
+                            }
+                          />
+                        </span>
+                        <span className="admin-field-hint">
+                          Латиница, цифры и дефисы. После создания изменить нельзя.
+                        </span>
+                      </label>
+                      <label className="field">
+                        Название
+                        <input
+                          className="text-input"
+                          placeholder="Камышовое шоссе | Лабораторное шоссе"
+                          value={routeDraft.name}
+                          disabled={busy}
+                          onChange={(event) =>
+                            setRouteDraft({ ...routeDraft, name: event.target.value })
+                          }
+                        />
+                      </label>
+                      <label className="field">
+                        Подпись цвета
+                        <input
+                          className="text-input"
+                          placeholder="Красная линия"
+                          value={routeDraft.color_label}
+                          disabled={busy}
+                          onChange={(event) =>
+                            setRouteDraft({ ...routeDraft, color_label: event.target.value })
+                          }
+                        />
+                      </label>
+                      <label className="field">
+                        Цвет
+                        <input
+                          className="text-input"
+                          type="color"
+                          value={routeDraft.color_hex}
+                          disabled={busy}
+                          onChange={(event) =>
+                            setRouteDraft({ ...routeDraft, color_hex: event.target.value })
+                          }
+                        />
+                      </label>
+                      <label className="field geozone-field-wide">
+                        Описание
+                        <textarea
+                          className="text-input geozone-textarea"
+                          rows={2}
+                          value={routeDraft.description}
+                          disabled={busy}
+                          onChange={(event) =>
+                            setRouteDraft({ ...routeDraft, description: event.target.value })
+                          }
+                        />
+                      </label>
+                    </div>
+                    <div className="geozone-form-actions">
+                      <button
+                        className="primary"
+                        disabled={busy || !routeDraft.slug.trim() || !routeDraft.name.trim()}
+                        onClick={addRoute}
+                      >
+                        Создать маршрут
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="city-scope-block">
+                    <h3>Маршруты</h3>
+                    {detail.routes.length === 0 ? (
+                      <EmptyState text="У города нет маршрутов." />
+                    ) : (
+                      <ul className="geozone-list">
+                        {detail.routes.map((route) =>
+                          route.slug === editingRoute ? (
+                            <li key={route.id} className="geozone-row is-editing">
+                              <div className="geozone-fields">
+                                <label className="field">
+                                  Название
+                                  <input
+                                    className="text-input"
+                                    value={routeEdit.name}
+                                    disabled={busy}
+                                    onChange={(event) =>
+                                      setRouteEdit({ ...routeEdit, name: event.target.value })
+                                    }
+                                  />
+                                </label>
+                                <label className="field">
+                                  Подпись цвета
+                                  <input
+                                    className="text-input"
+                                    value={routeEdit.color_label}
+                                    disabled={busy}
+                                    onChange={(event) =>
+                                      setRouteEdit({
+                                        ...routeEdit,
+                                        color_label: event.target.value,
+                                      })
+                                    }
+                                  />
+                                </label>
+                                <label className="field">
+                                  Цвет
+                                  <input
+                                    className="text-input"
+                                    type="color"
+                                    value={routeEdit.color_hex}
+                                    disabled={busy}
+                                    onChange={(event) =>
+                                      setRouteEdit({
+                                        ...routeEdit,
+                                        color_hex: event.target.value,
+                                      })
+                                    }
+                                  />
+                                </label>
+                                <label className="field geozone-field-wide">
+                                  Описание
+                                  <textarea
+                                    className="text-input geozone-textarea"
+                                    rows={2}
+                                    value={routeEdit.description}
+                                    disabled={busy}
+                                    onChange={(event) =>
+                                      setRouteEdit({
+                                        ...routeEdit,
+                                        description: event.target.value,
+                                      })
+                                    }
+                                  />
+                                </label>
+                              </div>
+                              <div className="geozone-form-actions">
+                                <button className="primary" disabled={busy} onClick={saveRoute}>
+                                  Сохранить
+                                </button>
+                                <button
+                                  className="ghost-button"
+                                  disabled={busy}
+                                  onClick={() => setEditingRoute(null)}
+                                >
+                                  Отмена
+                                </button>
+                              </div>
+                            </li>
+                          ) : (
+                            <li
+                              key={route.id}
+                              className={`geozone-row${route.is_active ? '' : ' is-hidden-row'}`}
+                            >
+                              <span
+                                className="geozone-swatch"
+                                style={{ background: route.color_hex ?? 'var(--muted)' }}
+                              />
+                              <div className="geozone-row-copy">
+                                <span className="geozone-row-name">
+                                  {route.name} <em>{route.slug}</em>
+                                </span>
+                                <span className="geozone-row-range">
+                                  {route.color_label ?? 'без подписи цвета'} ·{' '}
+                                  {pluralAssignments(route.assignment_count)} ·{' '}
+                                  {route.has_geometry ? 'линия загружена' : 'линии нет'}
+                                  {!route.is_active && ' · скрыт'}
+                                </span>
+                                {route.description && (
+                                  <p className="geozone-row-description">{route.description}</p>
+                                )}
+                              </div>
+                              <span className="row-actions">
+                                <button
+                                  className="ghost-button"
+                                  disabled={busy}
+                                  onClick={() => startRouteEdit(route)}
+                                >
+                                  Правка
+                                </button>
+                                <button
+                                  className="secondary"
+                                  disabled={busy}
+                                  onClick={() => setDrawingRoute(route.slug)}
+                                >
+                                  {route.has_geometry ? 'Перерисовать линию' : 'Нарисовать линию'}
+                                </button>
+                                <button
+                                  className={route.is_active ? 'geozone-delete' : 'primary'}
+                                  disabled={busy}
+                                  onClick={() => void toggleRoute(route)}
+                                >
+                                  {route.is_active ? 'Скрыть' : 'Показать'}
+                                </button>
+                              </span>
+                            </li>
+                          ),
+                        )}
+                      </ul>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {tab === 'assignments' && (
+                <AdminAssignments
+                  key={citySlug}
+                  citySlug={citySlug}
+                  routes={detail.routes}
+                />
+              )}
+
+              {tab === 'catalog' && (
+                <CatalogImports key={citySlug} citySlug={citySlug} />
+              )}
+            </div>
+          )}
+        </section>
+      )}
+    </div>
+  )
+}

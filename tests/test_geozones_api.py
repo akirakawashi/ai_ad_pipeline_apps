@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import csv
 import io
+from datetime import UTC, datetime
 
 import pytest
 from sqlmodel import Session, select
@@ -76,18 +77,23 @@ def _route_id(city_slug: str, route_slug: str) -> str:
             .join(City, City.cities_id == Route.cities_id)
             .where(City.slug == city_slug, Route.slug == route_slug)
         ).first()
+        # Маршрут из сид-миграции: если его нет, падать надо здесь и внятно,
+        # а не ниже по стеку с AttributeError на None.
+        assert route is not None
         return route.routes_id
 
 
-def _seed_completed_run(routes_id: str, *, with_assignment: bool) -> None:
-    """Завершённая съёмка с артефактом TRACKS. CSV кладём отдельно в storage."""
+def _seed_completed_run(routes_id: str) -> None:
+    """Завершённая съёмка с артефактом TRACKS. CSV кладём отдельно в storage.
+
+    Задание заводим всегда: съёмки вне маршрута в системе не бывает — колонка
+    обязательная, и такую строку база просто не примет.
+    """
     with Session(engine) as session:
-        assignment_id = None
-        if with_assignment:
-            assignment = Assignment(routes_id=routes_id, sequence_number=1)
-            session.add(assignment)
-            session.flush()
-            assignment_id = assignment.assignments_id
+        assignment = Assignment(routes_id=routes_id, sequence_number=1)
+        session.add(assignment)
+        session.flush()
+        assignment_id = assignment.assignments_id
         session.add(
             PipelineRun(
                 pipeline_runs_id=RUN_ID,
@@ -95,6 +101,7 @@ def _seed_completed_run(routes_id: str, *, with_assignment: bool) -> None:
                 source_object_key=f"runs/{RUN_ID}/source/in.mp4",
                 source_size_bytes=1,
                 duration_sec=40.0,
+                shot_started_at=datetime(2026, 8, 2, 9, 30, tzinfo=UTC),
                 status=PipelineRunStatus.COMPLETED.value,
                 assignments_id=assignment_id,
             )
@@ -189,6 +196,51 @@ def test_bad_bounds_rejected(client, geozone_schema, city_route):
     ).status_code == 422
 
 
+def test_description_is_optional_and_editable(client, geozone_schema, city_route):
+    """Описание — единственное место, где живёт причина коэффициента.
+
+    Не обязательно при создании, стирается пустой строкой, null запрещён — как
+    и остальные поля участка.
+    """
+    city_slug, route_slug = city_route
+    base = _geozones_url(city_slug, route_slug)
+
+    silent = client.post(
+        base,
+        json={"name": "Окраина", "start_fraction": 0.0, "end_fraction": 0.2, "coefficient": 0.8},
+    ).json()["data"]
+    assert silent["description"] == ""
+
+    described = client.post(
+        base,
+        json={
+            "name": "Центр",
+            "description": "Пешеходный поток, светофор — стоим до 40 секунд.",
+            "start_fraction": 0.35,
+            "end_fraction": 0.6,
+            "coefficient": 1.5,
+        },
+    )
+    assert described.status_code == 201
+    zone_id = described.json()["data"]["id"]
+    assert client.get(base).json()["data"][1]["description"].startswith("Пешеходный")
+
+    patched = client.patch(
+        f"/api/v1/geozones/{zone_id}", json={"description": "Ремонт, поток упал."}
+    )
+    assert patched.json()["data"]["description"] == "Ремонт, поток упал."
+
+    cleared = client.patch(f"/api/v1/geozones/{zone_id}", json={"description": ""})
+    assert cleared.json()["data"]["description"] == ""
+
+    assert (
+        client.patch(
+            f"/api/v1/geozones/{zone_id}", json={"description": None}
+        ).status_code
+        == 400
+    )
+
+
 def test_missing_targets_are_404(client, geozone_schema, city_route):
     city_slug, _ = city_route
     assert client.get(f"/api/v1/cities/{city_slug}/routes/nope/geozones").status_code == 404
@@ -210,7 +262,7 @@ def test_summary_applies_beta_and_recalculates(client, storage, geozone_schema, 
             _track(2, 2, "mts", 4.0, 1.0, 0.8, 1),
         ]
     )
-    _seed_completed_run(routes_id, with_assignment=True)
+    _seed_completed_run(routes_id)
 
     created = client.post(
         _geozones_url(city_slug, route_slug),
@@ -226,18 +278,17 @@ def test_summary_applies_beta_and_recalculates(client, storage, geozone_schema, 
     assert _visibility_index(client, RUN_ID) == pytest.approx(2.8)  # 2.0 + 0.8
 
 
-def test_summary_without_assignment_uses_neutral_beta(
-    client, storage, geozone_schema, city_route
-):
+def test_unmarked_route_uses_neutral_beta(client, storage, geozone_schema, city_route):
+    """Маршрут без единой зоны — β = 1 у всех объектов.
+
+    Единственный оставшийся способ получить нейтральный β. Раньше их было два:
+    вторым была съёмка без задания, но съёмок вне маршрута больше не бывает —
+    задание обязательно, и зоны у съёмки есть всегда, пусть иногда пустые.
+    """
     city_slug, route_slug = city_route
     routes_id = _route_id(city_slug, route_slug)
-    # У маршрута есть зона, но съёмка без задания её не видит: β = 1 у всех.
-    client.post(
-        _geozones_url(city_slug, route_slug),
-        json={"name": "Центр", "start_fraction": 0.35, "end_fraction": 0.6, "coefficient": 1.5},
-    )
     storage.objects[TRACKS_KEY] = _tracks_csv([_track(1, 1, "mts", 20.0, 2.0, 0.5, 1)])
-    _seed_completed_run(routes_id, with_assignment=False)
+    _seed_completed_run(routes_id)
 
-    # V = 2.0·0.5·1.0 = 1.0 (β нейтральный, зоны съёмке недоступны).
+    # V = 2.0·0.5·1.0 = 1.0: множить не на что, размеченных участков нет.
     assert _visibility_index(client, RUN_ID) == pytest.approx(1.0)

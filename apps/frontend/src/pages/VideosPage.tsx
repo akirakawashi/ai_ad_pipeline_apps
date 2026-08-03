@@ -1,11 +1,16 @@
 import { useEffect, useState } from 'react'
-import { getCities, getCity, getRouteAssignments, listRuns } from '../api'
+import {
+  getCities,
+  getCity,
+  getRouteAssignments,
+  getRouteGeometry,
+  listRuns,
+} from '../api'
 import { EmptyState, ErrorBanner } from '../components/common/Feedback'
 import { PageHeader } from '../components/common/PageHeader'
 import { RunCard } from '../components/common/RunCard'
 import { Select } from '../components/common/Select'
 import { RunsSkeleton } from '../components/common/Skeletons'
-import { Tabs } from '../components/common/Tabs'
 import { navigate, uploadPath, videosPath, type VideoFilters } from '../routing'
 import type { City, PipelineRun, Route, Assignment } from '../types'
 import type { GeoFeatureCollection } from '../components/RouteMap'
@@ -89,7 +94,6 @@ export function VideosPage({ filters }: { filters: VideoFilters }) {
         routeId: filters.routeId,
         assignmentId: filters.assignmentId,
         status: filters.status,
-        assigned: filters.assigned,
       })
         .then((result) => {
           if (!disposed) setRuns(result.items)
@@ -107,7 +111,7 @@ export function VideosPage({ filters }: { filters: VideoFilters }) {
       disposed = true
       window.clearInterval(interval)
     }
-  }, [filters.assigned, filters.assignmentId, filters.cityId, filters.routeId, filters.status])
+  }, [filters.assignmentId, filters.cityId, filters.routeId, filters.status])
 
   useEffect(() => {
     const targets = new Map<string, { routeId: string; citySlug: string }>()
@@ -131,13 +135,14 @@ export function VideosPage({ filters }: { filters: VideoFilters }) {
       )
       const sources = missing.flatMap(({ routeId, citySlug }) => {
         const route = cityDetails.get(citySlug)?.routes.find((item) => item.id === routeId)
-        return route ? ([[routeId, route.geojson_path]] as const) : []
+        // Без залитой линии превью не существует — и запроса тоже.
+        return route?.has_geometry ? ([[routeId, citySlug, route.slug]] as const) : []
       })
       const previews = await Promise.all(
-        sources.map(async ([routeId, path]) => {
-          const response = await fetch(`/${path}`)
-          if (!response.ok) return null
-          return [routeId, (await response.json()) as GeoFeatureCollection] as const
+        sources.map(async ([routeId, citySlug, routeSlug]) => {
+          const geometry = await getRouteGeometry(citySlug, routeSlug).catch(() => null)
+          if (geometry === null) return null
+          return [routeId, geometry as GeoFeatureCollection] as const
         }),
       )
       if (disposed) return
@@ -159,22 +164,11 @@ export function VideosPage({ filters }: { filters: VideoFilters }) {
     navigate(videosPath({ ...filters, ...changes }))
   }
 
-  const viewMode =
-    filters.assigned === false ? 'unassigned' : filters.assigned === true ? 'assigned' : 'all'
-  const unassignedOnly = viewMode === 'unassigned'
-
-  const pageTitle =
-    viewMode === 'unassigned'
-      ? 'Видео без маршрута'
-      : viewMode === 'assigned'
-        ? 'Видео маршрутов'
-        : 'Все видео'
-
   return (
     <div className="page">
       <PageHeader
         eyebrow="Архив"
-        title={pageTitle}
+        title="Все видео"
         actions={
           <button className="primary" onClick={() => navigate(uploadPath())}>
             Загрузить видео
@@ -182,87 +176,67 @@ export function VideosPage({ filters }: { filters: VideoFilters }) {
         }
       />
 
-      <Tabs
-        ariaLabel="Какие видео показать"
-        value={viewMode}
-        options={[
-          { value: 'all', label: 'Все видео' },
-          { value: 'assigned', label: 'С маршрутом' },
-          { value: 'unassigned', label: 'Без задания' },
-        ]}
-        onChange={(tab) =>
-          update({
-            assigned: tab === 'unassigned' ? false : tab === 'assigned' ? true : undefined,
-            ...(tab === 'unassigned'
-              ? { cityId: undefined, routeId: undefined, assignmentId: undefined }
-              : {}),
-          })
-        }
-      />
-
+      {/* Переключателя «с маршрутом / без задания» здесь больше нет: съёмка
+          всегда принадлежит заданию, и делить видео стало не на что. */}
       <section className="filter-bar">
-        {!unassignedOnly && (
-          <>
-            <div className="field">
-              Город
-              <Select
-                ariaLabel="Город"
-                value={filters.cityId ?? ''}
-                placeholder="Все города"
-                options={[
-                  { value: '', label: 'Все города' },
-                  ...cities.map((city) => ({ value: city.id, label: city.name })),
-                ]}
-                onChange={(cityId) =>
-                  update({
-                    cityId: cityId || undefined,
-                    routeId: undefined,
-                    assignmentId: undefined,
-                  })
-                }
-              />
-            </div>
-            <div className="field">
-              Маршрут
-              <Select
-                ariaLabel="Маршрут"
-                value={filters.routeId ?? ''}
-                disabled={!filters.cityId}
-                placeholder="Все маршруты"
-                options={[
-                  { value: '', label: 'Все маршруты' },
-                  ...activeRoutes.map((route) => ({ value: route.id, label: route.name })),
-                ]}
-                onChange={(routeId) =>
-                  update({ routeId: routeId || undefined, assignmentId: undefined })
-                }
-              />
-            </div>
-            <div className="field">
-              Задание
-              <Select
-                ariaLabel="Задание"
-                value={filters.assignmentId ?? ''}
-                disabled={!selectedRoute}
-                placeholder={
-                  !selectedRoute
-                    ? 'Сначала выберите маршрут'
-                    : 'Все задания'
-                }
-                options={[
-                  { value: '', label: 'Все задания' },
-                  ...activeAssignments.map((assignment) => ({
-                    value: assignment.id,
-                    label: assignment.title,
-                  })),
-                ]}
-                onChange={(assignmentId) =>
-                  update({ assignmentId: assignmentId || undefined })
-                }
-              />
-            </div>
-          </>
-        )}
+        <div className="field">
+          Город
+          <Select
+            ariaLabel="Город"
+            value={filters.cityId ?? ''}
+            placeholder="Все города"
+            options={[
+              { value: '', label: 'Все города' },
+              ...cities.map((city) => ({ value: city.id, label: city.name })),
+            ]}
+            onChange={(cityId) =>
+              update({
+                cityId: cityId || undefined,
+                routeId: undefined,
+                assignmentId: undefined,
+              })
+            }
+          />
+        </div>
+        <div className="field">
+          Маршрут
+          <Select
+            ariaLabel="Маршрут"
+            value={filters.routeId ?? ''}
+            disabled={!filters.cityId}
+            placeholder="Все маршруты"
+            options={[
+              { value: '', label: 'Все маршруты' },
+              ...activeRoutes.map((route) => ({ value: route.id, label: route.name })),
+            ]}
+            onChange={(routeId) =>
+              update({ routeId: routeId || undefined, assignmentId: undefined })
+            }
+          />
+        </div>
+        <div className="field">
+          Задание
+          <Select
+            ariaLabel="Задание"
+            value={filters.assignmentId ?? ''}
+            disabled={!selectedRoute}
+            placeholder={
+              !selectedRoute
+                ? 'Сначала выберите маршрут'
+                : 'Все задания'
+            }
+            options={[
+              { value: '', label: 'Все задания' },
+              ...activeAssignments.map((assignment) => ({
+                value: assignment.id,
+                label: assignment.title,
+              })),
+            ]}
+            onChange={(assignmentId) =>
+              update({ assignmentId: assignmentId || undefined })
+            }
+          />
+        </div>
         <div className="field">
           Статус
           <Select

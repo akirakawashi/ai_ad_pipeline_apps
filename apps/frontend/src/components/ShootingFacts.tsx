@@ -10,7 +10,7 @@ import {
 } from '../utils/formatters'
 
 /**
- * Реквизиты съёмки: кто снимал и когда.
+ * Реквизиты съёмки: кто загрузил видео и когда его сняли.
  *
  * Время начала подставляется при загрузке из метаданных файла и потому
  * правится: у копии с карты памяти это время копирования, а не записи.
@@ -27,21 +27,26 @@ export function ShootingFacts({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [startAt, setStartAt] = useState(localInputFromIso(run.shot_started_at))
-  const [operatorId, setOperatorId] = useState(run.operator?.id ?? '')
+  const [uploadedById, setUploadedById] = useState(run.uploaded_by?.id ?? '')
 
   const open = () => {
     setStartAt(localInputFromIso(run.shot_started_at))
-    setOperatorId(run.operator?.id ?? '')
+    setUploadedById(run.uploaded_by?.id ?? '')
     setError(null)
     setEditing(true)
   }
 
   const save = () => {
+    const shotStartedAt = isoFromLocalInput(startAt)
+    if (!shotStartedAt) {
+      setError('Укажите начало записи.')
+      return
+    }
     setBusy(true)
     setError(null)
     updateShooting(run.run_id, {
-      shot_started_at: isoFromLocalInput(startAt),
-      operator_user_id: operatorId || null,
+      shot_started_at: shotStartedAt,
+      uploaded_by_user_id: uploadedById || null,
     })
       .then((updated) => {
         onUpdated(updated)
@@ -54,25 +59,27 @@ export function ShootingFacts({
   if (editing) {
     return (
       <section className="panel assignment-form">
-        <h2>Реквизиты съёмки</h2>
+        <h2>Реквизиты видео</h2>
         <div className="assignment-form-fields">
           <div className="field">
-            Начало съёмки
+            Начало записи *
             <input
               type="datetime-local"
-              className="text-input"
+              className={`text-input${startAt ? '' : ' is-invalid'}`}
               value={startAt}
+              required
+              aria-invalid={!startAt}
               disabled={busy}
               onChange={(event) => setStartAt(event.target.value)}
             />
           </div>
           <UserSelect
-            label="Оператор"
-            value={operatorId}
-            current={run.operator}
+            label="Кто загрузил"
+            value={uploadedById}
+            current={run.uploaded_by}
             disabled={busy}
-            placeholder="Кто снимал"
-            onChange={setOperatorId}
+            placeholder="Кто загрузил"
+            onChange={setUploadedById}
           />
         </div>
         <p className="assignment-form-hint">
@@ -80,7 +87,7 @@ export function ShootingFacts({
         </p>
         {error && <ErrorBanner text={error} />}
         <div className="assignment-form-actions">
-          <button className="primary" disabled={busy} onClick={save}>
+          <button className="primary" disabled={busy || !startAt} onClick={save}>
             {busy ? 'Сохраняем…' : 'Сохранить'}
           </button>
           <button
@@ -98,15 +105,15 @@ export function ShootingFacts({
   return (
     <dl className="assignment-facts">
       <div>
-        <dt>Оператор</dt>
-        <dd>{run.operator?.full_name ?? '—'}</dd>
+        <dt>Кто загрузил</dt>
+        <dd>{run.uploaded_by?.full_name ?? '—'}</dd>
       </div>
       <div>
-        <dt>Начало съёмки</dt>
+        <dt>Начало записи</dt>
         <dd>{formatDateTime(run.shot_started_at)}</dd>
       </div>
       <div>
-        <dt>Окончание съёмки</dt>
+        <dt>Окончание записи</dt>
         <dd>{formatDateTime(run.shot_finished_at)}</dd>
       </div>
       <div>

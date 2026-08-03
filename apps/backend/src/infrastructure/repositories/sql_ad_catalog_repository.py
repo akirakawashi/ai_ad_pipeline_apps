@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from sqlalchemy.orm import defer
 from sqlmodel import Session, func, select
 
 from application.common.dto import AdStructureDTO, CatalogImportDTO
@@ -10,6 +11,22 @@ from application.interfaces import CityImportTarget
 from domain.catalog import CatalogImportStatus, CityBounds, CollapsedPoint, Point
 from infrastructure.database.models import AdStructure, CatalogImport, City
 from infrastructure.repositories.assignment_mapping import user_ref
+
+
+# В поле написано «Поиск по адресу», а не «шаблон LIKE»: `%` и `_` там значат
+# сами себя. Без этого `%` возвращал весь каталог вместо «ничего не нашлось», а
+# «ул_» находило «ул.» — подчёркивание подходило к точке.
+LIKE_ESCAPE = "\\"
+
+
+def _escape_like(value: str) -> str:
+    # Слэш первым: иначе следующие две замены заэкранируют слэши, которые сами
+    # же и поставили, и `%` превратился бы в литерал обратного слэша с процентом.
+    return (
+        value.replace(LIKE_ESCAPE, LIKE_ESCAPE * 2)
+        .replace("%", f"{LIKE_ESCAPE}%")
+        .replace("_", f"{LIKE_ESCAPE}_")
+    )
 
 
 def _bounds(city: City) -> CityBounds | None:
@@ -122,10 +139,6 @@ class SqlAdCatalogRepository:
         self._session.refresh(catalog_import)
         return _import_to_dto(catalog_import)
 
-    def get_import(self, import_id: str) -> CatalogImportDTO | None:
-        model = self._import_by_id(import_id)
-        return _import_to_dto(model) if model is not None else None
-
     def list_imports(self, city_slug: str) -> list[CatalogImportDTO] | None:
         city = self._city_by_slug(city_slug)
         if city is None:
@@ -184,6 +197,27 @@ class SqlAdCatalogRepository:
         self._session.refresh(model)
         return _import_to_dto(model)
 
+    def hide_import(self, import_id: str) -> CatalogImportDTO | None:
+        """Снять ревизию с показа, не назначая другую.
+
+        «У города нет текущей ревизии» — законное состояние: так выглядит город,
+        куда ещё ничего не грузили. Без этой ручки единственная ревизия города
+        оказывалась несъёмной: откатиться не на что, а удалить текущую запрещено.
+        Возврат делается обычным откатом — та же кнопка «Вернуть».
+        """
+        model = self._import_by_id(import_id)
+        if model is None:
+            return None
+        if not model.is_current:
+            raise CatalogImportStateError("Эта ревизия и так не показывается.")
+
+        self._lock_city(model.cities_id)
+        model.is_current = False
+        self._session.add(model)
+        self._session.flush()
+        self._session.refresh(model)
+        return _import_to_dto(model)
+
     def delete_import(self, import_id: str) -> bool:
         model = self._import_by_id(import_id)
         if model is None:
@@ -216,7 +250,13 @@ class SqlAdCatalogRepository:
             CatalogImport.is_current.is_(True),  # type: ignore[attr-defined]
         ]
         if search:
-            conditions.append(AdStructure.address.ilike(f"%{search}%"))  # type: ignore[attr-defined]
+            # escape указан явно, хотя у PostgreSQL слэш и так по умолчанию:
+            # правильность поиска не должна зависеть от настройки диалекта.
+            conditions.append(
+                AdStructure.address.ilike(  # type: ignore[attr-defined]
+                    f"%{_escape_like(search)}%", escape=LIKE_ESCAPE
+                )
+            )
 
         total = self._session.exec(
             select(func.count(AdStructure.ad_structures_id))
@@ -250,7 +290,14 @@ class SqlAdCatalogRepository:
     # --- вспомогательное -----------------------------------------------------
 
     def _city_by_slug(self, city_slug: str) -> City | None:
-        return self._session.exec(select(City).where(City.slug == city_slug)).first()
+        # defer обязателен: от города здесь нужны только идентификатор, название
+        # и рамка, а дорожный слой — это до полутора мегабайт JSONB, которые
+        # иначе поднимаются и выбрасываются на каждом чтении каталога.
+        return self._session.exec(
+            select(City)
+            .where(City.slug == city_slug)
+            .options(defer(City.roads_geometry))
+        ).first()
 
     def _import_by_id(self, import_id: str) -> CatalogImport | None:
         return self._session.exec(
@@ -264,9 +311,16 @@ class SqlAdCatalogRepository:
 
         Иначе два одновременных применения оба погасят текущую ревизию и оба
         зажгут свою — город останется с двумя актуальными.
+
+        defer здесь важнее, чем на чтении: без него дорожный слой едет по сети
+        внутри уже взятой блокировки, то есть растягивает критическую секцию
+        ради данных, которые этому методу не нужны вовсе.
         """
         self._session.exec(
-            select(City).where(City.cities_id == city_id).with_for_update()
+            select(City)
+            .where(City.cities_id == city_id)
+            .options(defer(City.roads_geometry))
+            .with_for_update()
         ).first()
 
     def _switch_off_current(self, city_id: str) -> None:

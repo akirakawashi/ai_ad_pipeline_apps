@@ -21,6 +21,10 @@ class InvalidAssignmentError(ValueError):
     """Реквизиты задания противоречивы — например, окончание раньше начала."""
 
 
+class InvalidPeriodError(ValueError):
+    """Период отбора противоречив — конец раньше начала."""
+
+
 class InvalidUserError(ValueError):
     """ФИО пустое или состоит из одних пробелов."""
 
@@ -47,3 +51,11 @@ class CatalogImportStateError(ValueError):
     Например: применить уже применённую, откатиться на текущую или удалить ту,
     что сейчас показывается.
     """
+
+
+class DuplicateSlugError(ValueError):
+    """Такой слаг уже занят: у города — глобально, у маршрута — внутри города."""
+
+
+class InvalidGeometryError(ValueError):
+    """Загруженный файл не годится как геометрия: не тот формат или не те числа."""

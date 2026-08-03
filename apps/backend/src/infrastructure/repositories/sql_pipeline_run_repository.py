@@ -9,12 +9,12 @@ from sqlmodel import Session, select
 from application.common.dto import (
     PipelineArtifactDTO,
     PipelineRunDTO,
-    PipelineRunEventDTO,
 )
 from domain.entities import PipelineArtifactType, PipelineRunStage, PipelineRunStatus
 from domain.geozones import GeozoneInterval
 from infrastructure.database.models import (
     Assignment,
+    City,
     PipelineArtifact,
     PipelineRun,
     PipelineRunEvent,
@@ -59,24 +59,13 @@ def _artifact_to_dto(artifact: PipelineArtifact) -> PipelineArtifactDTO:
     )
 
 
-def _event_to_dto(event: PipelineRunEvent) -> PipelineRunEventDTO:
-    return PipelineRunEventDTO(
-        id=event.pipeline_run_events_id,
-        run_id=event.pipeline_runs_id,
-        stage=_stage(event.stage),
-        progress=event.progress,
-        message=event.message,
-        created_at=event.created_at,
-    )
-
-
 def _shot_finished_at(run: PipelineRun) -> datetime | None:
     """Конец съёмки не хранится: старт плюс длительность самого видео.
 
     Так поле физически не может разойтись с файлом. Пока видео не обработано,
     длительность неизвестна — возвращаем None, интерфейс покажет прочерк.
     """
-    if run.shot_started_at is None or not run.duration_sec:
+    if not run.duration_sec:
         return None
     return run.shot_started_at + timedelta(seconds=run.duration_sec)
 
@@ -84,10 +73,10 @@ def _shot_finished_at(run: PipelineRun) -> datetime | None:
 def _run_to_dto(run: PipelineRun, *, with_refs: bool = False) -> PipelineRunDTO:
     # with_refs=True только там, где связи загружены через selectinload.
     # Воркер зовёт эту функцию на detached-инстансах — там assignment
-    # и operator трогать нельзя.
+    # и uploaded_by трогать нельзя.
     return PipelineRunDTO(
         assignment=assignment_ref(run) if with_refs else None,
-        operator=user_ref(run.operator) if with_refs else None,
+        uploaded_by=user_ref(run.uploaded_by) if with_refs else None,
         shot_started_at=run.shot_started_at,
         shot_finished_at=_shot_finished_at(run),
         run_id=run.pipeline_runs_id,
@@ -113,7 +102,6 @@ def _run_to_dto(run: PipelineRun, *, with_refs: bool = False) -> PipelineRunDTO:
         completed_at=run.completed_at,
         updated_at=run.updated_at,
         artifacts=[_artifact_to_dto(item) for item in run.artifacts],
-        events=[_event_to_dto(item) for item in run.events],
     )
 
 
@@ -129,9 +117,9 @@ class SqlPipelineRunRepository:
         source_object_key: str,
         content_type: str | None,
         size_bytes: int,
-        assignment_id: str | None = None,
-        shot_started_at: datetime | None = None,
-        operator_user_id: str | None = None,
+        assignment_id: str,
+        shot_started_at: datetime,
+        uploaded_by_user_id: str | None = None,
     ) -> PipelineRunDTO:
         run = PipelineRun(
             pipeline_runs_id=run_id,
@@ -141,7 +129,7 @@ class SqlPipelineRunRepository:
             source_size_bytes=size_bytes,
             assignments_id=assignment_id,
             shot_started_at=shot_started_at,
-            operator_users_id=operator_user_id,
+            uploaded_by_users_id=uploaded_by_user_id,
             status=PipelineRunStatus.UPLOADING.value,
             stage=PipelineRunStage.UPLOAD.value,
             progress=0,
@@ -167,29 +155,29 @@ class SqlPipelineRunRepository:
         city_id: str | None = None,
         route_id: str | None = None,
         assignment_id: str | None = None,
-        assigned: bool | None = None,
     ) -> tuple[list[PipelineRunDTO], int]:
         filters = []
         if status:
             filters.append(PipelineRun.status == _status_value(status))
         if assignment_id:
             filters.append(PipelineRun.assignments_id == assignment_id)
-        if assigned is not None:
-            if assigned:
-                filters.append(PipelineRun.assignments_id.is_not(None))
-            else:
-                filters.append(PipelineRun.assignments_id.is_(None))
+
+        # Маршрут и город достаём подзапросом по цепочке assignment → route → city,
+        # чтобы не денормализовать их в pipeline_runs. Скрытые задания отсекаются
+        # тем же подзапросом, и безусловно: съёмка спрятанной кампании не должна
+        # остаться в общем списке — карточка вела бы на страницу, дающую 404.
+        assignment_ids = select(Assignment.assignments_id).where(
+            Assignment.is_active.is_(True)
+        )
         if route_id or city_id:
-            # Маршрут и город достаём подзапросом по цепочке assignment → route → city,
-            # чтобы не денормализовать их в pipeline_runs.
-            assignment_ids = select(Assignment.assignments_id).join(
+            assignment_ids = assignment_ids.join(
                 Route, Route.routes_id == Assignment.routes_id
             )
             if route_id:
                 assignment_ids = assignment_ids.where(Route.routes_id == route_id)
             if city_id:
                 assignment_ids = assignment_ids.where(Route.cities_id == city_id)
-            filters.append(PipelineRun.assignments_id.in_(assignment_ids))
+        filters.append(PipelineRun.assignments_id.in_(assignment_ids))
 
         total = self._session.exec(
             select(func.count(PipelineRun.pipeline_runs_id)).where(*filters)
@@ -199,10 +187,11 @@ class SqlPipelineRunRepository:
             .where(*filters)
             .options(
                 selectinload(PipelineRun.artifacts),
-                noload(PipelineRun.events),
                 selectinload(PipelineRun.assignment)
                 .selectinload(Assignment.route)
-                .selectinload(Route.city),
+                .defer(Route.geometry)
+                .selectinload(Route.city)
+                .defer(City.roads_geometry),
             )
             .order_by(PipelineRun.created_at.desc())
             .offset((page - 1) * page_size)
@@ -216,15 +205,32 @@ class SqlPipelineRunRepository:
         run_id: str,
         *,
         with_artifacts: bool = True,
-        with_events: bool = False,
+        include_hidden: bool = False,
     ) -> PipelineRunDTO | None:
+        """Съёмка для показа. None — нет её или скрыто задание, в которое она сдана.
+
+        Единственная точка чтения съёмки продуктом: через неё идут и карточка,
+        и сводка, и объекты, и таймлайн, и плеер, — поэтому скрытие проверяется
+        здесь одной строкой, а не в семи местах.
+
+        `include_hidden` нужен ровно одному вызову — завершению загрузки. Между
+        созданием съёмки и «файл долит» проходят минуты, и если в эту щель
+        задание спрятали, отказ оставил бы строку навсегда в статусе `uploading`
+        и брошенный объект в MinIO. Дозагрузить начатое — запись, а пути записи
+        скрытия не знают: по ним же ходит воркер.
+        """
         run = self._get_model(
             run_id,
             with_artifacts=with_artifacts,
-            with_events=with_events,
             with_refs=True,
         )
-        return _run_to_dto(run, with_refs=True) if run else None
+        if run is None:
+            return None
+        if not include_hidden and (
+            run.assignment is None or not run.assignment.is_active
+        ):
+            return None
+        return _run_to_dto(run, with_refs=True)
 
     def get_geozone_intervals(self, run_id: str) -> list[GeozoneInterval]:
         """Участки значимости маршрута этой съёмки — вход для расчёта β.
@@ -307,17 +313,26 @@ class SqlPipelineRunRepository:
         return _artifact_to_dto(artifact)
 
     def lock_assignment(self, assignment_id: str) -> bool:
-        """Блокирует строку задания до конца транзакции. False — задания нет.
+        """Блокирует строку задания. False, если задания нет или оно скрыто.
 
-        Без этого два параллельных create_run, каждый насчитав MAX-1,
-        оба вставят строку и лимит будет превышен.
+        Блокировка — против гонки: без неё два параллельных create_run, каждый
+        насчитав MAX-1, оба вставят строку и лимит будет превышен.
+
+        Скрытое здесь неотличимо от несуществующего намеренно: в выпадашке его
+        уже нет, но идентификатор живёт в адресе страницы загрузки — открытая со
+        вчера вкладка иначе долила бы видео в спрятанную кампанию.
+
+        Это проверка **начала** загрузки, и только его. Завершение
+        (`complete_upload`) скрытое задание пропускает: файл к тому моменту уже
+        в хранилище, и отказ оставил бы строку висеть в `uploading` рядом с
+        осиротевшим объектом.
         """
         assignment = self._session.exec(
             select(Assignment)
             .where(Assignment.assignments_id == assignment_id)
             .with_for_update()
         ).first()
-        return assignment is not None
+        return assignment is not None and assignment.is_active
 
     def count_assignment_runs(self, assignment_id: str) -> int:
         total = self._session.exec(
@@ -344,7 +359,7 @@ class SqlPipelineRunRepository:
             )
         )
 
-    def claim_next(self, worker_id: str) -> PipelineRunDTO | None:
+    def claim_next(self) -> PipelineRunDTO | None:
         statement = (
             select(PipelineRun)
             .where(PipelineRun.status == PipelineRunStatus.QUEUED.value)
@@ -361,7 +376,6 @@ class SqlPipelineRunRepository:
         run.stage = PipelineRunStage.PREPARING.value
         run.progress = 1
         run.status_message = "Готовим видео к анализу"
-        run.worker_id = worker_id
         run.started_at = datetime.now(timezone.utc)
         self.add_event(
             run.pipeline_runs_id,
@@ -463,7 +477,6 @@ class SqlPipelineRunRepository:
         run_id: str,
         *,
         with_artifacts: bool = True,
-        with_events: bool = False,
         with_refs: bool = False,
     ) -> PipelineRun | None:
         statement = select(PipelineRun).where(PipelineRun.pipeline_runs_id == run_id)
@@ -471,20 +484,18 @@ class SqlPipelineRunRepository:
             statement = statement.options(selectinload(PipelineRun.artifacts))
         else:
             statement = statement.options(noload(PipelineRun.artifacts))
-        if with_events:
-            statement = statement.options(selectinload(PipelineRun.events))
-        else:
-            statement = statement.options(noload(PipelineRun.events))
         if with_refs:
             statement = statement.options(
                 selectinload(PipelineRun.assignment)
                 .selectinload(Assignment.route)
-                .selectinload(Route.city),
-                selectinload(PipelineRun.operator),
+                .defer(Route.geometry)
+                .selectinload(Route.city)
+                .defer(City.roads_geometry),
+                selectinload(PipelineRun.uploaded_by),
             )
         else:
             statement = statement.options(
                 noload(PipelineRun.assignment),
-                noload(PipelineRun.operator),
+                noload(PipelineRun.uploaded_by),
             )
         return self._session.exec(statement).one_or_none()

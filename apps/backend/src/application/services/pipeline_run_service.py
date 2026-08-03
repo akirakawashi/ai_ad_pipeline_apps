@@ -13,7 +13,6 @@ from pandas.errors import EmptyDataError
 from pydantic import BaseModel
 
 from application.common.dto import (
-    ArtifactUrlDTO,
     BrandSummaryDTO,
     CreateRunDTO,
     OverlayPayloadDTO,
@@ -92,9 +91,9 @@ class PipelineRunService:
         file_name: str,
         content_type: str | None,
         size_bytes: int,
-        assignment_id: str | None = None,
-        shot_started_at: datetime | None = None,
-        operator_user_id: str | None = None,
+        assignment_id: str,
+        shot_started_at: datetime,
+        uploaded_by_user_id: str | None = None,
     ) -> CreateRunDTO:
         safe_name = safe_file_name(file_name)
         if Path(safe_name).suffix.casefold() not in ALLOWED_VIDEO_EXTENSIONS:
@@ -104,17 +103,17 @@ class PipelineRunService:
         if size_bytes <= 0:
             raise InvalidVideoError("Файл пустой. Выберите другое видео.")
 
-        if assignment_id is not None:
-            # Блокировка строки задания сериализует параллельные create_run:
-            # иначе два запроса, каждый насчитав MAX-1, оба вставят.
-            if not self._repository.lock_assignment(assignment_id):
-                self._repository.rollback()
-                raise CatalogNotFoundError("Задание не найдено.")
-            if self._repository.count_assignment_runs(assignment_id) >= MAX_ASSIGNMENT_SHOOTINGS:
-                self._repository.rollback()
-                raise AssignmentFullError(
-                    f"В задание можно загрузить не более {MAX_ASSIGNMENT_SHOOTINGS} видео."
-                )
+        # Задание обязательно, поэтому проверки безусловны. Блокировка строки
+        # задания сериализует параллельные create_run: иначе два запроса, каждый
+        # насчитав MAX-1, оба вставят.
+        if not self._repository.lock_assignment(assignment_id):
+            self._repository.rollback()
+            raise CatalogNotFoundError("Задание не найдено.")
+        if self._repository.count_assignment_runs(assignment_id) >= MAX_ASSIGNMENT_SHOOTINGS:
+            self._repository.rollback()
+            raise AssignmentFullError(
+                f"В задание можно загрузить не более {MAX_ASSIGNMENT_SHOOTINGS} видео."
+            )
 
         run_id = str(uuid.uuid4())
         source_object_key = f"runs/{run_id}/source/{safe_name}"
@@ -126,7 +125,7 @@ class PipelineRunService:
             size_bytes=size_bytes,
             assignment_id=assignment_id,
             shot_started_at=shot_started_at,
-            operator_user_id=operator_user_id,
+            uploaded_by_user_id=uploaded_by_user_id,
         )
         self._repository.commit()
 
@@ -144,7 +143,11 @@ class PipelineRunService:
         )
 
     def complete_upload(self, run_id: str) -> PipelineRunDTO:
-        run = self._require_run(run_id, with_artifacts=False)
+        # include_hidden: файл уже в хранилище. Если задание спрятали, пока шла
+        # заливка, отказать здесь — значит оставить строку в `uploading` и
+        # брошенный объект в MinIO. Довести начатое до конца дешевле; видно
+        # съёмку всё равно не будет, пока задание не вернут.
+        run = self._require_run(run_id, with_artifacts=False, include_hidden=True)
         if run.status not in {
             PipelineRunStatus.UPLOADING,
             PipelineRunStatus.UPLOAD_FAILED,
@@ -178,7 +181,6 @@ class PipelineRunService:
         city_id: str | None = None,
         route_id: str | None = None,
         assignment_id: str | None = None,
-        assigned: bool | None = None,
     ) -> PaginatedRunsDTO:
         runs, total = self._repository.list_runs(
             page=page,
@@ -187,7 +189,6 @@ class PipelineRunService:
             city_id=city_id,
             route_id=route_id,
             assignment_id=assignment_id,
-            assigned=assigned,
         )
         return PaginatedRunsDTO(
             items=runs,
@@ -197,7 +198,7 @@ class PipelineRunService:
         )
 
     def get_run(self, run_id: str) -> PipelineRunDTO:
-        return self._require_run(run_id, with_events=True)
+        return self._require_run(run_id)
 
     def update_shooting(
         self,
@@ -213,48 +214,23 @@ class PipelineRunService:
         run = self._repository.update_shooting(run_id, fields=fields)
         if run is None:
             self._repository.rollback()
-            raise PipelineRunNotFoundError("Съёмка не найдена.")
+            raise PipelineRunNotFoundError("Видео не найдено.")
         self._repository.commit()
         return run
 
-    def get_artifacts(self, run_id: str) -> list[PipelineArtifactDTO]:
-        run = self._require_run(run_id)
-        return run.artifacts
-
-    def get_artifact_url(
-        self,
-        run_id: str,
-        artifact_id: str,
-    ) -> ArtifactUrlDTO:
-        run = self._require_run(run_id)
-        artifact = next(
-            (
-                item
-                for item in run.artifacts
-                if item.id == artifact_id
-            ),
-            None,
-        )
-        if artifact is None:
-            raise PipelineRunNotFoundError("Файл результата не найден.")
-        return ArtifactUrlDTO(
-            artifact_id=artifact.id,
-            url=self._storage.presigned_get(artifact.object_key),
-        )
-
     def get_playback(self, run_id: str) -> PlaybackDTO:
+        """Ссылка на исходное видео — рамки плеер рисует сам.
+
+        Второй копии видео с вписанными рамками нет намеренно: она весила
+        столько же, сколько оригинал, а поверх исходника рамки рисуются из
+        `overlay.json` — по ним ещё и кликать можно.
+        """
         run = self._require_run(run_id)
         by_type = {item.artifact_type: item for item in run.artifacts}
         source = by_type.get(PipelineArtifactType.SOURCE_VIDEO)
-        annotated = by_type.get(PipelineArtifactType.ANNOTATED_VIDEO)
         return PlaybackDTO(
             source_url=(
                 self._storage.presigned_get(source.object_key) if source else None
-            ),
-            annotated_url=(
-                self._storage.presigned_get(annotated.object_key)
-                if annotated
-                else None
             ),
         )
 
@@ -459,12 +435,12 @@ class PipelineRunService:
         run_id: str,
         *,
         with_artifacts: bool = True,
-        with_events: bool = False,
+        include_hidden: bool = False,
     ) -> PipelineRunDTO:
         run = self._repository.get(
             run_id,
             with_artifacts=with_artifacts,
-            with_events=with_events,
+            include_hidden=include_hidden,
         )
         if run is None:
             raise PipelineRunNotFoundError("Обработка не найдена.")

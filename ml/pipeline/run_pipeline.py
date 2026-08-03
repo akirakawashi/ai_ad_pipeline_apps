@@ -90,11 +90,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--business-min-object-detections", type=int, default=3)
     parser.add_argument("--business-min-visible-duration-sec", type=float, default=0.50)
     parser.add_argument("--render-gap-fill-max-sec", type=float, default=0.35)
-    parser.add_argument(
-        "--save-annotated-frames",
-        action="store_true",
-        help="Save annotated frame JPGs.",
-    )
     return parser.parse_args()
 
 
@@ -143,7 +138,6 @@ def build_config(args: argparse.Namespace) -> PipelineConfig:
         ),
         rendering=RenderingConfig(
             gap_fill_max_sec=args.render_gap_fill_max_sec,
-            save_annotated_frames=args.save_annotated_frames,
         ),
     )
 

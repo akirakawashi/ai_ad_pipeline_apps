@@ -9,10 +9,13 @@ from application.exceptions import (
     AssignmentFullError,
     CatalogImportStateError,
     CatalogNotFoundError,
+    DuplicateSlugError,
     GeozoneOverlapError,
     InvalidAssignmentError,
     InvalidCatalogFileError,
+    InvalidGeometryError,
     InvalidGeozoneError,
+    InvalidPeriodError,
     InvalidUserError,
     InvalidVideoError,
     PipelineRunNotFoundError,
@@ -95,6 +98,16 @@ def setup_exception_handlers(app: FastAPI) -> None:
             content={"detail": str(exc)},
         )
 
+    @app.exception_handler(InvalidPeriodError)
+    async def invalid_period_handler(
+        _: Request,
+        exc: InvalidPeriodError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=400,
+            content={"detail": str(exc)},
+        )
+
     @app.exception_handler(InvalidGeozoneError)
     async def invalid_geozone_handler(
         _: Request,
@@ -122,6 +135,26 @@ def setup_exception_handlers(app: FastAPI) -> None:
     ) -> JSONResponse:
         return JSONResponse(
             status_code=400,
+            content={"detail": str(exc)},
+        )
+
+    @app.exception_handler(InvalidGeometryError)
+    async def invalid_geometry_handler(
+        _: Request,
+        exc: InvalidGeometryError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=400,
+            content={"detail": str(exc)},
+        )
+
+    @app.exception_handler(DuplicateSlugError)
+    async def duplicate_slug_handler(
+        _: Request,
+        exc: DuplicateSlugError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=409,
             content={"detail": str(exc)},
         )
 

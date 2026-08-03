@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from typing import cast
 
 from sqlalchemy import func
-from sqlalchemy.orm import noload, selectinload
+from sqlalchemy.orm import defer, noload, selectinload
 from sqlmodel import Session, select
 
 from application.common.dto import (
@@ -11,11 +12,13 @@ from application.common.dto import (
     AssignmentStatusCountsDTO,
     CityDetailDTO,
     CityDTO,
+    GeometryDTO,
     GeozoneDTO,
     PipelineRunDTO,
     RouteDTO,
 )
 from application.exceptions import GeozoneOverlapError
+from domain.catalog import CityBounds
 from domain.geozones import GeozoneInterval, overlaps
 from infrastructure.database.models import (
     Assignment,
@@ -36,12 +39,28 @@ from infrastructure.repositories.sql_pipeline_run_repository import _run_to_dto
 ShotWindow = tuple[datetime | None, datetime | None]
 
 
+def _geometry_version(updated_at: datetime | None) -> str:
+    """Версия геометрии для ETag: время последней правки строки.
+
+    Хеш содержимого был бы точнее, но считать его пришлось бы по полутора
+    мегабайтам на каждый запрос — ровно та работа, которой ETag должен избегать.
+    """
+    return "0" if updated_at is None else str(updated_at.timestamp())
+
+
 def _route_to_dto(
     route: Route,
     *,
     assignment_count: int = 0,
     video_count: int = 0,
+    has_geometry: bool = False,
 ) -> RouteDTO:
+    """Геометрию в DTO не кладём — только признак, что она есть.
+
+    `has_geometry` приходит параметром, а не читается из `route.geometry`:
+    колонка отложена (`defer`) во всех списковых запросах, и обращение к ней
+    здесь вызвало бы догрузку мегабайтов ровно там, где мы их избегаем.
+    """
     return RouteDTO(
         id=route.routes_id,
         slug=route.slug,
@@ -49,8 +68,9 @@ def _route_to_dto(
         color_label=route.color_label,
         color_hex=route.color_hex,
         description=route.description,
-        geojson_path=route.geojson_path,
+        has_geometry=has_geometry,
         display_order=route.display_order,
+        is_active=route.is_active,
         assignment_count=assignment_count,
         video_count=video_count,
     )
@@ -61,6 +81,7 @@ def _geozone_to_dto(geozone: RouteGeozone) -> GeozoneDTO:
         id=geozone.route_geozones_id,
         route_id=geozone.routes_id,
         name=geozone.name,
+        description=geozone.description,
         start_fraction=geozone.start_fraction,
         end_fraction=geozone.end_fraction,
         coefficient=geozone.coefficient,
@@ -94,6 +115,7 @@ def _assignment_to_dto(
         actual_end_at=actual_end_at,
         video_count=video_count,
         status_counts=status_counts or AssignmentStatusCountsDTO(),
+        is_active=assignment.is_active,
         created_at=assignment.created_at,
     )
 
@@ -104,19 +126,34 @@ class SqlCatalogRepository:
 
     # --- счётчики -------------------------------------------------------
 
-    def _assignment_counts_by_route(self) -> dict[str, int]:
-        rows = self._session.exec(
-            select(Assignment.routes_id, func.count(Assignment.assignments_id))
-            .group_by(Assignment.routes_id)
-        ).all()
+    def _assignment_counts_by_route(
+        self,
+        *,
+        include_inactive: bool = False,
+    ) -> dict[str, int]:
+        """Сколько заданий на каждом маршруте.
+
+        Скрытые считаются только для справочника: на карточке маршрута «3
+        задания» рядом с двумя видимыми — та же полускрытость, что и съёмка,
+        пропавшая из списка, но оставшаяся в метрике.
+        """
+        query = select(Assignment.routes_id, func.count(Assignment.assignments_id))
+        if not include_inactive:
+            query = query.where(Assignment.is_active.is_(True))
+        rows = self._session.exec(query.group_by(Assignment.routes_id)).all()
         return {routes_id: int(count) for routes_id, count in rows}
 
-    def _video_counts_by_route(self) -> dict[str, int]:
-        rows = self._session.exec(
-            select(Assignment.routes_id, func.count(PipelineRun.pipeline_runs_id))
-            .join(PipelineRun, PipelineRun.assignments_id == Assignment.assignments_id)
-            .group_by(Assignment.routes_id)
-        ).all()
+    def _video_counts_by_route(
+        self,
+        *,
+        include_inactive: bool = False,
+    ) -> dict[str, int]:
+        query = select(
+            Assignment.routes_id, func.count(PipelineRun.pipeline_runs_id)
+        ).join(PipelineRun, PipelineRun.assignments_id == Assignment.assignments_id)
+        if not include_inactive:
+            query = query.where(Assignment.is_active.is_(True))
+        rows = self._session.exec(query.group_by(Assignment.routes_id)).all()
         return {routes_id: int(count) for routes_id, count in rows}
 
     def _video_counts_by_assignment(self, assignment_ids: list[str]) -> dict[str, int]:
@@ -146,10 +183,7 @@ class SqlCatalogRepository:
                 PipelineRun.assignments_id,
                 PipelineRun.shot_started_at,
                 PipelineRun.duration_sec,
-            ).where(
-                PipelineRun.assignments_id.in_(assignment_ids),
-                PipelineRun.shot_started_at.is_not(None),
-            )
+            ).where(PipelineRun.assignments_id.in_(assignment_ids))
         ).all()
 
         result: dict[str, ShotWindow] = {}
@@ -186,37 +220,70 @@ class SqlCatalogRepository:
 
     # --- города и маршруты ----------------------------------------------
 
-    def list_cities(self) -> list[CityDTO]:
-        cities = self._session.exec(
-            select(City)
-            .where(City.is_active.is_(True))
-            .options(noload(City.routes))
-            .order_by(City.display_order, City.name)
-        ).all()
+    def _route_geometry_flags(self, cities_id: str) -> dict[str, bool]:
+        """У каких маршрутов города есть геометрия.
 
-        route_rows = self._session.exec(
-            select(Route.cities_id, func.count(Route.routes_id))
-            .where(Route.is_active.is_(True))
-            .group_by(Route.cities_id)
+        Отдельным запросом по `IS NOT NULL`: он не вытаскивает содержимое, а
+        читать саму колонку ради флага значило бы тянуть десятки килобайт на
+        строку списка.
+        """
+        rows = self._session.exec(
+            select(Route.routes_id, Route.geometry.is_not(None)).where(
+                Route.cities_id == cities_id
+            )
         ).all()
+        return {routes_id: bool(flag) for routes_id, flag in rows}
+
+    def list_cities(self, *, include_inactive: bool = False) -> list[CityDTO]:
+        """Список городов. `include_inactive` — только для справочников.
+
+        Скрытый город не виден обычному пользователю нигде: ни в архиве, ни при
+        загрузке видео, ни в каталоге. Показывают его лишь справочники на
+        `/admin`, потому что иначе вернуть город было бы нечем — удаления нет.
+        Флаг заодно распространяется на счётчики: справочник показывает всё
+        как есть, пользователь — только видимое.
+        """
+        # defer на дорожном слое обязателен: без него список городов тянет по
+        # полтора мегабайта на город. Флаг наличия берём выражением в том же
+        # запросе — IS NOT NULL содержимое не читает.
+        city_query = select(City, City.roads_geometry.is_not(None))
+        if not include_inactive:
+            city_query = city_query.where(City.is_active.is_(True))
+        rows = self._session.exec(
+            city_query.options(
+                noload(City.routes), defer(City.roads_geometry)
+            ).order_by(City.display_order, City.name)
+        ).all()
+        cities = [city for city, _ in rows]
+        roads_flags = {city.cities_id: bool(flag) for city, flag in rows}
+
+        route_query = select(Route.cities_id, func.count(Route.routes_id))
+        if not include_inactive:
+            route_query = route_query.where(Route.is_active.is_(True))
+        route_rows = self._session.exec(route_query.group_by(Route.cities_id)).all()
         route_counts = {cities_id: int(count) for cities_id, count in route_rows}
 
+        assignment_query = select(
+            Route.cities_id, func.count(Assignment.assignments_id)
+        ).join(Assignment, Assignment.routes_id == Route.routes_id)
+        if not include_inactive:
+            assignment_query = assignment_query.where(Assignment.is_active.is_(True))
         assignment_rows = self._session.exec(
-            select(Route.cities_id, func.count(Assignment.assignments_id))
-            .join(Assignment, Assignment.routes_id == Route.routes_id)
-            .group_by(Route.cities_id)
+            assignment_query.group_by(Route.cities_id)
         ).all()
         assignment_counts = {cities_id: int(count) for cities_id, count in assignment_rows}
 
-        video_rows = self._session.exec(
+        video_query = (
             select(Route.cities_id, func.count(PipelineRun.pipeline_runs_id))
             .join(Assignment, Assignment.routes_id == Route.routes_id)
             .join(
                 PipelineRun,
                 PipelineRun.assignments_id == Assignment.assignments_id,
             )
-            .group_by(Route.cities_id)
-        ).all()
+        )
+        if not include_inactive:
+            video_query = video_query.where(Assignment.is_active.is_(True))
+        video_rows = self._session.exec(video_query.group_by(Route.cities_id)).all()
         video_counts = {cities_id: int(count) for cities_id, count in video_rows}
 
         return [
@@ -225,8 +292,9 @@ class SqlCatalogRepository:
                 slug=city.slug,
                 name=city.name,
                 region=city.region,
-                roads_geojson_path=city.roads_geojson_path,
+                has_roads_geometry=roads_flags.get(city.cities_id, False),
                 display_order=city.display_order,
+                is_active=city.is_active,
                 route_count=route_counts.get(city.cities_id, 0),
                 assignment_count=assignment_counts.get(city.cities_id, 0),
                 video_count=video_counts.get(city.cities_id, 0),
@@ -234,26 +302,51 @@ class SqlCatalogRepository:
             for city in cities
         ]
 
-    def get_city(self, city_slug: str) -> CityDetailDTO | None:
-        city = self._session.exec(
-            select(City)
+    def get_city(
+        self,
+        city_slug: str,
+        *,
+        include_inactive: bool = False,
+    ) -> CityDetailDTO | None:
+        """Карточка города. Сам город отдаётся и скрытым — до него надо знать слаг.
+
+        `include_inactive` управляет только его маршрутами: пользователю скрытые
+        не нужны, справочнику нужны, иначе вернуть скрытый маршрут нечем.
+        """
+        row = self._session.exec(
+            select(City, City.roads_geometry.is_not(None))
             .where(City.slug == city_slug)
-            .options(selectinload(City.routes))
+            .options(
+                defer(City.roads_geometry),
+                selectinload(City.routes).defer(Route.geometry),
+            )
         ).first()
-        if city is None:
+        if row is None:
+            return None
+        city, has_roads = row
+        # Скрытый город не должен открываться и по прямой ссылке: иначе «скрыт»
+        # означало бы лишь «убран из списков», а сохранённая вкладка обходила бы
+        # это молча.
+        if not include_inactive and not city.is_active:
             return None
 
-        assignment_counts = self._assignment_counts_by_route()
-        video_counts = self._video_counts_by_route()
-        routes = [route for route in city.routes if route.is_active]
+        assignment_counts = self._assignment_counts_by_route(
+            include_inactive=include_inactive
+        )
+        video_counts = self._video_counts_by_route(include_inactive=include_inactive)
+        geometry_flags = self._route_geometry_flags(city.cities_id)
+        routes = [
+            route for route in city.routes if include_inactive or route.is_active
+        ]
 
         return CityDetailDTO(
             id=city.cities_id,
             slug=city.slug,
             name=city.name,
             region=city.region,
-            roads_geojson_path=city.roads_geojson_path,
+            has_roads_geometry=bool(has_roads),
             display_order=city.display_order,
+            is_active=city.is_active,
             route_count=len(routes),
             assignment_count=sum(assignment_counts.get(r.routes_id, 0) for r in routes),
             video_count=sum(video_counts.get(r.routes_id, 0) for r in routes),
@@ -262,27 +355,202 @@ class SqlCatalogRepository:
                     route,
                     assignment_count=assignment_counts.get(route.routes_id, 0),
                     video_count=video_counts.get(route.routes_id, 0),
+                    has_geometry=geometry_flags.get(route.routes_id, False),
                 )
                 for route in routes
             ],
         )
 
     def _get_route_model(self, city_slug: str, route_slug: str) -> Route | None:
+        """Строка маршрута без геометрии: её читают только эндпоинты геометрии."""
         return self._session.exec(
             select(Route)
             .join(City, City.cities_id == Route.cities_id)
             .where(City.slug == city_slug, Route.slug == route_slug)
+            .options(defer(Route.geometry))
         ).first()
 
-    def get_route(self, city_slug: str, route_slug: str) -> RouteDTO | None:
+    def get_route(
+        self,
+        city_slug: str,
+        route_slug: str,
+        *,
+        include_inactive: bool = False,
+    ) -> RouteDTO | None:
         route = self._get_route_model(city_slug, route_slug)
-        if route is None:
+        if route is None or (not include_inactive and not route.is_active):
             return None
         return _route_to_dto(
             route,
-            assignment_count=self._assignment_counts_by_route().get(route.routes_id, 0),
-            video_count=self._video_counts_by_route().get(route.routes_id, 0),
+            assignment_count=self._assignment_counts_by_route(
+                include_inactive=include_inactive
+            ).get(route.routes_id, 0),
+            video_count=self._video_counts_by_route(
+                include_inactive=include_inactive
+            ).get(route.routes_id, 0),
+            has_geometry=self._route_geometry_flags(route.cities_id).get(
+                route.routes_id, False
+            ),
         )
+
+    # --- справочники: правка городов и маршрутов ---------------------------
+
+    def city_slug_taken(self, slug: str) -> bool:
+        """Считаем занятыми и деактивированные: slug уникален в таблице."""
+        return (
+            self._session.exec(
+                select(City.cities_id).where(City.slug == slug)
+            ).first()
+            is not None
+        )
+
+    def create_city(
+        self,
+        *,
+        slug: str,
+        name: str,
+        region: str | None,
+        display_order: int,
+    ) -> CityDTO:
+        city = City(slug=slug, name=name, region=region, display_order=display_order)
+        self._session.add(city)
+        self._session.flush()
+        return CityDTO(
+            id=city.cities_id,
+            slug=city.slug,
+            name=city.name,
+            region=city.region,
+            has_roads_geometry=False,
+            display_order=city.display_order,
+        )
+
+    def update_city(self, city_slug: str, *, fields: dict[str, object]) -> bool:
+        """False — города нет. Slug в fields не приходит: он неизменяем."""
+        city = self._session.exec(select(City).where(City.slug == city_slug)).first()
+        if city is None:
+            return False
+        for name, value in fields.items():
+            setattr(city, name, value)
+        self._session.add(city)
+        self._session.flush()
+        return True
+
+    def route_slug_taken(self, city_slug: str, slug: str) -> bool:
+        return (
+            self._session.exec(
+                select(Route.routes_id)
+                .join(City, City.cities_id == Route.cities_id)
+                .where(City.slug == city_slug, Route.slug == slug)
+            ).first()
+            is not None
+        )
+
+    def create_route(
+        self,
+        *,
+        city_slug: str,
+        slug: str,
+        name: str,
+        color_label: str | None,
+        color_hex: str | None,
+        description: str | None,
+        display_order: int,
+    ) -> RouteDTO | None:
+        """None — города нет. Геометрия загружается отдельным запросом позже."""
+        city = self._session.exec(select(City).where(City.slug == city_slug)).first()
+        if city is None:
+            return None
+        route = Route(
+            cities_id=city.cities_id,
+            slug=slug,
+            name=name,
+            color_label=color_label,
+            color_hex=color_hex,
+            description=description,
+            display_order=display_order,
+        )
+        self._session.add(route)
+        self._session.flush()
+        return _route_to_dto(route, has_geometry=False)
+
+    def update_route(
+        self,
+        city_slug: str,
+        route_slug: str,
+        *,
+        fields: dict[str, object],
+    ) -> bool:
+        route = self._get_route_model(city_slug, route_slug)
+        if route is None:
+            return False
+        for name, value in fields.items():
+            setattr(route, name, value)
+        self._session.add(route)
+        self._session.flush()
+        return True
+
+    # --- справочники: геометрия --------------------------------------------
+
+    def set_roads_geometry(
+        self,
+        city_slug: str,
+        *,
+        geometry: dict,
+        bounds: CityBounds | None,
+    ) -> bool:
+        """Заливает дорожный слой и **тем же запросом переписывает рамку города**.
+
+        Разделять нельзя: рамкой каталог отсекает точки чужого города, и слой без
+        пересчитанной рамки означал бы молчаливую потерю нормальных точек при
+        следующем импорте.
+        """
+        city = self._session.exec(select(City).where(City.slug == city_slug)).first()
+        if city is None:
+            return False
+        city.roads_geometry = geometry
+        if bounds is not None:
+            city.bounds_min_latitude = bounds.min_latitude
+            city.bounds_max_latitude = bounds.max_latitude
+            city.bounds_min_longitude = bounds.min_longitude
+            city.bounds_max_longitude = bounds.max_longitude
+        self._session.add(city)
+        self._session.flush()
+        return True
+
+    def get_roads_geometry(self, city_slug: str) -> GeometryDTO | None:
+        row = self._session.exec(
+            select(City.roads_geometry, City.updated_at).where(City.slug == city_slug)
+        ).first()
+        if row is None or row[0] is None:
+            return None
+        geometry, updated_at = row
+        return GeometryDTO(version=_geometry_version(updated_at), geometry=geometry)
+
+    def set_route_geometry(
+        self,
+        city_slug: str,
+        route_slug: str,
+        *,
+        geometry: dict,
+    ) -> bool:
+        route = self._get_route_model(city_slug, route_slug)
+        if route is None:
+            return False
+        route.geometry = geometry
+        self._session.add(route)
+        self._session.flush()
+        return True
+
+    def get_route_geometry(self, city_slug: str, route_slug: str) -> GeometryDTO | None:
+        row = self._session.exec(
+            select(Route.geometry, Route.updated_at)
+            .join(City, City.cities_id == Route.cities_id)
+            .where(City.slug == city_slug, Route.slug == route_slug)
+        ).first()
+        if row is None or row[0] is None:
+            return None
+        geometry, updated_at = row
+        return GeometryDTO(version=_geometry_version(updated_at), geometry=geometry)
 
     # --- задания ------------------------------------------------------------
 
@@ -293,7 +561,14 @@ class SqlCatalogRepository:
         route_slug: str,
         page: int,
         page_size: int,
+        include_inactive: bool = False,
     ) -> tuple[list[AssignmentDTO], int]:
+        """Задания маршрута, новые сверху. `include_inactive` — только админке.
+
+        Скрытые не показываем ни на маршруте, ни в выпадашке загрузки: попасть
+        в скрытое задание не должно быть возможно даже случайно. Вернуть их
+        можно с той единственной страницы, где они видны.
+        """
         route = self._get_route_model(city_slug, route_slug)
         if route is None:
             return [], 0
@@ -301,15 +576,17 @@ class SqlCatalogRepository:
         if city is None:
             return [], 0
 
+        visibility = [] if include_inactive else [Assignment.is_active.is_(True)]
+
         total = self._session.exec(
             select(func.count(Assignment.assignments_id)).where(
-                Assignment.routes_id == route.routes_id
+                Assignment.routes_id == route.routes_id, *visibility
             )
         ).one()
 
         assignments = self._session.exec(
             select(Assignment)
-            .where(Assignment.routes_id == route.routes_id)
+            .where(Assignment.routes_id == route.routes_id, *visibility)
             .options(selectinload(Assignment.author))
             .order_by(Assignment.sequence_number.desc())
             .offset((page - 1) * page_size)
@@ -386,7 +663,11 @@ class SqlCatalogRepository:
         *,
         fields: dict[str, object],
     ) -> AssignmentDTO | None:
-        """Перезаписывает только переданные ключи: PATCH, а не PUT."""
+        """Перезаписывает только переданные ключи: PATCH, а не PUT.
+
+        Скрытое задание читаем наравне с видимым: этим же запросом его и
+        возвращают обратно, а 404 на «показать» читался бы как поломка.
+        """
         assignment = self._get_assignment_model(assignment_id)
         if assignment is None or assignment.route is None or assignment.route.city is None:
             return None
@@ -402,7 +683,10 @@ class SqlCatalogRepository:
             select(Assignment)
             .where(Assignment.assignments_id == assignment_id)
             .options(
-                selectinload(Assignment.route).selectinload(Route.city),
+                selectinload(Assignment.route)
+                .defer(Route.geometry)
+                .selectinload(Route.city)
+                .defer(City.roads_geometry),
                 selectinload(Assignment.author),
             )
         ).first()
@@ -420,9 +704,21 @@ class SqlCatalogRepository:
             ),
         )
 
-    def get_assignment(self, assignment_id: str) -> AssignmentDTO | None:
+    def get_assignment(
+        self,
+        assignment_id: str,
+        *,
+        include_inactive: bool = False,
+    ) -> AssignmentDTO | None:
+        """Карточка задания. Скрытое — 404, включая прямую ссылку.
+
+        Иначе «скрыто» означало бы лишь «убрано из списков», а сохранённая
+        вкладка обходила бы это молча — ровно та дыра, что была у городов.
+        """
         assignment = self._get_assignment_model(assignment_id)
         if assignment is None or assignment.route is None or assignment.route.city is None:
+            return None
+        if not include_inactive and not assignment.is_active:
             return None
         return self._assignment_dto(assignment)
 
@@ -432,29 +728,66 @@ class SqlCatalogRepository:
             .where(PipelineRun.assignments_id == assignment_id)
             .options(
                 selectinload(PipelineRun.artifacts),
-                noload(PipelineRun.events),
                 noload(PipelineRun.assignment),
             )
             .order_by(PipelineRun.created_at)
         ).all()
         return [_run_to_dto(run) for run in runs]
 
-    def lock_assignment(self, assignment_id: str) -> bool:
-        """Блокирует строку задания. False, если задания нет."""
-        assignment = self._session.exec(
-            select(Assignment)
-            .where(Assignment.assignments_id == assignment_id)
-            .with_for_update()
-        ).first()
-        return assignment is not None
+    def list_route_runs(
+        self,
+        city_slug: str,
+        route_slug: str,
+        *,
+        shot_from: datetime | None = None,
+        shot_to: datetime | None = None,
+    ) -> list[PipelineRunDTO] | None:
+        """Съёмки всех заданий маршрута. None — маршрута нет.
 
-    def count_assignment_runs(self, assignment_id: str) -> int:
-        total = self._session.exec(
-            select(func.count(PipelineRun.pipeline_runs_id)).where(
-                PipelineRun.assignments_id == assignment_id
+        Задание загружаем (`with_refs`): на уровне маршрута надо показать, из
+        какой кампании съёмка. Порядок — по времени съёмки, а не обработки: это
+        ось графика, и дата обязательна у каждой съёмки.
+
+        Период — полуинтервал [shot_from, shot_to): включающий обе календарные
+        даты конец фронт получает, прибавив сутки. Так у бэкенда нет своего
+        мнения о часовом поясе — границы приходят готовыми моментами, а чей
+        это был день, знает браузер.
+
+        Скрытое задание отсекается здесь же, рядом с периодом, и по той же
+        причине: и то и другое лишь **укорачивает список** до расчёта. Считает
+        по-прежнему один metrics_rollup, который ни про скрытие, ни про даты
+        не знает, — иначе появилась бы вторая арифметика, и цифра под фильтром
+        разошлась бы с цифрой без него.
+        """
+        route = self._get_route_model(city_slug, route_slug)
+        if route is None:
+            return None
+
+        period = []
+        if shot_from is not None:
+            period.append(PipelineRun.shot_started_at >= shot_from)
+        if shot_to is not None:
+            period.append(PipelineRun.shot_started_at < shot_to)
+
+        runs = self._session.exec(
+            select(PipelineRun)
+            .join(Assignment, Assignment.assignments_id == PipelineRun.assignments_id)
+            .where(
+                Assignment.routes_id == route.routes_id,
+                Assignment.is_active.is_(True),
+                *period,
             )
-        ).one()
-        return int(total)
+            .options(
+                selectinload(PipelineRun.artifacts),
+                selectinload(PipelineRun.assignment)
+                .selectinload(Assignment.route)
+                .defer(Route.geometry)
+                .selectinload(Route.city)
+                .defer(City.roads_geometry),
+            )
+            .order_by(PipelineRun.shot_started_at)
+        ).all()
+        return [_run_to_dto(run, with_refs=True) for run in runs]
 
     # --- геозоны ------------------------------------------------------------
 
@@ -480,6 +813,7 @@ class SqlCatalogRepository:
         city_slug: str,
         route_slug: str,
         name: str,
+        description: str,
         start_fraction: float,
         end_fraction: float,
         coefficient: float,
@@ -498,6 +832,7 @@ class SqlCatalogRepository:
         geozone = RouteGeozone(
             routes_id=route.routes_id,
             name=name,
+            description=description,
             start_fraction=start_fraction,
             end_fraction=end_fraction,
             coefficient=coefficient,
@@ -526,10 +861,13 @@ class SqlCatalogRepository:
         self._lock_route(geozone.routes_id)
         merged_start = fields.get("start_fraction", geozone.start_fraction)
         merged_end = fields.get("end_fraction", geozone.end_fraction)
+        # cast, а не проверка: fields объявлен как dict[str, object], потому что
+        # в PATCH приходит что угодно, но обе границы уже провалидированы
+        # `_check_geozone_bounds` в CatalogService — сюда доходят только числа.
         self._ensure_no_overlap(
             geozone.routes_id,
-            float(merged_start),
-            float(merged_end),
+            float(cast(float, merged_start)),
+            float(cast(float, merged_end)),
             exclude_id=geozone.route_geozones_id,
         )
 
@@ -558,7 +896,10 @@ class SqlCatalogRepository:
 
     def _lock_route(self, routes_id: str) -> None:
         self._session.exec(
-            select(Route).where(Route.routes_id == routes_id).with_for_update()
+            select(Route)
+            .where(Route.routes_id == routes_id)
+            .options(defer(Route.geometry))
+            .with_for_update()
         ).first()
 
     def _ensure_no_overlap(

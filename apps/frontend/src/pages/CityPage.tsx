@@ -1,5 +1,11 @@
 import { useEffect, useState, type CSSProperties } from 'react'
-import { getAdStructures, getCity } from '../api'
+import {
+  getAdStructures,
+  getCity,
+  getRoadsGeometry,
+  getRouteGeometry,
+} from '../api'
+import { RouteGeozones } from '../components/RouteGeozones'
 import { RouteMap, type GeoFeatureCollection } from '../components/RouteMap'
 import { EmptyState, ErrorBanner } from '../components/common/Feedback'
 import { PageHeader } from '../components/common/PageHeader'
@@ -9,6 +15,9 @@ import type { AdStructure, CityDetail } from '../types'
 import { pluralAssignments } from '../utils/formatters'
 
 const FALLBACK_COLOR = '#8a8f98'
+
+/** Заглушка вместо незагруженной геометрии: карта рисует её как «ничего». */
+const EMPTY_COLLECTION: GeoFeatureCollection = { type: 'FeatureCollection', features: [] }
 
 export function CityPage({ citySlug }: { citySlug: string }) {
   const [city, setCity] = useState<CityDetail | null>(null)
@@ -29,20 +38,28 @@ export function CityPage({ citySlug }: { citySlug: string }) {
         if (disposed) return
         setCity(detail)
 
-        // Пути к geojson приходят из БД целиком; фронт добавляет только слэш.
-        const responses = await Promise.all([
-          fetch(`/${detail.roads_geojson_path ?? ''}`),
-          ...detail.routes.map((route) => fetch(`/${route.geojson_path}`)),
+        // Геометрия живёт в базе и приезжает своими запросами: их бэкенд отдаёт
+        // с ETag, поэтому повторный заход стоит 304, а не полтора мегабайта.
+        // Отсутствие геометрии — законное состояние: город или маршрут можно
+        // создать в справочниках, а линию загрузить позже.
+        const [roadsData, ...routesData] = await Promise.all([
+          detail.has_roads_geometry
+            ? getRoadsGeometry(citySlug).catch(() => null)
+            : Promise.resolve(null),
+          ...detail.routes.map((route) =>
+            route.has_geometry
+              ? getRouteGeometry(citySlug, route.slug).catch(() => null)
+              : Promise.resolve(null),
+          ),
         ])
-        if (responses.some((response) => !response.ok)) {
-          throw new Error('Не удалось загрузить данные маршрутов.')
-        }
-        const [roadsData, ...routesData] = await Promise.all(
-          responses.map((response) => response.json()),
-        )
         if (disposed) return
-        setRoads(roadsData)
-        setRoutes(routesData)
+        setRoads((roadsData as GeoFeatureCollection | null) ?? EMPTY_COLLECTION)
+        // Порядок сохраняем: карта сопоставляет линии с маршрутами по индексу.
+        setRoutes(
+          routesData.map(
+            (item) => (item as GeoFeatureCollection | null) ?? EMPTY_COLLECTION,
+          ),
+        )
       })
       .catch((reason) => {
         if (disposed) return
@@ -88,6 +105,9 @@ export function CityPage({ citySlug }: { citySlug: string }) {
   const routeColors = routesMeta.map((route) => route.color_hex ?? FALLBACK_COLOR)
   const focusedIndex = hoveredIndex ?? selectedIndex
   const focusedMeta = focusedIndex !== null ? routesMeta[focusedIndex] : null
+  // Зоны — только для выбранного маршрута, не для подсвеченного мышью: панель с
+  // формой не должна перезагружаться и терять набранный текст от движения курсора.
+  const selectedMeta = selectedIndex !== null ? routesMeta[selectedIndex] : null
 
   const handleReset = () => {
     setHoveredIndex(null)
@@ -205,6 +225,17 @@ export function CityPage({ citySlug }: { citySlug: string }) {
             </section>
           </aside>
         </div>
+      )}
+
+      {/* key по слагу: смена маршрута создаёт панель заново, а не тащит в неё
+          черновик формы от предыдущего. */}
+      {selectedMeta && (
+        <RouteGeozones
+          key={selectedMeta.slug}
+          citySlug={citySlug}
+          routeSlug={selectedMeta.slug}
+          routeName={selectedMeta.name}
+        />
       )}
     </div>
   )

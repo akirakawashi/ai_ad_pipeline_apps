@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { createUser, getUsers } from '../../api'
+import { getUsers } from '../../api'
 import { Select } from './Select'
 import type { User } from '../../types'
 
@@ -21,14 +21,15 @@ interface UserSelectProps {
 }
 
 /**
- * Выбор человека из справочника с созданием прямо здесь.
+ * Выбор человека из справочника. **Только выбор.**
  *
- * Создание на месте — сознательно вместо отдельной страницы администрирования:
- * иначе завести нового оператора означало бы идти в другой раздел посреди
- * загрузки. Полноценное управление справочником появится позже.
+ * Заводить людей отсюда можно было раньше, и справочник копил близнецов:
+ * «Иванов», «Иванов А.», «иванов» — потому что заводил их тот, кто в эту минуту
+ * грузил видео, а не тот, кто отвечает за справочник. Теперь человек создаётся
+ * в админ-панели, а здесь его только выбирают из готового списка.
  *
  * Список грузится на каждый экземпляр. Он крошечный, а общий кэш пришлось бы
- * инвалидировать после создания — цена больше выигрыша.
+ * держать свежим после правок в админке — цена больше выигрыша.
  */
 export function UserSelect({
   value,
@@ -39,16 +40,16 @@ export function UserSelect({
   current,
 }: UserSelectProps) {
   const [users, setUsers] = useState<User[]>([])
-  const [creating, setCreating] = useState(false)
-  const [draft, setDraft] = useState('')
-  const [busy, setBusy] = useState(false)
+  const [loaded, setLoaded] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     let disposed = false
     getUsers()
       .then((result) => {
-        if (!disposed) setUsers(result)
+        if (disposed) return
+        setUsers(result)
+        setLoaded(true)
       })
       .catch((reason) => {
         if (!disposed) setError(String(reason))
@@ -58,29 +59,6 @@ export function UserSelect({
     }
   }, [])
 
-  const save = () => {
-    if (!draft.trim() || busy) return
-    setBusy(true)
-    setError(null)
-    createUser(draft)
-      .then((user) => {
-        setUsers((current) =>
-          [...current, user].sort((a, b) => a.full_name.localeCompare(b.full_name, 'ru')),
-        )
-        onChange(user.id)
-        setCreating(false)
-        setDraft('')
-      })
-      .catch((reason) => setError(String(reason)))
-      .finally(() => setBusy(false))
-  }
-
-  const cancel = () => {
-    setCreating(false)
-    setDraft('')
-    setError(null)
-  }
-
   const options = users.map((user) => ({ value: user.id, label: user.full_name }))
   if (current && value === current.id && !users.some((user) => user.id === current.id)) {
     options.unshift({
@@ -88,53 +66,19 @@ export function UserSelect({
       label: `${current.full_name} (не в справочнике)`,
     })
   }
+  const empty = loaded && options.length === 0
 
   return (
     <div className="field user-select">
       {label}
-      {creating ? (
-        <div className="user-select-create">
-          <input
-            className="text-input"
-            autoFocus
-            value={draft}
-            placeholder="Фамилия Имя Отчество"
-            disabled={busy}
-            onChange={(event) => setDraft(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                event.preventDefault()
-                save()
-              }
-              if (event.key === 'Escape') cancel()
-            }}
-          />
-          <button className="primary" disabled={!draft.trim() || busy} onClick={save}>
-            {busy ? 'Сохраняем…' : 'Сохранить'}
-          </button>
-          <button className="ghost-button" disabled={busy} onClick={cancel}>
-            Отмена
-          </button>
-        </div>
-      ) : (
-        <>
-          <Select
-            ariaLabel={label}
-            value={value}
-            disabled={disabled}
-            placeholder={placeholder}
-            options={options}
-            onChange={onChange}
-          />
-          <button
-            className="ghost-button user-select-add"
-            disabled={disabled}
-            onClick={() => setCreating(true)}
-          >
-            + Добавить человека
-          </button>
-        </>
-      )}
+      <Select
+        ariaLabel={label}
+        value={value}
+        disabled={disabled || empty}
+        placeholder={empty ? 'Справочник пуст' : placeholder}
+        options={options}
+        onChange={onChange}
+      />
       {error && <span className="user-select-error">{error}</span>}
     </div>
   )

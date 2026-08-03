@@ -111,6 +111,21 @@ export function CityRoutePreview({
           <path className="city-route-preview-line" d={path} />
         </>
       )}
+      {/* Пустая рамка выглядела поломкой: город загружен, а на карточке ничего.
+          Рисовать тут нечего не потому, что что-то не сохранилось, а потому что
+          превью — это линии маршрутов, и их у города пока нет. Дорожный слой
+          сюда не годится: полтора мегабайта на карточку в списке. */}
+      {!loading && !path && (
+        <text
+          className="city-route-preview-empty"
+          x="50%"
+          y="50%"
+          textAnchor="middle"
+          dominantBaseline="middle"
+        >
+          маршрутов пока нет
+        </text>
+      )}
     </svg>
   )
 }

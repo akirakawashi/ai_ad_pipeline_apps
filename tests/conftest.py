@@ -7,8 +7,10 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Iterator
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 from urllib.parse import quote_plus
 
 from dotenv import load_dotenv
@@ -21,6 +23,14 @@ load_dotenv(ROOT / "apps" / "backend" / ".env")
 TEST_DB = os.environ.get("POSTGRES_TEST_DB", "ad_pipeline_test")
 ADMIN_DB = "postgres"
 os.environ["POSTGRES_DB"] = TEST_DB
+
+# Пароль справочников фиксируем здесь, а не берём из .env: иначе смена пароля
+# у владельца молча роняла бы половину набора. Настройки кэшируются на первом
+# обращении, поэтому переменные ставим до импорта приложения.
+ADMIN_LOGIN = "admin"
+ADMIN_PASSWORD = "admin"
+os.environ["ADMIN_USERNAME"] = ADMIN_LOGIN
+os.environ["ADMIN_PASSWORD"] = ADMIN_PASSWORD
 
 import psycopg  # noqa: E402
 import pytest  # noqa: E402
@@ -87,7 +97,7 @@ def _admin_dsn() -> str:
 
 
 @pytest.fixture(scope="session", autouse=True)
-def database() -> None:
+def database() -> Iterator[None]:
     """Создаёт базу под тесты, накатывает миграции, в конце сносит.
 
     Схема берётся из тех же миграций, что поедут в прод, — иначе тесты
@@ -116,7 +126,7 @@ def database() -> None:
 
 
 @pytest.fixture(autouse=True)
-def clean_tables(database: None) -> None:
+def clean_tables(database: None) -> Iterator[None]:
     """Каждый тест начинает с пустых изменяемых таблиц, но с сидами каталога."""
     yield
     with Session(engine) as session:
@@ -125,7 +135,9 @@ def clean_tables(database: None) -> None:
         existing = set(inspect(engine).get_table_names())
         tables = [name for name in MUTABLE_TABLES if name in existing]
         if tables:
-            session.exec(text(f"TRUNCATE {', '.join(tables)} CASCADE"))
+            # execute, а не exec: exec у SQLModel — типизированная обёртка под
+            # select, сырой SQL по её сигнатуре не проходит.
+            session.execute(text(f"TRUNCATE {', '.join(tables)} CASCADE"))
             session.commit()
 
 
@@ -147,8 +159,23 @@ def storage() -> FakeObjectStorage:
 
 
 @pytest.fixture
-def client(storage: FakeObjectStorage) -> TestClient:
-    """Клиент без запуска lifespan: подключение к MinIO тестам не нужно."""
+def client(storage: FakeObjectStorage) -> Iterator[TestClient]:
+    """Клиент без запуска lifespan: подключение к MinIO тестам не нужно.
+
+    Ходит с паролем справочников: правка городов и маршрутов закрыта, а
+    проверяют её сценарии из test_admin_auth.py — остальным тестам интересна
+    бизнес-логика, а не пароль. Кто должен видеть 401, берёт `anonymous_client`.
+    """
+    app.dependency_overrides[get_object_storage] = lambda: storage
+    test_client = TestClient(app)
+    test_client.auth = (ADMIN_LOGIN, ADMIN_PASSWORD)
+    yield test_client
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def anonymous_client(storage: FakeObjectStorage) -> Iterator[TestClient]:
+    """Тот же клиент, но без пароля — им проверяется, что закрыто именно то."""
     app.dependency_overrides[get_object_storage] = lambda: storage
     yield TestClient(app)
     app.dependency_overrides.clear()
@@ -160,6 +187,11 @@ def city_route() -> tuple[str, str]:
     return "simferopol", "route-1"
 
 
-def payload(response) -> object:
-    """Разворачивает конверт {"data": ...} ответа API."""
+def payload(response) -> Any:
+    """Разворачивает конверт {"data": ...} ответа API.
+
+    `Any`, а не `object`: внутри — JSON произвольной формы, и тесты сразу лезут
+    в него по ключу. С `object` каждое `payload(...)["id"]` становится ошибкой
+    типов, хотя проверять там нечего — форму ответа держат DTO на бэкенде.
+    """
     return response.json()["data"]

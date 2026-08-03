@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, Path
 
 from application.services.catalog_service import CatalogService
 from presentation.http.dependencies import get_catalog_service
+from presentation.http.security import allow_hidden, require_admin
 from presentation.http.dto.response import (
     AssignmentResponse,
     AssignmentSummaryResponse,
@@ -18,13 +19,20 @@ router = APIRouter(prefix="/assignments", tags=["Assignments"])
 @router.get("/{assignment_id}", response_model=OkResponse[AssignmentResponse])
 def get_assignment(
     assignment_id: str = Path(description="Идентификатор задания"),
+    include_inactive: bool = Depends(allow_hidden),
     service: CatalogService = Depends(get_catalog_service),
 ) -> OkResponse[AssignmentResponse]:
-    result = service.get_assignment(assignment_id)
+    result = service.get_assignment(assignment_id, include_inactive=include_inactive)
     return OkResponse(data=AssignmentResponse.model_validate(result))
 
 
-@router.patch("/{assignment_id}", response_model=OkResponse[AssignmentResponse])
+@router.patch(
+    "/{assignment_id}",
+    response_model=OkResponse[AssignmentResponse],
+    # Та же ручка и правит реквизиты, и скрывает задание. Оставить её открытой,
+    # закрыв создание, значило бы запереть дверь и распахнуть окно.
+    dependencies=[Depends(require_admin)],
+)
 def update_assignment(
     payload: UpdateAssignmentRequest,
     assignment_id: str = Path(description="Идентификатор задания"),

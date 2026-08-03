@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getAssignment, getCities, getCity, getRouteAssignments } from '../api'
+import { DateField } from '../components/common/DateField'
 import { FileCard } from '../components/common/FileCard'
 import { ErrorBanner, InfoBanner } from '../components/common/Feedback'
 import { PageHeader } from '../components/common/PageHeader'
@@ -7,7 +8,7 @@ import { ProgressBar } from '../components/common/ProgressBar'
 import { Select } from '../components/common/Select'
 import { UserSelect } from '../components/common/UserSelect'
 import { useVideoUpload } from '../hooks/useVideoUpload'
-import { navigate } from '../routing'
+import { assignmentPath, navigate } from '../routing'
 import type { Assignment, City, CityDetail } from '../types'
 
 const MAX_FILES = 20
@@ -35,13 +36,17 @@ interface UploadPageProps {
 export function UploadPage({ citySlug, routeSlug, assignmentId }: UploadPageProps) {
   const [cities, setCities] = useState<City[]>([])
   const [detail, setDetail] = useState<CityDetail | null>(null)
-  const [assignments, setAssignments] = useState<Assignment[]>([])
+  // Задания храним вместе с меткой, чьи они, — как маршруты в VideosPage.
+  // Без метки список пережил бы смену города и выдал бы себя за задания нового.
+  const [loadedAssignments, setLoadedAssignments] = useState<{
+    routeKey: string
+    items: Assignment[]
+  } | null>(null)
   const [pinnedAssignment, setPinnedAssignment] = useState<Assignment | null>(null)
   const [selectedCity, setSelectedCity] = useState(citySlug ?? '')
   const [selectedRoute, setSelectedRoute] = useState(routeSlug ?? '')
   const [selectedAssignment, setSelectedAssignment] = useState('')
-  const [operatorId, setOperatorId] = useState('')
-  const [noAssignment, setNoAssignment] = useState(!citySlug && !assignmentId)
+  const [uploadedById, setUploadedById] = useState('')
   const [catalogError, setCatalogError] = useState<string | null>(null)
 
   const pinned = Boolean(assignmentId)
@@ -82,15 +87,13 @@ export function UploadPage({ citySlug, routeSlug, assignmentId }: UploadPageProp
   }, [pinned, selectedCity])
 
   useEffect(() => {
-    if (pinned || !selectedCity || !selectedRoute) {
-      setAssignments([])
-      return
-    }
+    if (pinned || !selectedCity || !selectedRoute) return
+    const routeKey = `${selectedCity}/${selectedRoute}`
     let disposed = false
     getRouteAssignments(selectedCity, selectedRoute)
       .then((page) => {
         if (disposed) return
-        setAssignments(page.items)
+        setLoadedAssignments({ routeKey, items: page.items })
         // Список идёт от свежих: обычно грузят в последнее заведённое задание.
         setSelectedAssignment(page.items[0]?.id ?? '')
       })
@@ -106,52 +109,80 @@ export function UploadPage({ citySlug, routeSlug, assignmentId }: UploadPageProp
   // список маршрутов не должен показываться как его.
   const activeDetail = detail && detail.slug === selectedCity ? detail : null
 
-  const targetAssignmentId = pinned
-    ? (assignmentId ?? null)
-    : noAssignment
-      ? null
-      : selectedAssignment || null
+  // Тем же приёмом и задания. Метка обязательна: между сменой города и ответом
+  // сервера страница показывает новый город, а список заданий ещё старый —
+  // и в это окно можно было отправить съёмку в задание прежнего города.
+  const routeKey = `${selectedCity}/${selectedRoute}`
+  const assignmentsReady = loadedAssignments?.routeKey === routeKey
+  const assignments =
+    pinned || !selectedCity || !selectedRoute || !assignmentsReady
+      ? []
+      : (loadedAssignments?.items ?? [])
 
-  const destinationReady = pinned || noAssignment || Boolean(selectedAssignment)
+  // Выбранное задание тоже устаревает вместе со списком: сам по себе это просто
+  // идентификатор, и он переживает смену города. Считаем его выбранным, только
+  // пока он есть в текущем списке. В VideosPage такого нет — там выбор живёт в
+  // адресе и устареть не может, здесь он в состоянии страницы.
+  const activeAssignment = assignments.some((item) => item.id === selectedAssignment)
+    ? selectedAssignment
+    : ''
+
+  // Задание обязательно: съёмки вне маршрута не бывает. Пока оно не выбрано,
+  // грузить некуда — кнопка выключена, и это единственное состояние «не готов».
+  //
+  // В режиме догрузки берём идентификатор загруженного задания, а не тот, что
+  // стоит в адресе. Разница видна, когда задание скрыли: ссылка из чужой
+  // вкладки ещё жива, `getAssignment` уже отвечает 404, и по адресному id
+  // кнопка осталась бы включённой — загрузка падала бы пофайлово на POST /runs
+  // вместо честного «грузить некуда».
+  const targetAssignmentId = pinned ? (pinnedAssignment?.id ?? '') : activeAssignment
+
+  // Именно эта строка гасит «Загрузить» в окне рассинхрона: без неё выпадашка
+  // была бы честной, а отправить в чужое задание всё равно можно.
+  const destinationReady = Boolean(targetAssignmentId)
   const routeChosen = Boolean(selectedCity && selectedRoute)
+  // Файлы выбирают только после реквизитов партии. Кроме честного порядка
+  // действий это закрывает двусмысленное состояние: зелёная, но disabled
+  // кнопка раньше выглядела как разрешение грузить без задания.
+  const uploadReady = destinationReady && Boolean(uploadedById)
+  const missingUploadFields: string[] = []
+  if (!pinned && !selectedCity) missingUploadFields.push('город')
+  if (!pinned && !selectedRoute) missingUploadFields.push('маршрут')
+  if (!destinationReady) missingUploadFields.push('задание')
+  if (!uploadedById) missingUploadFields.push('сотрудника')
+  const missingUploadLabel =
+    missingUploadFields.length > 1
+      ? `${missingUploadFields.slice(0, -1).join(', ')} и ${
+          missingUploadFields[missingUploadFields.length - 1]
+        }`
+      : missingUploadFields[0]
 
   const upload = useVideoUpload({
     maxFiles: MAX_FILES,
     assignmentId: targetAssignmentId,
-    operatorUserId: operatorId || null,
-    onFinish: ({ runIds, failed }) => {
+    uploadedByUserId: uploadedById || null,
+    onFinish: ({ failed }) => {
       // При частичном сбое остаёмся на странице: «Повторить» дольёт туда же.
       if (failed > 0) return
-      if (targetAssignmentId) {
-        navigate(`/assignments/${targetAssignmentId}`)
-      } else if (runIds.length === 1) {
-        navigate(`/videos/${runIds[0]}`)
-      } else if (runIds.length > 0) {
-        navigate('/videos')
-      }
+      // Уходим всегда в задание: другого места для съёмки теперь нет.
+      navigate(assignmentPath(targetAssignmentId))
     },
   })
 
   const eyebrow = pinned
     ? (pinnedAssignment?.title ?? 'Догрузка в задание')
-    : noAssignment
-      ? 'Без задания'
-      : activeDetail && selectedRoute
-        ? `${activeDetail.name} · ${
-            activeDetail.routes.find((route) => route.slug === selectedRoute)?.name ?? ''
-          }`
-        : 'Загрузка'
+    : activeDetail && selectedRoute
+      ? `${activeDetail.name} · ${
+          activeDetail.routes.find((route) => route.slug === selectedRoute)?.name ?? ''
+        }`
+      : 'Загрузка'
 
   return (
     <div className="page narrow-page">
       <PageHeader
         eyebrow={eyebrow}
-        title="Загрузка съёмок"
-        description={
-          noAssignment
-            ? 'Разовая загрузка — видео уйдёт в обработку вне города и маршрута.'
-            : `Съёмки попадут в выбранное задание. До ${MAX_FILES} штук.`
-        }
+        title="Загрузка видео"
+        description={`Видео попадут в выбранное задание. До ${MAX_FILES} штук.`}
       />
 
       {catalogError && <ErrorBanner text={catalogError} />}
@@ -167,7 +198,7 @@ export function UploadPage({ citySlug, routeSlug, assignmentId }: UploadPageProp
                 <Select
                   ariaLabel="Город"
                   value={selectedCity}
-                  disabled={noAssignment || upload.busy}
+                  disabled={upload.busy}
                   placeholder="Выберите город"
                   options={cities.map((city) => ({
                     value: city.slug,
@@ -181,7 +212,7 @@ export function UploadPage({ citySlug, routeSlug, assignmentId }: UploadPageProp
                 <Select
                   ariaLabel="Маршрут"
                   value={selectedRoute}
-                  disabled={noAssignment || !activeDetail || upload.busy}
+                  disabled={!activeDetail || upload.busy}
                   placeholder={
                     activeDetail ? 'Выберите маршрут' : 'Сначала выберите город'
                   }
@@ -198,10 +229,14 @@ export function UploadPage({ citySlug, routeSlug, assignmentId }: UploadPageProp
                 Задание
                 <Select
                   ariaLabel="Задание"
-                  value={selectedAssignment}
-                  disabled={noAssignment || !assignments.length || upload.busy}
+                  value={activeAssignment}
+                  disabled={!assignments.length || upload.busy}
                   placeholder={
-                    routeChosen ? 'Заданий пока нет' : 'Сначала выберите маршрут'
+                    !routeChosen
+                      ? 'Сначала выберите маршрут'
+                      : assignmentsReady
+                        ? 'Заданий пока нет'
+                        : 'Загружаем задания…'
                   }
                   options={assignments.map((assignment) => ({
                     value: assignment.id,
@@ -212,134 +247,159 @@ export function UploadPage({ citySlug, routeSlug, assignmentId }: UploadPageProp
               </div>
             </div>
 
-            {!noAssignment && routeChosen && !assignments.length && (
-              <InfoBanner text="На этом маршруте нет заданий. Заведите задание на странице маршрута: съёмки загружаются в готовое задание." />
+            {/* assignmentsReady обязателен: без него баннер мигал бы «нет
+                заданий» на каждой смене маршрута, пока список ещё грузится. */}
+            {routeChosen && assignmentsReady && !assignments.length && (
+              <InfoBanner text="На этом маршруте нет заданий. Заведите задание на странице маршрута: видео загружаются в готовое задание." />
             )}
 
-            <label className="destination-toggle">
-              <input
-                type="checkbox"
-                className="checkbox"
-                checked={noAssignment}
-                disabled={upload.busy}
-                onChange={(event) => setNoAssignment(event.target.checked)}
-              />
-              Без задания (разовая загрузка)
-            </label>
           </>
         )}
 
         <div className="destination-fields">
           <UserSelect
-            label="Оператор"
-            value={operatorId}
+            label="Кто загрузил"
+            value={uploadedById}
             disabled={upload.busy}
-            placeholder="Кто снимал"
-            onChange={setOperatorId}
+            placeholder="Кто загрузил"
+            onChange={setUploadedById}
           />
         </div>
-        <p className="destination-hint">
-          Время съёмки подставится из метаданных каждого файла — поправить его
-          можно на странице съёмки.
-        </p>
       </section>
 
-      <section
-        className={`upload-panel${upload.busy ? ' busy' : ''}${
-          upload.dragActive ? ' drag-active' : ''
-        }`}
-        {...upload.dragHandlers}
-      >
-        <div className="upload-icon">↑</div>
-        <h2>
-          {upload.items.length
-            ? `Выбрано видео: ${upload.items.length} из ${MAX_FILES}`
-            : 'Перетащите видео сюда'}
-        </h2>
-        <p>
-          {upload.items.length
-            ? 'Можно добавить ещё или начать загрузку.'
-            : 'Подойдут MP4, MOV, MKV и WebM'}
-        </p>
-
-        <div className="upload-actions">
-          <label className="secondary file-button">
-            Выбрать файлы
-            <input
-              type="file"
-              accept="video/*,.mkv"
-              multiple
-              disabled={upload.busy || upload.items.length >= MAX_FILES}
-              onChange={(event) => {
-                upload.addFiles(event.target.files)
-                event.target.value = ''
-              }}
-            />
-          </label>
-        </div>
-
-        {upload.limitNotice && <InfoBanner text={upload.limitNotice} />}
-        {upload.error && <ErrorBanner text={upload.error} />}
-
-        {upload.items.length > 0 && (
-          <div className="upload-file-list">
-            {upload.items.map((item) => (
-              <FileCard
-                key={item.key}
-                file={item.file}
-                status={
-                  <div className={`status status-${STATUS_CLASS[item.status]}`}>
-                    {item.status === 'uploading'
-                      ? `${item.progress}%`
-                      : STATUS_TEXT[item.status]}
-                  </div>
-                }
-                actions={
-                  !upload.busy && item.status !== 'done' ? (
-                    <button
-                      className="ghost-button"
-                      onClick={() => upload.removeItem(item.key)}
-                    >
-                      Убрать
-                    </button>
-                  ) : undefined
-                }
-              >
-                {item.status === 'uploading' && (
-                  <ProgressBar progress={item.progress} label="Загружается" animated />
-                )}
-                {item.status === 'error' && (
-                  <span className="upload-file-error">{item.error}</span>
-                )}
-              </FileCard>
-            ))}
-          </div>
-        )}
-
-        {upload.items.length > 0 && (
-          <p className="upload-file-summary">
-            Загружено {upload.doneCount} из {upload.items.length}
-          </p>
-        )}
-
-        {upload.failedCount > 0 && !upload.busy && (
-          <button className="secondary action-button" onClick={upload.retryFailed}>
-            Повторить ({upload.failedCount})
-          </button>
-        )}
-
-        <button
-          className="primary action-button"
-          disabled={!upload.canStart || !destinationReady}
-          onClick={upload.start}
+      {!uploadReady ? (
+        <section className="upload-panel is-locked" aria-disabled="true">
+          <span className="upload-lock-icon" aria-hidden="true" />
+          <h2>Загрузка пока недоступна</h2>
+          <p>Осталось выбрать: {missingUploadLabel}.</p>
+          <span className="upload-lock-note">
+            После этого откроются выбор файлов и перетаскивание.
+          </span>
+        </section>
+      ) : (
+        <section
+          className={`upload-panel${upload.busy ? ' busy' : ''}${
+            upload.dragActive ? ' drag-active' : ''
+          }${upload.items.length ? ' has-files' : ''}`}
+          {...upload.dragHandlers}
         >
-          {upload.busy ? 'Загружаем…' : 'Начать загрузку'}
-        </button>
+          <div className="upload-icon">↑</div>
+          <h2>
+            {upload.items.length
+              ? `Выбрано видео: ${upload.items.length} из ${MAX_FILES}`
+              : 'Перетащите видео сюда'}
+          </h2>
+          <p>
+            {upload.items.length
+              ? 'Можно добавить ещё или начать загрузку.'
+              : 'Подойдут MP4, MOV, MKV и WebM'}
+          </p>
 
-        {!destinationReady && upload.items.length > 0 && (
-          <InfoBanner text="Выберите задание или отметьте «Без задания»." />
-        )}
-      </section>
+          <div className="upload-actions">
+            <label className="secondary file-button">
+              Выбрать файлы
+              <input
+                type="file"
+                accept="video/*,.mkv"
+                multiple
+                disabled={upload.busy || upload.items.length >= MAX_FILES}
+                onChange={(event) => {
+                  upload.addFiles(event.target.files)
+                  event.target.value = ''
+                }}
+              />
+            </label>
+          </div>
+
+          {upload.limitNotice && <InfoBanner text={upload.limitNotice} />}
+          {upload.error && <ErrorBanner text={upload.error} />}
+
+          {upload.items.length > 0 && (
+            <div className="upload-file-list">
+              {upload.items.map((item) => (
+                <FileCard
+                  key={item.key}
+                  file={item.file}
+                  status={
+                    <div className={`status status-${STATUS_CLASS[item.status]}`}>
+                      {item.status === 'uploading'
+                        ? `${item.progress}%`
+                        : STATUS_TEXT[item.status]}
+                    </div>
+                  }
+                  actions={
+                    !upload.busy && item.status !== 'done' ? (
+                      <button
+                        className="ghost-button"
+                        onClick={() => upload.removeItem(item.key)}
+                      >
+                        Убрать
+                      </button>
+                    ) : undefined
+                  }
+                >
+                  {/* Дата у каждого файла своя: одна съёмка — один проезд, и
+                      партию нередко забирают с карты за несколько дней.
+                      Автоподстановки нет: метка файла после копирования не
+                      доказывает, когда видео действительно сняли. */}
+                  <div className="upload-file-date">
+                    <span>
+                      Когда снято <b aria-hidden="true">*</b>
+                    </span>
+                    <DateField
+                      value={item.shotDate}
+                      required
+                      invalid={!item.shotDate}
+                      clearable={false}
+                      placeholder="ДД.ММ.ГГГГ"
+                      ariaLabel={`Когда снято: ${item.file.name}`}
+                      disabled={upload.busy || item.status === 'done'}
+                      onChange={(value) => upload.setShotDate(item.key, value)}
+                    />
+                  </div>
+                  {!item.shotDate && (
+                    <span className="upload-file-error">Укажите дату записи.</span>
+                  )}
+                  {item.status === 'uploading' && (
+                    <ProgressBar
+                      progress={item.progress}
+                      label="Загружается"
+                      animated
+                    />
+                  )}
+                  {item.status === 'error' && (
+                    <span className="upload-file-error">{item.error}</span>
+                  )}
+                </FileCard>
+              ))}
+            </div>
+          )}
+
+          {upload.items.length > 0 && (
+            <p className="upload-file-summary">
+              Загружено {upload.doneCount} из {upload.items.length}
+            </p>
+          )}
+
+          {upload.failedCount > 0 && !upload.busy && (
+            <button
+              className="secondary action-button"
+              disabled={!upload.datesReady}
+              onClick={upload.retryFailed}
+            >
+              Повторить ({upload.failedCount})
+            </button>
+          )}
+
+          <button
+            className="primary action-button"
+            disabled={!upload.canStart || !uploadReady}
+            onClick={upload.start}
+          >
+            {upload.busy ? 'Загружаем…' : 'Начать загрузку'}
+          </button>
+        </section>
+      )}
     </div>
   )
 }

@@ -12,8 +12,14 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import type { AssignmentBrand, ShootingMetrics } from '../types'
-import { formatDuration } from '../utils/formatters'
+import {
+  tooltipCursor,
+  tooltipItemStyle,
+  tooltipLabelStyle,
+  tooltipStyle,
+} from './common/chartTooltip'
+import type { Aggregate, RollupBrand, ShootingMetrics } from '../types'
+import { formatDuration, statValue } from '../utils/formatters'
 
 const BRAND_COLORS: Record<string, string> = {
   mts: '#ff4d4d',
@@ -31,15 +37,6 @@ const BRAND_LABELS: Record<string, string> = {
 
 const BRAND_ORDER = ['mts', 'plus7', 'miranda', 'other']
 
-const tooltipStyle = {
-  background: '#151515',
-  border: '1px solid rgba(255,255,255,.14)',
-  borderRadius: 8,
-  color: '#f4f4f4',
-}
-
-const tooltipCursor = { fill: 'rgba(255,255,255,.06)' }
-
 function brandColor(brand: string) {
   return BRAND_COLORS[brand] ?? '#e7c84d'
 }
@@ -56,23 +53,36 @@ function orderBrands(brands: string[]) {
   })
 }
 
-export function AssignmentCharts({
+export function RollupCharts({
   brands,
   shootings,
+  aggregate,
 }: {
-  brands: AssignmentBrand[]
+  brands: RollupBrand[]
   shootings: ShootingMetrics[]
+  aggregate: Aggregate
 }) {
+  // Доля считается здесь, а не на сервере: она зависит от выбранной оценки, а
+  // выбор живёт на этой странице.
+  const totalVisibility = brands.reduce(
+    (sum, item) => sum + statValue(item.visibility_per_shooting, aggregate),
+    0,
+  )
+
   // Усы = разброс между съёмками. Это не украшение: широкий ус означает,
-  // что съёмки разошлись и среднему верить рано.
-  const brandRows = brands.map((item) => ({
-    brand_key: item.brand,
-    brand_label: brandLabel(item.brand),
-    objects: Number(item.objects_per_shooting.mean.toFixed(2)),
-    objects_std: Number(item.objects_per_shooting.std.toFixed(2)),
-    visibility: Number(item.visibility_per_shooting.mean.toFixed(1)),
-    share: Number((item.visibility_share * 100).toFixed(1)),
-  }))
+  // что съёмки разошлись и цифре верить рано.
+  const brandRows = brands.map((item) => {
+    const visibility = statValue(item.visibility_per_shooting, aggregate)
+    return {
+      brand_key: item.brand,
+      brand_label: brandLabel(item.brand),
+      objects: Number(statValue(item.objects_per_shooting, aggregate).toFixed(2)),
+      objects_std: Number(item.objects_per_shooting.std.toFixed(2)),
+      share: Number(
+        (totalVisibility > 0 ? (visibility / totalVisibility) * 100 : 0).toFixed(1),
+      ),
+    }
+  })
 
   const passBrands = orderBrands([
     ...new Set(shootings.flatMap((item) => item.brands.map((b) => b.brand))),
@@ -96,16 +106,24 @@ export function AssignmentCharts({
     <div className="charts-grid">
       <section className="panel chart-card">
         <header>
-          <h3>Объектов за съёмку</h3>
-          <p>Среднее по съёмкам. Усы — разброс между ними.</p>
+          <h3>Объектов за видео</h3>
+          <p>
+            {aggregate === 'median' ? 'Медиана' : 'Среднее'} по видео. Усы —
+            разброс между ними.
+          </p>
         </header>
         <ResponsiveContainer width="100%" height={280}>
           <BarChart data={brandRows}>
             <CartesianGrid stroke="rgba(255,255,255,.08)" vertical={false} />
             <XAxis dataKey="brand_label" stroke="#8d9298" />
             <YAxis stroke="#8d9298" />
-            <Tooltip contentStyle={tooltipStyle} cursor={tooltipCursor} />
-            <Bar dataKey="objects" name="За съёмку" radius={[6, 6, 0, 0]}>
+            <Tooltip
+              contentStyle={tooltipStyle}
+              cursor={tooltipCursor}
+              itemStyle={tooltipItemStyle}
+              labelStyle={tooltipLabelStyle}
+            />
+            <Bar dataKey="objects" name="За видео" radius={[6, 6, 0, 0]}>
               {brandRows.map((row) => (
                 <Cell key={row.brand_key} fill={brandColor(row.brand_key)} />
               ))}
@@ -123,7 +141,12 @@ export function AssignmentCharts({
       <section className="panel chart-card">
         <header>
           <h3>Доля заметности</h3>
-          <p>Сколько внимания забирает каждый бренд за съёмку.</p>
+          <p>
+            Сколько внимания забирает каждый бренд за видео.
+            {aggregate === 'median' &&
+              ' Под медианой доли не сходятся в 100 %: медиана суммы не равна' +
+                ' сумме медиан.'}
+          </p>
         </header>
         <ResponsiveContainer width="100%" height={280}>
           <PieChart>
@@ -142,6 +165,8 @@ export function AssignmentCharts({
             <Tooltip
               contentStyle={tooltipStyle}
               formatter={(value) => `${value}%`}
+              itemStyle={tooltipItemStyle}
+              labelStyle={tooltipLabelStyle}
             />
             <Legend />
           </PieChart>
@@ -150,9 +175,9 @@ export function AssignmentCharts({
 
       <section className="panel chart-card wide-chart">
         <header>
-          <h3>Сравнение съёмок</h3>
+          <h3>Сравнение видео</h3>
           <p>
-            Каждый столбец — одна съёмка. Выбивающаяся съёмка видна сразу;
+            Каждый столбец — одно видео. Выбивающееся видео видно сразу;
             смотрите на его длительность в подсказке.
           </p>
         </header>
@@ -164,6 +189,8 @@ export function AssignmentCharts({
             <Tooltip
               contentStyle={tooltipStyle}
               cursor={tooltipCursor}
+              itemStyle={tooltipItemStyle}
+              labelStyle={tooltipLabelStyle}
               labelFormatter={(_, payload) => {
                 const row = payload?.[0]?.payload
                 return row

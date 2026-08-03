@@ -31,10 +31,6 @@ class SqlUserRepository:
             select(User).where(User.users_id == user_id)
         ).first()
 
-    def get_user(self, user_id: str) -> UserDTO | None:
-        user = self._get_model(user_id)
-        return None if user is None else _user_to_dto(user)
-
     def find_by_name(self, full_name: str) -> UserDTO | None:
         user = self._session.exec(
             select(User).where(User.full_name == full_name)

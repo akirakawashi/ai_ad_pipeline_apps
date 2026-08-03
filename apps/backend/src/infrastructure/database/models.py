@@ -27,7 +27,13 @@ def uuid_string() -> str:
 
 
 class User(SQLModel, table=True):
-    """Справочник людей: постановщики заданий и операторы съёмок.
+    """Справочник людей: постановщики заданий и те, кто загружает файлы.
+
+    Ролей две, и обе ссылаются сюда: постановщик задания
+    (`assignments.author_users_id`) и загрузивший — видео
+    (`pipeline_runs.uploaded_by_users_id`) или пак каталога
+    (`catalog_imports.uploaded_by_users_id`). Кто вёл машину и снимал, система не
+    хранит: спрашивали об этом только для отчётности «кто принёс файл».
 
     Заглушка под будущую авторизацию. Когда она понадобится, сюда добавятся
     email / password_hash / role — и справочник станет таблицей пользователей
@@ -106,15 +112,19 @@ class City(SQLModel, table=True):
         default=None,
         sa_column=Column(String(255), nullable=True),
     )
-    # Путь относительно apps/frontend/public/, без ведущего слэша и домена.
-    # Пример: "routes/simferopol/export.geojson". Слэш добавляет фронтенд.
-    roads_geojson_path: str | None = Field(
+    # Дорожный слой города — FeatureCollection как пришёл из OSM. NULL — слой не
+    # загружен, карта рисует только маршруты. В списки городов не отдаётся
+    # никогда: это до полутора мегабайт на город, у геометрии свой эндпоинт.
+    # none_as_null обязателен: по умолчанию JSONB пишет питоновский None как
+    # JSON-литерал null, и тогда «слой не загружен» перестаёт отличаться от
+    # загруженного — `IS NOT NULL` истинно для обоих.
+    roads_geometry: dict | None = Field(
         default=None,
-        sa_column=Column(String(512), nullable=True),
+        sa_column=Column(JSONB(none_as_null=True), nullable=True),
     )
     # Прямоугольник города по дорожному слою: им отсекаются точки каталога,
-    # оказавшиеся за десятки километров от города. Лежит в базе, а не читается
-    # из geojson: бэкенду папка фронта недоступна (в контейнер не монтируется).
+    # оказавшиеся за десятки километров от города. Пересчитывается при каждой
+    # заливке слоя — иначе импорт каталога начнёт врать по устаревшей рамке.
     # NULL — рамки нет, значит и не фильтруем: лучше принять лишнее, чем молча
     # выбросить чужой город, у которого рамку не посчитали.
     bounds_min_latitude: float | None = Field(
@@ -209,10 +219,20 @@ class Route(SQLModel, table=True):
         default=None,
         sa_column=Column(Text, nullable=True),
     )
-    # Полный путь относительно apps/frontend/public/, без ведущего слэша.
-    # Пример: "routes/simferopol/route_1.geojson".
-    geojson_path: str = Field(
-        sa_column=Column(String(512), nullable=False),
+    # Линия маршрута — FeatureCollection ровно с одной упорядоченной ломаной,
+    # результат снаппинга нарисованного штриха на дороги города (единственный
+    # писатель — `route_line_collection` в `domain/geometry.py`). Сам штрих не
+    # хранится: он нужен один раз, на «Подтвердить». NULL — законное состояние:
+    # сначала маршрут создают, потом рисуют линию, и между этим на нём уже можно
+    # завести задание и разметить зоны.
+    #
+    # Исключение — семь маршрутов из `0002_seed`: они пришли файлами из OSM и
+    # лежат здесь в прежнем виде, мешком неупорядоченных отрезков с
+    # ответвлениями. Рисуются как есть (каждый отрезок сам по себе), но начала,
+    # конца и длины у них нет, пока их не перерисуют.
+    geometry: dict | None = Field(
+        default=None,
+        sa_column=Column(JSONB(none_as_null=True), nullable=True),
     )
     display_order: int = Field(
         default=0,
@@ -321,6 +341,16 @@ class Assignment(SQLModel, table=True):
             nullable=True,
         ),
     )
+    # Скрытие задания, удаления нет: снос утащил бы съёмки каскадом.
+    # Скрытое задание пропадает целиком — вместе со своими съёмками, и не только
+    # из списков, но и из метрики маршрута. В этом весь смысл: раз кампанию
+    # спрятали, её проезды не должны тянуть за собой средние по маршруту.
+    # Механизм тот же, что у периода дат: список съёмок укорачивается ДО
+    # metrics_rollup, сам расчёт про скрытие ничего не знает.
+    is_active: bool = Field(
+        default=True,
+        sa_column=Column(Boolean, default=True, nullable=False),
+    )
     created_at: datetime | None = Field(
         default=None,
         sa_column=Column(
@@ -390,6 +420,14 @@ class RouteGeozone(SQLModel, table=True):
     name: str = Field(
         sa_column=Column(String(255), nullable=False),
     )
+    # Зачем участку именно такой коэффициент: пешеходный поток, светофор на
+    # перекрёстке, глухой промежуток без людей. Число ставится рукой, и это
+    # единственное место, где живёт причина — иначе через полгода в базе лежит
+    # «Центр ×1.5» и никто не помнит, откуда взялось 1.5. Пустая строка, а не
+    # NULL: у участка нет полей, которые «не заданы», текста просто может не быть.
+    description: str = Field(
+        sa_column=Column(Text, nullable=False, server_default=""),
+    )
     # Доля [0…1] от длительности видео. Полуинтервал: начало включается,
     # конец — нет, чтобы смежные участки не спорили за точку стыка.
     start_fraction: float = Field(
@@ -445,6 +483,9 @@ class CatalogImport(SQLModel, table=True):
             nullable=False,
         ),
     )
+    # Без своего индекса: колонка идёт первой в составном
+    # `ix_catalog_imports_city_current (cities_id, is_current)`, который
+    # отвечает и на «ревизии города», и на «текущая ревизия города».
     cities_id: str = Field(
         sa_column=Column(
             String(36),
@@ -452,7 +493,6 @@ class CatalogImport(SQLModel, table=True):
                 "cities.cities_id",
                 ondelete="CASCADE",
             ),
-            index=True,
             nullable=False,
         ),
     )
@@ -673,17 +713,24 @@ class PipelineRun(SQLModel, table=True):
         ),
     )
 
-    # NULL означает «Без задания» — разовая загрузка вне города и маршрута.
-    assignments_id: str | None = Field(
-        default=None,
+    # Съёмка всегда принадлежит заданию, а через него — маршруту и городу.
+    # Загрузки «вне маршрута» нет: без маршрута у съёмки нет геозон, значит нет
+    # и значимости места, и в сводки её положить некуда. Такая съёмка занимала
+    # место в хранилище и не отвечала ни на один вопрос.
+    #
+    # CASCADE, а не SET NULL: обнулить нечего — колонка обязательная. Задания
+    # сегодня не удаляются вовсе, так что правило описывает намерение, а не
+    # рабочий путь: исчезнет задание — исчезнут и его съёмки, осиротеть они
+    # не могут.
+    assignments_id: str = Field(
         sa_column=Column(
             String(36),
             ForeignKey(
                 "assignments.assignments_id",
-                ondelete="SET NULL",
+                ondelete="CASCADE",
             ),
             index=True,
-            nullable=True,
+            nullable=False,
         ),
     )
 
@@ -691,11 +738,14 @@ class PipelineRun(SQLModel, table=True):
     # Не путать со started_at / completed_at ниже: те — про обработку видео,
     # эти — про то, когда снимали. Финиш не храним: он выводится как
     # shot_started_at + duration_sec и потому не может разойтись с видео.
-    shot_started_at: datetime | None = Field(
-        default=None,
-        sa_column=Column(DateTime(timezone=True), nullable=True),
+    shot_started_at: datetime = Field(
+        sa_column=Column(DateTime(timezone=True), nullable=False),
     )
-    operator_users_id: str | None = Field(
+    # Кто принёс файл, а не кто вёл машину: съёмку и загрузку система не
+    # различает и различать не собирается. То же имя, что у заливающего пак
+    # каталога (`catalog_imports.uploaded_by_users_id`) — роль одна, справочник
+    # людей один, значит и слово должно быть одно.
+    uploaded_by_users_id: str | None = Field(
         default=None,
         sa_column=Column(
             String(36),
@@ -705,12 +755,16 @@ class PipelineRun(SQLModel, table=True):
         ),
     )
 
+    # Своего индекса у статуса нет намеренно: он первой колонкой входит в
+    # составной `ix_pipeline_runs_queue (status, created_at)`, а Postgres берёт
+    # составной индекс и по левому префиксу. Отдельный дублировал бы его —
+    # обновлялся бы на каждой вставке и не отвечал бы ни на один запрос, на
+    # который не отвечает составной.
     status: str = Field(
         default=PipelineRunStatus.UPLOADING.value,
         sa_column=Column(
             String(32),
             default=PipelineRunStatus.UPLOADING.value,
-            index=True,
             nullable=False,
         ),
     )
@@ -770,14 +824,6 @@ class PipelineRun(SQLModel, table=True):
         sa_column=Column(Integer, nullable=True),
     )
 
-    worker_id: str | None = Field(
-        default=None,
-        sa_column=Column(
-            String(255),
-            index=True,
-            nullable=True,
-        ),
-    )
     created_at: datetime | None = Field(
         default=None,
         sa_column=Column(
@@ -819,19 +865,12 @@ class PipelineRun(SQLModel, table=True):
     )
 
     assignment: Assignment | None = Relationship(back_populates="runs")
-    operator: User | None = Relationship()
+    uploaded_by: User | None = Relationship()
     artifacts: list["PipelineArtifact"] = Relationship(
         back_populates="run",
         cascade_delete=True,
         sa_relationship_kwargs={
             "order_by": "PipelineArtifact.created_at",
-        },
-    )
-    events: list["PipelineRunEvent"] = Relationship(
-        back_populates="run",
-        cascade_delete=True,
-        sa_relationship_kwargs={
-            "order_by": "PipelineRunEvent.created_at",
         },
     )
 
@@ -921,6 +960,23 @@ class PipelineArtifact(SQLModel, table=True):
 
 
 class PipelineRunEvent(SQLModel, table=True):
+    """След обработки: стадия, процент и сообщение на каждый шаг воркера.
+
+    Таблица **только на запись**. Ход обработки интерфейс показывает по полям
+    самой съёмки (`stage`, `progress`, `status_message`) — они всегда содержат
+    последнее состояние, и второй источник тех же данных ему не нужен. Эти
+    строки нужны, когда обработка сломалась и надо посмотреть, на чём именно:
+    читают их запросом к базе, а не через API.
+
+    Поэтому у неё нет связи с `PipelineRun` ни в одну сторону. Связь была, и
+    единственным её следом были `noload(PipelineRun.events)` в четырёх запросах
+    подряд — страховка от ленивой подгрузки того, что никто не читает. Если
+    когда-нибудь понадобится показывать журнал обработки на экране, `Relationship`
+    добавляется обратно двумя строками; до тех пор её отсутствие и есть гарантия,
+    что журнал не поедет в ответ случайно. Удаление съёмки уносит события
+    каскадом на уровне базы (`ondelete="CASCADE"`), ORM для этого не нужна.
+    """
+
     __tablename__ = "pipeline_run_events"
 
     pipeline_run_events_id: str = Field(
@@ -964,5 +1020,3 @@ class PipelineRunEvent(SQLModel, table=True):
             index=True,
         ),
     )
-
-    run: PipelineRun | None = Relationship(back_populates="events")

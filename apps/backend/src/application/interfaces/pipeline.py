@@ -58,9 +58,9 @@ class PipelineRunRepository(Protocol):
         source_object_key: str,
         content_type: str | None,
         size_bytes: int,
-        assignment_id: str | None = None,
-        shot_started_at: datetime | None = None,
-        operator_user_id: str | None = None,
+        assignment_id: str,
+        shot_started_at: datetime,
+        uploaded_by_user_id: str | None = None,
     ) -> PipelineRunDTO: ...
 
     def update_shooting(
@@ -81,7 +81,6 @@ class PipelineRunRepository(Protocol):
         city_id: str | None = None,
         route_id: str | None = None,
         assignment_id: str | None = None,
-        assigned: bool | None = None,
     ) -> tuple[list[PipelineRunDTO], int]: ...
 
     def lock_assignment(self, assignment_id: str) -> bool: ...
@@ -93,8 +92,12 @@ class PipelineRunRepository(Protocol):
         run_id: str,
         *,
         with_artifacts: bool = True,
-        with_events: bool = False,
-    ) -> PipelineRunDTO | None: ...
+        include_hidden: bool = False,
+    ) -> PipelineRunDTO | None:
+        """Съёмка для показа. None — нет её или её задание скрыто.
+
+        `include_hidden` — только для дозавершения начатой загрузки."""
+        ...
 
     def get_geozone_intervals(self, run_id: str) -> list[GeozoneInterval]:
         """Участки значимости маршрута съёмки. Пусто — β = 1.0 у всех."""
@@ -117,7 +120,7 @@ class PipelineRunRepository(Protocol):
         size_bytes: int,
     ) -> PipelineArtifactDTO: ...
 
-    def claim_next(self, worker_id: str) -> PipelineRunDTO | None: ...
+    def claim_next(self) -> PipelineRunDTO | None: ...
 
     def update_progress(
         self,

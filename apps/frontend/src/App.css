@@ -219,32 +219,6 @@ button {
   object-fit: contain;
 }
 
-.topbar-status {
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.topbar-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.03);
-}
-
-.topbar-status span {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  background: var(--accent);
-  box-shadow: 0 0 14px rgba(5, 195, 161, 0.72);
-}
-
 .workspace-main {
   padding: 0 var(--content-pad);
 }
@@ -367,218 +341,6 @@ main {
   padding: 13px 22px;
 }
 
-.landing-product {
-  overflow: hidden;
-  position: relative;
-  min-height: 520px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.06), transparent 44%),
-    rgba(18, 19, 18, 0.96);
-  box-shadow:
-    0 34px 90px rgba(0, 0, 0, 0.42),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.03);
-}
-
-.landing-product-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 18px 20px;
-  border-bottom: 1px solid var(--line);
-}
-
-.landing-product-top span {
-  overflow: hidden;
-  color: #ffffff;
-  font-size: 15px;
-  font-weight: 850;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.landing-product-top strong {
-  display: inline-flex;
-  align-items: center;
-  padding: 6px 9px;
-  border-radius: 999px;
-  background: rgba(5, 195, 161, 0.12);
-  color: var(--accent);
-  font-size: 11px;
-  font-weight: 900;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.landing-video-preview {
-  position: relative;
-  min-height: 260px;
-  margin: 18px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background:
-    linear-gradient(145deg, rgba(5, 195, 161, 0.16), transparent 36%),
-    linear-gradient(25deg, rgba(255, 77, 77, 0.1), transparent 28%),
-    #050605;
-}
-
-.landing-video-preview::before {
-  position: absolute;
-  inset: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 6px;
-  content: '';
-}
-
-.landing-play {
-  display: grid;
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 74px;
-  height: 74px;
-  place-items: center;
-  border: 1px solid rgba(5, 195, 161, 0.34);
-  border-radius: 999px;
-  background: rgba(5, 195, 161, 0.14);
-  color: var(--accent);
-  font-size: 28px;
-  transform: translate(-50%, -50%);
-  box-shadow: 0 0 38px rgba(5, 195, 161, 0.24);
-}
-
-.landing-bbox {
-  position: absolute;
-  border: 2px solid var(--box-color);
-  border-radius: 5px;
-  box-shadow: 0 0 18px color-mix(in srgb, var(--box-color) 42%, transparent);
-}
-
-.landing-bbox span {
-  position: absolute;
-  top: -28px;
-  left: -2px;
-  padding: 4px 7px;
-  border-radius: 6px 6px 6px 0;
-  background: rgba(0, 0, 0, 0.72);
-  color: var(--box-color);
-  font-size: 12px;
-  font-weight: 900;
-  white-space: nowrap;
-}
-
-.landing-bbox-mts {
-  --box-color: var(--danger);
-  right: 12%;
-  bottom: 18%;
-  width: 32%;
-  height: 26%;
-}
-
-.landing-bbox-miranda {
-  --box-color: var(--accent);
-  top: 24%;
-  left: 12%;
-  width: 24%;
-  height: 20%;
-}
-
-.landing-proof-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-  padding: 0 18px;
-}
-
-.landing-proof-grid div {
-  min-height: 88px;
-  padding: 16px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.035);
-}
-
-.landing-proof-grid span {
-  display: block;
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 850;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.landing-proof-grid strong {
-  display: block;
-  margin-top: 8px;
-  color: #ffffff;
-  font-size: 28px;
-  letter-spacing: -0.05em;
-}
-
-.landing-chart {
-  display: grid;
-  height: 84px;
-  grid-template-columns: repeat(3, 1fr);
-  align-items: end;
-  gap: 16px;
-  margin: 18px;
-  padding: 10px 16px 0;
-  border-top: 1px solid var(--line);
-}
-
-.landing-chart div {
-  border-radius: 7px 7px 0 0;
-  background: var(--accent);
-  box-shadow: 0 0 18px rgba(5, 195, 161, 0.16);
-}
-
-.landing-chart div:nth-child(2) {
-  background: var(--danger);
-}
-
-.landing-chart div:nth-child(3) {
-  background: #b8bec6;
-}
-
-.landing-workflow {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-  margin-top: 20px;
-}
-
-.landing-step-card {
-  min-height: 170px;
-  padding: 20px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: rgba(21, 21, 21, 0.86);
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
-}
-
-.landing-step-card > span {
-  color: var(--accent);
-  font-size: 12px;
-  font-weight: 950;
-  letter-spacing: 0.12em;
-}
-
-.landing-step-card h2 {
-  margin: 18px 0 8px;
-  color: #ffffff;
-  font-size: 20px;
-  letter-spacing: -0.035em;
-}
-
-.landing-step-card p {
-  margin: 0;
-  color: var(--muted);
-  font-size: 14px;
-  line-height: 1.5;
-}
-
 .page-header {
   display: flex;
   max-width: none;
@@ -668,11 +430,6 @@ main {
 }
 
 .city-card:focus-visible,
-.unassigned-videos-action:focus-visible {
-  outline: 3px solid rgba(5, 195, 161, 0.5);
-  outline-offset: 3px;
-}
-
 .city-card-visual {
   position: relative;
   overflow: hidden;
@@ -778,19 +535,17 @@ main {
   padding: 19px 20px 20px;
 }
 
-.city-card-kicker,
-.unassigned-videos-kicker {
+.city-card-kicker {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  color: var(--accent);
-  font-size: 10px;
-  font-weight: 900;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
+  color: #dce8e4;
+  font-size: 13px;
+  font-weight: 650;
 }
 
 .city-card-live-dot {
+  flex: 0 0 7px;
   width: 7px;
   height: 7px;
   border-radius: 50%;
@@ -862,98 +617,6 @@ main {
 }
 
 .city-card:hover .city-card-action span {
-  transform: translateX(3px);
-}
-
-.unassigned-videos {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 22px;
-  padding: 22px 24px;
-  border: 1px dashed rgba(255, 255, 255, 0.18);
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.025);
-}
-
-.unassigned-videos h2 {
-  margin: 7px 0 5px;
-  color: #ffffff;
-  font-size: 19px;
-  letter-spacing: -0.035em;
-}
-
-.unassigned-videos > div > p:last-child {
-  margin: 0;
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.unassigned-videos-action {
-  display: flex;
-  min-width: 268px;
-  align-items: center;
-  gap: 12px;
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: rgba(0, 0, 0, 0.22);
-  color: var(--text);
-  text-align: left;
-  cursor: pointer;
-  transition:
-    border-color 180ms ease,
-    background 180ms ease;
-}
-
-.unassigned-videos-action:hover {
-  border-color: rgba(5, 195, 161, 0.44);
-  background: rgba(5, 195, 161, 0.07);
-}
-
-.unassigned-videos-icon {
-  display: grid;
-  width: 38px;
-  height: 38px;
-  flex: 0 0 auto;
-  place-items: center;
-  border-radius: 10px;
-  background: rgba(5, 195, 161, 0.12);
-  color: var(--accent);
-}
-
-.unassigned-videos-icon svg {
-  width: 20px;
-  stroke: currentcolor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1.6;
-}
-
-.unassigned-videos-action strong,
-.unassigned-videos-action small {
-  display: block;
-}
-
-.unassigned-videos-action strong {
-  color: #ffffff;
-  font-size: 13px;
-}
-
-.unassigned-videos-action small {
-  margin-top: 3px;
-  color: var(--muted);
-  font-size: 11px;
-}
-
-.unassigned-videos-arrow {
-  margin-left: auto;
-  color: var(--accent);
-  font-size: 18px;
-  transition: transform 180ms ease;
-}
-
-.unassigned-videos-action:hover .unassigned-videos-arrow {
   transform: translateX(3px);
 }
 
@@ -1210,16 +873,6 @@ main {
     height: 130px;
   }
 
-  .unassigned-videos {
-    display: grid;
-    gap: 17px;
-    padding: 18px;
-  }
-
-  .unassigned-videos-action {
-    width: 100%;
-    min-width: 0;
-  }
 }
 
 .run-card {
@@ -1406,6 +1059,64 @@ main {
   opacity: 0.45;
 }
 
+.upload-panel.is-locked,
+.upload-panel.is-locked:hover {
+  border-style: solid;
+  border-color: rgba(255, 255, 255, 0.1);
+  background:
+    radial-gradient(circle at 50% 35%, rgba(255, 255, 255, 0.035), transparent 30%),
+    rgba(15, 16, 15, 0.9);
+  box-shadow: none;
+  transform: none;
+  cursor: not-allowed;
+}
+
+.upload-panel.is-locked::before {
+  display: none;
+}
+
+.upload-lock-icon {
+  position: relative;
+  width: 54px;
+  height: 46px;
+  margin: 15px 0 22px;
+  border: 2px solid var(--muted-2);
+  border-radius: 9px;
+  color: var(--muted-2);
+}
+
+.upload-lock-icon::before {
+  position: absolute;
+  bottom: calc(100% - 2px);
+  left: 50%;
+  width: 26px;
+  height: 20px;
+  border: 2px solid currentcolor;
+  border-bottom: 0;
+  border-radius: 14px 14px 0 0;
+  content: '';
+  transform: translateX(-50%);
+}
+
+.upload-lock-icon::after {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  width: 6px;
+  height: 11px;
+  border-radius: 999px;
+  background: currentcolor;
+  content: '';
+  transform: translateX(-50%);
+}
+
+.upload-panel .upload-lock-note {
+  max-width: 520px;
+  margin-top: 2px;
+  color: var(--muted-2);
+  font-size: 13px;
+}
+
 .upload-icon {
   display: grid;
   width: 68px;
@@ -1438,12 +1149,15 @@ main {
   margin-top: 8px;
 }
 
+/* Ширину задаёт список, а не карточка: внутри .upload-file-list у неё своя
+   колонка, и фиксированные 560 px оставляли её прижатой к левому краю панели
+   шириной под 900. Отступы между карточками тоже у списка (gap). */
 .file-card {
   display: flex;
-  width: min(560px, 100%);
+  width: 100%;
   align-items: center;
   gap: 14px;
-  margin: 20px 0 10px;
+  margin: 0;
   padding: 14px;
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -1461,6 +1175,30 @@ main {
   border-radius: 11px;
   background: rgba(5, 195, 161, 0.14);
   color: var(--accent);
+}
+
+/* min-width: 0 обязателен: без него flex-элемент отказывается сжиматься ниже
+   своего содержимого, обрезание имени по многоточию не срабатывает, и длинное
+   имя вида «a5effe6b-1020-48b5-b598-bd1ad3cb27f1.webm» распирает карточку —
+   плашка статуса уезжает за край и переносится по слогам. */
+.file-card-content {
+  min-width: 0;
+  flex: 1;
+}
+
+/* Всё, что справа от имени, не сжимается и не переносится. */
+.file-card > .file-card-icon,
+.file-card > .status,
+.file-card > .ghost-button {
+  flex: 0 0 auto;
+}
+
+.file-card > .status {
+  white-space: nowrap;
+}
+
+.file-card .progress-block {
+  margin-top: 10px;
 }
 
 .file-card-content > strong,
@@ -1481,40 +1219,6 @@ main {
   font-size: 13px;
 }
 
-.upload-progress-card {
-  display: grid;
-  width: min(620px, 100%);
-  grid-template-columns: auto 1fr;
-  align-items: center;
-  gap: 14px 18px;
-  margin-top: 24px;
-  padding: 18px;
-  border: 1px solid rgba(5, 195, 161, 0.2);
-  border-radius: 14px;
-  background: rgba(0, 0, 0, 0.34);
-  text-align: left;
-}
-
-.upload-progress-card h3,
-.upload-progress-card p {
-  margin: 0;
-}
-
-.upload-progress-card h3 {
-  color: #ffffff;
-}
-
-.upload-progress-card p {
-  margin-top: 3px;
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.upload-progress-card .progress-block {
-  grid-column: 1 / -1;
-  margin-top: 4px;
-}
-
 .upload-file-list {
   display: flex;
   width: 100%;
@@ -1523,24 +1227,408 @@ main {
   margin-top: 14px;
 }
 
-.upload-file-item {
-  width: min(640px, 100%);
-  margin: 0;
+/* Все прямые дети upload-панели получают одинаковый z-index. Поэтому поздние
+   кнопки рисовались поверх календаря и выглядели как просвечивающий фон.
+   Поднимаем весь список: popup внутри него должен перекрывать действия ниже. */
+.upload-panel > .upload-file-list {
+  z-index: 2;
+}
+
+/* Поле даты со своим календарём. Нативный `input[type=date]` тут не годится:
+   его выпадашку рисует браузер, и до неё не достаёт ни один селектор. */
+
+.date-field {
+  position: relative;
+  display: inline-flex;
   align-items: center;
-  margin-inline: auto;
+  gap: 6px;
 }
 
-.upload-file-item > div:nth-child(2) {
-  min-width: 0;
-  flex: 1;
+.date-field-label {
+  color: var(--muted);
+  font-size: 13px;
 }
 
-.upload-file-item .progress-block {
-  margin-top: 10px;
+.date-field-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(21, 21, 21, 0.94);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease;
 }
 
-.upload-file-item .status {
+.date-field-trigger.is-empty {
+  color: var(--muted-2);
+}
+
+.date-field-trigger.is-invalid {
+  border-color: var(--danger);
+}
+
+.date-field-trigger:hover:not(:disabled),
+.date-field-trigger.is-open {
+  border-color: rgba(5, 195, 161, 0.5);
+}
+
+.date-field-trigger.is-open {
+  box-shadow: 0 0 0 3px rgba(5, 195, 161, 0.16);
+}
+
+.date-field-trigger:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.date-field-icon {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.date-popover {
+  position: absolute;
+  z-index: 60;
+  top: calc(100% + 10px);
+  left: 0;
+  width: 332px;
+  padding: 20px;
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.62);
+  animation: panel-enter 160ms ease-out;
+}
+
+.date-popover-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.date-popover-title {
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.date-nav-group {
+  display: inline-flex;
   flex: 0 0 auto;
+  gap: 4px;
+}
+
+.date-nav {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background 140ms ease,
+    color 140ms ease;
+}
+
+.date-nav:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text);
+}
+
+.date-weekdays,
+.date-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.date-weekdays {
+  margin-bottom: 6px;
+}
+
+.date-weekdays > span {
+  padding: 6px 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.date-cell {
+  height: 38px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition:
+    background 140ms ease,
+    color 140ms ease;
+}
+
+/* Дни соседних месяцев видны, но приглушены: они держат неделю целой на стыке,
+   а не приглашают в них целиться. Нажать всё же можно — календарь сам уйдёт
+   в тот месяц. */
+.date-cell.is-outside {
+  color: var(--muted-2);
+}
+
+.date-cell:hover:not(:disabled):not(.is-selected) {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+/* Сегодня — обводкой, выбранный день — заливкой. Разными приёмами намеренно:
+   одинаковыми они читались бы как два выбранных дня. */
+.date-cell.is-today {
+  border-color: rgba(5, 195, 161, 0.6);
+  color: var(--accent);
+}
+
+.date-cell.is-selected {
+  background: var(--accent);
+  color: #04231d;
+  font-weight: 700;
+}
+
+.date-cell:disabled {
+  color: var(--muted-2);
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
+.date-popover-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.date-action {
+  padding: 4px 2px;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 140ms ease;
+}
+
+.date-action:hover:not(:disabled) {
+  color: var(--text);
+}
+
+.date-action:disabled {
+  color: var(--muted-2);
+  cursor: not-allowed;
+}
+
+.period-filter {
+  position: relative;
+  margin-left: auto;
+}
+
+.period-filter-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.period-filter-trigger,
+.period-filter-reset {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  border: 1px solid var(--line-strong);
+  background: rgba(21, 21, 21, 0.94);
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.period-filter-trigger {
+  gap: 9px;
+  padding: 0 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.period-filter-trigger:hover,
+.period-filter-trigger.is-open,
+.period-filter-reset:hover {
+  border-color: rgba(5, 195, 161, 0.52);
+  color: var(--text);
+}
+
+.period-filter-trigger.is-active {
+  border-color: rgba(5, 195, 161, 0.38);
+  background: rgba(5, 195, 161, 0.08);
+  color: #dffbf5;
+}
+
+.period-filter-trigger.is-open {
+  box-shadow: 0 0 0 3px rgba(5, 195, 161, 0.14);
+}
+
+.period-filter-trigger:focus-visible,
+.period-filter-reset:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.period-filter-icon {
+  position: relative;
+  width: 14px;
+  height: 13px;
+  flex: 0 0 auto;
+  border: 1.5px solid currentcolor;
+  border-radius: 3px;
+  color: var(--accent);
+}
+
+.period-filter-icon::before {
+  position: absolute;
+  top: 3px;
+  right: -1.5px;
+  left: -1.5px;
+  border-top: 1.5px solid currentcolor;
+  content: '';
+}
+
+.period-filter-chevron {
+  margin-left: 2px;
+  color: var(--muted-2);
+  font-size: 13px;
+  line-height: 1;
+  transition: transform 160ms ease;
+}
+
+.period-filter-trigger.is-open .period-filter-chevron {
+  transform: rotate(180deg);
+}
+
+.period-filter-reset {
+  width: 38px;
+  justify-content: center;
+  padding: 0;
+  border-radius: 10px;
+  font-size: 19px;
+  line-height: 1;
+}
+
+.period-filter-popover {
+  position: absolute;
+  z-index: 50;
+  top: calc(100% + 10px);
+  right: 0;
+  width: min(420px, calc(100vw - 32px));
+  padding: 17px;
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  background: #171817;
+  box-shadow: 0 24px 68px rgba(0, 0, 0, 0.52);
+}
+
+.period-filter-popover-head h3 {
+  margin: 0;
+  color: #ffffff;
+  font-size: 15px;
+}
+
+.period-filter-popover-head p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.period-filter-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.period-filter-fields .date-field {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.period-filter-fields .date-field-trigger {
+  min-width: 0;
+  justify-content: space-between;
+}
+
+/* Календарь правой границы открывается внутрь popover, а не за правый край
+   экрана. У левой границы естественное выравнивание уже ведёт внутрь. */
+.period-filter-fields .date-field:last-child .date-popover {
+  right: 0;
+  left: auto;
+}
+
+.period-filter-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.upload-file-date {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.upload-file-date > span {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.upload-file-date > span b {
+  color: var(--danger);
+}
+
+/* Календарь — абсолютный popup. Разрешаем ему выйти за рамку большой drop-зоны
+   после появления файлов; без этого `overflow: hidden` обрезал бы его по панели. */
+.upload-panel.has-files {
+  overflow: visible;
+}
+
+.upload-panel.has-files::before {
+  border-radius: inherit;
+}
+
+.text-input.is-invalid {
+  border-color: var(--danger);
 }
 
 .upload-file-error {
@@ -1870,6 +1958,60 @@ button:disabled,
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 18px;
+}
+
+/* Сводка одним блоком: шапка с выбором оценки и плитки под ней. Разделители —
+   зазор в один пиксель на фоне линии, а не рамки у плиток: так стык остаётся
+   ровным и когда сетка переносится в две строки или в одну колонку. */
+.metrics-panel {
+  overflow: hidden;
+  margin: 18px 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--line);
+}
+
+.metrics-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 12px 16px;
+  background: rgba(15, 15, 15, 0.94);
+}
+
+/* Переключатель — тот же .tabs, а у него свой нижний отступ под другую
+   раскладку. Внутри шапки он сбивал вертикаль: подпись стояла по центру, а
+   тумблер уезжал вверх. */
+.metrics-panel-head .tabs {
+  margin-bottom: 0;
+}
+
+.metrics-panel-head > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  line-height: 1;
+}
+
+.metrics-panel-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  border-top: 1px solid var(--line);
+}
+
+.metrics-panel-grid .metric-card {
+  border: 0;
+  border-radius: 0;
+}
+
+/* Внутри общей рамки плитка — не отдельная карточка: подниматься ей некуда. */
+.metrics-panel-grid .metric-card:hover {
+  transform: none;
+  background: rgba(28, 28, 28, 0.96);
 }
 
 .metric-card {
@@ -2311,6 +2453,11 @@ button:disabled,
   border-radius: 0;
 }
 
+/* Заглушки и баннеры живут на двух уровнях: то прямо на фоне страницы рядом с
+   панелью («Видео не найдены»), то внутри неё («Каталог пуст»). По умолчанию —
+   верхняя ступень, внутри панели спускаются на ступень ниже. Ступень задаётся
+   вложенностью на экране, а не типом блока: два соседа на общем фоне обязаны
+   скругляться одинаково, иначе один выглядит забытым. */
 .empty-state,
 .error-banner {
   padding: 24px;
@@ -2506,6 +2653,21 @@ button:disabled,
   pointer-events: stroke;
 }
 
+/* Рамку фокуса от мыши гасим, клавиатурную оставляем. Причина в том, как
+   браузер обводит SVG: рамка идёт не по линии, а по её габаритному
+   прямоугольнику, то есть по клику на маршрут поперёк всей карты появлялся
+   белый прямоугольник во весь кадр. Совсем убрать outline нельзя — tabIndex
+   на этой линии стоит ровно ради обхода с клавиатуры, и без рамки было бы
+   непонятно, какой маршрут выбран. */
+.target-route-path:focus {
+  outline: none;
+}
+
+.target-route-path:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .target-route-glow,
 .target-route-intro {
   fill: none;
@@ -2561,6 +2723,67 @@ button:disabled,
   to {
     stroke-dashoffset: 0;
   }
+}
+
+/* --- рисование маршрута --------------------------------------------------- */
+
+.map-viewport svg.is-zoomable {
+  cursor: grab;
+  touch-action: none;
+}
+
+.map-viewport svg.is-zoomable:active {
+  cursor: grabbing;
+}
+
+/* В режиме рисования перетаскивание ведёт линию, а не двигает карту, поэтому и
+   курсор другой: «схватить» здесь означало бы не то, что произойдёт. */
+.map-viewport svg.is-drawing-mode,
+.map-viewport svg.is-drawing-mode:active {
+  cursor: crosshair;
+}
+
+/* Линия «как вела рука» — намеренно не похожа на маршрут: пунктир и блёклый
+   цвет говорят, что это ещё черновик, а не проложенный по дорогам путь. */
+.hand-stroke {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.85);
+  stroke-width: 2.5;
+  stroke-dasharray: 7 5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.hand-stroke.is-settled {
+  stroke: rgba(255, 255, 255, 0.55);
+}
+
+/* Резинка от конца линии за курсором: намерение, а не нарисованное. Отсюда и
+   тоньше, и бледнее — спутать её с линией нельзя, иначе непонятно, что уже
+   поставлено, а что только примеряется. */
+.hand-stroke.is-rubber {
+  stroke: rgba(255, 255, 255, 0.3);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 6;
+}
+
+.route-drawing {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.route-drawing .map-viewport {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.route-drawing-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .legend {
@@ -2809,10 +3032,6 @@ button:disabled,
     height: 76px;
   }
 
-  .topbar-status {
-    display: none;
-  }
-
   .page {
     padding: 28px 0 60px;
   }
@@ -2827,6 +3046,7 @@ button:disabled,
   }
 
   .summary-grid,
+  .metrics-panel-grid,
   .charts-grid {
     grid-template-columns: 1fr 1fr;
   }
@@ -2924,6 +3144,7 @@ button:disabled,
   }
 
   .summary-grid,
+  .metrics-panel-grid,
   .charts-grid {
     grid-template-columns: 1fr;
   }
@@ -2950,8 +3171,7 @@ button:disabled,
     grid-column: auto;
   }
 
-  .charts-toolbar,
-  .upload-progress-card {
+  .charts-toolbar {
     grid-template-columns: 1fr;
   }
 
@@ -3007,8 +3227,11 @@ button:disabled,
 }
 
 .destination-fields .field,
-.filter-bar .field {
+.filter-bar .field,
+.city-scope-picker,
+.catalog-row .field {
   display: grid;
+  min-width: 0;
   gap: 6px;
   font-size: 12px;
   font-weight: 700;
@@ -3019,20 +3242,6 @@ button:disabled,
 
 .filter-bar .field {
   min-width: 180px;
-}
-
-.destination-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 9px;
-  font-size: 13px;
-  color: var(--muted);
-  cursor: pointer;
-  transition: color 160ms ease;
-}
-
-.destination-toggle:hover {
-  color: var(--text);
 }
 
 .filter-bar {
@@ -3070,7 +3279,10 @@ button:disabled,
   width: calc((100% - 8px) / var(--tabs-count));
   border-radius: 8px;
   background: var(--accent);
-  transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
+  transition:
+    left 220ms cubic-bezier(0.16, 1, 0.3, 1),
+    width 220ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .tabs-option {
@@ -3107,6 +3319,7 @@ button:disabled,
 
 .dropdown {
   position: relative;
+  min-width: 0;
   text-transform: none;
   letter-spacing: normal;
 }
@@ -3153,6 +3366,7 @@ button:disabled,
 }
 
 .dropdown-value {
+  min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -3219,6 +3433,11 @@ button:disabled,
     color 120ms ease;
 }
 
+.dropdown-option > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .dropdown-option.is-highlighted {
   background: rgba(5, 195, 161, 0.12);
 }
@@ -3243,59 +3462,6 @@ button:disabled,
   transform: scale(1);
 }
 
-/* Кастомный чекбокс */
-
-.checkbox {
-  appearance: none;
-  display: inline-grid;
-  flex-shrink: 0;
-  place-content: center;
-  width: 19px;
-  height: 19px;
-  margin: 0;
-  border: 1px solid var(--line-strong);
-  border-radius: 6px;
-  background: var(--surface-2);
-  cursor: pointer;
-  transition:
-    background 160ms ease,
-    border-color 160ms ease,
-    box-shadow 160ms ease;
-}
-
-.checkbox::after {
-  content: '';
-  width: 5px;
-  height: 9px;
-  border: solid #001a15;
-  border-width: 0 2px 2px 0;
-  transform: rotate(45deg) translate(-1.5px, -1.24px) scale(0);
-  transition: transform 180ms cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-.checkbox:hover:not(:disabled) {
-  border-color: rgba(5, 195, 161, 0.58);
-}
-
-.checkbox:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px rgba(5, 195, 161, 0.22);
-}
-
-.checkbox:checked {
-  background: var(--accent);
-  border-color: var(--accent);
-}
-
-.checkbox:checked::after {
-  transform: rotate(45deg) translate(-1.5px, -1.24px) scale(1);
-}
-
-.checkbox:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
 .run-badges {
   display: flex;
   flex-wrap: wrap;
@@ -3318,18 +3484,6 @@ button:disabled,
 
 .run-badge.muted {
   opacity: 0.75;
-}
-
-.run-badge-dot {
-  width: 7px;
-  height: 7px;
-  flex-shrink: 0;
-  border-radius: 999px;
-  background: var(--muted);
-}
-
-.unassigned-card {
-  border-style: dashed;
 }
 
 .assignment-heading {
@@ -3397,45 +3551,39 @@ button:disabled,
   cursor: not-allowed;
 }
 
+/* Выбор цвета. Габариты те же, что у соседних полей, но заливка внутри и есть
+   значение — с обычными отступами браузер рисовал тонкую полоску посреди
+   пустого поля, и контрол выпадал из ряда. */
+input[type='color'].text-input {
+  height: 42px;
+  padding: 4px;
+  cursor: pointer;
+}
+
+input[type='color'].text-input::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+input[type='color'].text-input::-webkit-color-swatch {
+  border: 0;
+  border-radius: 6px;
+}
+
+input[type='color'].text-input::-moz-color-swatch {
+  border: 0;
+  border-radius: 6px;
+}
+
 /* Выбор человека из справочника (components/common/UserSelect.tsx) */
 
-.user-select-create {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.user-select-create .text-input {
-  flex: 1 1 180px;
-}
-
-.user-select-create button {
-  min-height: 40px;
-  padding: 10px 16px;
-  border-radius: 7px;
-  font-size: 13px;
-  font-weight: 800;
-  cursor: pointer;
-}
-
-.user-select-add {
-  justify-self: start;
-  min-height: 0;
-  padding: 2px 0;
-  border: 0;
-  background: transparent;
-  color: var(--accent);
-  font-size: 12px;
-  font-weight: 700;
-  text-transform: none;
-  letter-spacing: normal;
-  cursor: pointer;
-}
-
-.user-select-add:hover:not(:disabled) {
-  background: transparent;
-  transform: none;
-  text-decoration: underline;
+/* Ширина не зависит от выбранного имени. Во flex-строках поле подстраивалось
+   под содержимое: с плейсхолдером узкое, с «Ожерельев Александр Александрович»
+   вдвое шире — соседние кнопки прыгали от одного выбора. Длинное имя обрезается
+   многоточием, это уже умеет `.dropdown-value`. В сетках правило не работает и
+   не мешает: там ширину задаёт колонка. */
+.user-select {
+  flex: 0 0 300px;
+  min-width: 0;
 }
 
 .user-select-error {
@@ -3535,7 +3683,6 @@ button:disabled,
   font-size: 12px;
 }
 
-.destination-hint,
 .route-description {
   margin: 0;
   color: var(--muted);
@@ -3548,8 +3695,123 @@ button:disabled,
   white-space: pre-wrap;
 }
 
-/* --- геозоны: разметка значимости по времени видео --------------------- */
+/* --- аналитика маршрута (components/RouteSummaryPanel.tsx) -------------- */
+.route-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+
+.route-summary-head {
+  margin: 8px 0 0;
+}
+
+/* Переключатель «работа / цифры» на странице маршрута и задания. Отбит сверху
+   от реквизитов и снизу от содержимого: он делит страницу надвое, и читаться
+   должен как граница, а не как ещё один элемент шапки. */
+.page-view-tabs {
+  margin: 22px 0 18px;
+}
+
+.page-view-tabs .tabs {
+  margin-bottom: 0;
+}
+
+.route-analytics-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.route-summary-head h2 {
+  margin: 0 0 4px;
+  font-size: 18px;
+  color: #ffffff;
+}
+
+.route-analytics-head h2 {
+  margin-bottom: 0;
+}
+
+.route-summary-head p {
+  margin: 0;
+  max-width: 720px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+@media (max-width: 620px) {
+  .route-analytics-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .period-filter {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .period-filter-control,
+  .period-filter-trigger {
+    width: 100%;
+  }
+
+  .period-filter-trigger {
+    min-width: 0;
+  }
+
+  .period-filter-trigger > span:nth-child(2) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .period-filter-chevron {
+    margin-left: auto;
+  }
+
+  .period-filter-control.has-reset .period-filter-trigger {
+    width: calc(100% - 44px);
+  }
+
+  .period-filter-popover {
+    right: auto;
+    left: 0;
+  }
+
+  .period-filter-fields {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Легенда заданий под графиком: цвет столбца → кампания и число съёмок в ней. */
+.route-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 10px 0 0;
+  padding: 0 8px;
+  list-style: none;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.route-legend li {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.route-legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+/* --- геозоны: разметка значимости долями проезда ----------------------- */
 .geozone-panel {
+  margin-top: 18px;
   padding: 20px;
 }
 
@@ -3599,6 +3861,12 @@ button:disabled,
   object-fit: contain;
 }
 
+.geozone-ruler {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .geozone-timeline {
   position: relative;
   height: 44px;
@@ -3606,7 +3874,18 @@ button:disabled,
   border: 1px solid var(--line-strong);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.04);
+}
+
+/* Курсор-палец только когда клик действительно перематывает видео. */
+.geozone-timeline.is-seekable {
   cursor: pointer;
+}
+
+.geozone-scale {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 11px;
 }
 
 .geozone-band {
@@ -3646,6 +3925,33 @@ button:disabled,
   pointer-events: none;
 }
 
+.geozone-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.geozone-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.geozone-fields .field {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.geozone-field-wide {
+  grid-column: 1 / -1;
+}
+
+/* Отметка границ по играющему видео: главный способ разметки, когда оно есть. */
 .geozone-controls {
   display: flex;
   flex-wrap: wrap;
@@ -3653,31 +3959,19 @@ button:disabled,
   align-items: center;
 }
 
-.geozone-name-input {
-  flex: 1 1 200px;
-  min-width: 160px;
-  padding: 9px 12px;
-  border: 1px solid var(--line-strong);
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.4);
-  color: var(--text);
+.geozone-controls .geozone-hint {
+  flex: 1 1 220px;
 }
 
-.geozone-coef-field {
-  display: inline-flex;
-  gap: 6px;
+.geozone-textarea {
+  resize: vertical;
+}
+
+.geozone-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
   align-items: center;
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.geozone-coef-field input {
-  width: 68px;
-  padding: 8px 10px;
-  border: 1px solid var(--line-strong);
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.4);
-  color: var(--text);
 }
 
 .geozone-list {
@@ -3692,26 +3986,440 @@ button:disabled,
 .geozone-row {
   display: flex;
   gap: 12px;
-  align-items: center;
-  padding: 8px 12px;
+  align-items: flex-start;
+  padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.03);
 }
 
+/* Справочники живут в шапке, а не в левом меню: служебный экран под паролем,
+   которому не место рядом с рабочими разделами. */
+.topbar-admin {
+  white-space: nowrap;
+}
+
+.topbar-admin.is-active {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* Выход из админ-панели: закреплён в углу окна, чтобы не занимать место в
+   форме и оставаться доступным на любой высоте прокрутки. */
+.admin-signout {
+  position: fixed;
+  right: 28px;
+  bottom: 28px;
+  z-index: 30;
+  background: var(--surface);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+/* Подпись вместо пустого превью: у города ещё нет маршрутов, а рисуем мы
+   именно их линии. Без подписи карточка читается как несохранившийся город. */
+.city-route-preview-empty {
+  fill: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Шапка блока города: выбор города и его состояние в одной строке, отчёркнутой
+   от содержимого. Раньше селектор жил отдельной карточкой над панелью и не
+   читался как то, что переключает всё ниже — было непонятно, почему город
+   именно этот и где его сменить. */
+.city-scope-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 18px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+/* Селектор и «+ Новый город» — одна сущность: «какой город». Держим их вместе
+   и одного роста, чтобы кнопка не читалась как действие над выбранным. */
+.city-scope-city {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+}
+
+.city-scope-picker {
+  min-width: 240px;
+}
+
+/* Ровно габариты `.dropdown-trigger`: те же отступы, радиус и кегль. */
+.city-scope-add {
+  min-height: 0;
+  padding: 10px 16px;
+  border-radius: 10px;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+/* Разделы админ-панели. Намеренно не похожи на вкладки внутри города: там
+   кнопки-пилюли на подложке, здесь подчёркнутый текст. Два одинаковых
+   переключателя друг под другом читались бы как один уровень. */
+.admin-sections {
+  display: flex;
+  gap: 34px;
+  margin: 0 0 26px;
+  border-bottom: 1px solid var(--line);
+}
+
+.admin-sections button {
+  min-height: 0;
+  padding: 0 0 14px;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 21px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  text-transform: none;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.admin-sections button:hover:not(:disabled) {
+  background: transparent;
+  transform: none;
+  color: var(--text);
+}
+
+.admin-sections button.is-active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+/* Вкладки занимают всю ширину шапки и переносятся под селектор: они относятся
+   ко всему блоку, а не к строке с городом. */
+.city-scope-tabs {
+  width: 100%;
+  flex: 0 0 100%;
+}
+
+.city-scope-tabs .tabs {
+  grid-auto-flow: initial;
+  grid-auto-columns: initial;
+  width: min(460px, 100%);
+  margin-bottom: 0;
+}
+
+.city-scope-tabs .tabs-option {
+  min-width: 0;
+  padding-right: 8px;
+  padding-left: 8px;
+  border-radius: 8px;
+}
+
+/* Первый блок вкладки уже отделён чертой самой шапки — вторая линия рядом
+   читалась бы как пустой раздел между ними. */
+.city-scope-body > .city-scope-block:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+/* Заголовок третьего уровня встречается внутри блоков вкладки «Каталог». */
+.city-scope-block h4 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+
+/* Скрытый человек виден только в админ-панели — приглушённым, как скрытый
+   маршрут, но кнопка «Показать» остаётся под рукой. */
+.data-table tr.is-hidden-row {
+  opacity: 0.55;
+}
+
+/* Список отделён от формы заведения чертой — тем же приёмом, что блоки внутри
+   городской панели. */
+.admin-users-list {
+  margin-top: 22px;
+  padding-top: 22px;
+  border-top: 1px solid var(--line);
+}
+
+/* Всё про выбранный город живёт в одной панели: город меняют и тут же с ним
+   работают. Блоки внутри разделены чертой, а не воздухом между карточками —
+   отдельными карточками они читались как самостоятельные разделы, не
+   связанные с тем, какой город выбран. */
+.city-scope-block {
+  margin-top: 22px;
+  padding-top: 22px;
+  border-top: 1px solid var(--line);
+}
+
+.city-scope-block h3 {
+  margin: 0 0 14px;
+  font-size: 15px;
+}
+
+.admin-section-intro {
+  margin-bottom: 14px;
+}
+
+.catalog-panel .admin-section-intro h2,
+.city-scope-block .admin-section-intro h3 {
+  margin: 0 0 4px;
+}
+
+.admin-section-intro p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* Адрес показываем как один контрол: постоянная часть объясняет структуру
+   ссылки на месте, а человек вводит только короткое имя. */
+.admin-url-control {
+  display: flex;
+  min-width: 0;
+}
+
+.admin-url-prefix {
+  display: flex;
+  max-width: 70%;
+  flex: 0 0 auto;
+  align-items: center;
+  padding: 10px 10px 10px 12px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-right: 0;
+  border-radius: 10px 0 0 10px;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: normal;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.admin-url-control .text-input {
+  width: auto;
+  min-width: 90px;
+  flex: 1 1 0;
+  border-radius: 0 10px 10px 0;
+}
+
+.admin-url-control:focus-within .admin-url-prefix {
+  border-color: var(--accent);
+}
+
+.admin-field-hint {
+  color: var(--muted-2);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: normal;
+  line-height: 1.4;
+  text-transform: none;
+}
+
+.city-identity {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-bottom: 14px;
+}
+
+.city-identity-region {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.city-identity-path {
+  display: inline-flex;
+  min-height: 42px;
+  overflow: hidden;
+  align-items: stretch;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(21, 21, 21, 0.94);
+}
+
+.city-identity-path code {
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.city-identity-path button {
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  border: 0;
+  border-left: 1px solid var(--line);
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.city-identity-path button:hover {
+  background: rgba(5, 195, 161, 0.08);
+}
+
+.admin-format-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+}
+
+.admin-format-tags li {
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.admin-inline-note {
+  margin: 0 0 14px;
+  color: var(--muted-2);
+  font-size: 12px;
+}
+
+/* Отступ над строкой действий. В панели геозон его даёт `.geozone-form`
+   (колонка с gap), а в админ-панели строка лежит прямо в панели или в блоке
+   вкладки, где общего gap нет — потому кнопка и прилипала к полям сверху. */
+.catalog-panel > .geozone-form-actions,
+.city-scope-block > .geozone-form-actions {
+  margin-top: 16px;
+}
+
+/* Кнопка открывает форму, а ниже неё всегда уже есть состояние списка:
+   загрузка, пустая заглушка или сами задания. Без нижнего зазора следующий
+   блок начинался ровно на границе кнопки. */
+.admin-assignments > .geozone-form-actions {
+  margin-bottom: 16px;
+}
+
+/* При открытии кнопка уступает место форме, поэтому её верхний отступ больше
+   не участвует в потоке. Сохраняем тот же интервал от селектора маршрута. */
+.admin-assignments > .assignment-form {
+  margin-top: 16px;
+}
+
+/* Кнопки в строке действий одного роста и одного скругления. Рядом стоят
+   обычная, файловая и красная: разнобой читается как поломка вёрстки, а не как
+   акцент. Красная в списках компактная и потому на ступень ниже — здесь она
+   полноразмерная, значит и угол общий контрольный. */
+.geozone-form-actions .file-button,
+.geozone-form-actions .geozone-delete {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 10px 18px;
+  font-size: inherit;
+}
+
+/* В строках списка наоборот — компактное всё, включая файловую кнопку. */
+.row-actions .file-button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 8px 16px;
+  font-size: 13px;
+}
+
+.page.admin-login-page {
+  display: flex;
+  width: min(520px, 100%);
+  min-height: calc(100svh - 78px);
+  flex-direction: column;
+  justify-content: center;
+  padding: 32px 0;
+}
+
+.admin-login {
+  width: 100%;
+  max-width: none;
+}
+
+@media (max-width: 620px) {
+  /* На телефоне рабочую высоту делят верхняя панель и нижняя навигация.
+     Вычитаем обе, иначе геометрический центр уедет под нижнюю панель. */
+  .page.admin-login-page {
+    min-height: calc(100svh - 148px);
+    padding: 28px 0;
+  }
+}
+
+/* Скрытый маршрут виден только в справочнике — приглушённым, чтобы его нельзя
+   было спутать с рабочим, но кнопка «Показать» оставалась под рукой. */
+.geozone-row.is-hidden-row {
+  opacity: 0.55;
+  border-style: dashed;
+}
+
+/* Строка в правке разворачивается в ту же форму, что и создание. */
+/* Разворот в колонку меняет смысл `align-items` у `.geozone-row`: `flex-start`
+   начинает работать по горизонтали и сжимает содержимое до ширины текста —
+   сетка полей схлопывалась в узкий столбик, а справа оставалась пустая
+   половина строки. Растягиваем явно. */
+.geozone-row.is-editing {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  border-color: var(--accent);
+}
+
 .geozone-swatch {
   width: 12px;
   height: 12px;
+  margin-top: 4px;
   border-radius: 3px;
   flex: 0 0 auto;
+}
+
+.geozone-row-copy {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* Строка выровнена по верху ради текста слева — он может быть в два-три ряда, и
+   заголовок обязан начинаться на общей линии. Кнопкам это не подходит: у них
+   один ряд, и они повисали вверху с пустотой под собой. Центрируем только их. */
+.geozone-row > .row-actions {
+  align-self: center;
 }
 
 .geozone-row-name {
   font-weight: 600;
 }
 
+.geozone-row-name em {
+  font-style: normal;
+  color: var(--accent);
+}
+
 .geozone-row-range {
-  flex: 1 1 auto;
   color: var(--muted);
   font-size: 13px;
 }
@@ -3721,100 +4429,227 @@ button:disabled,
   opacity: 0.7;
 }
 
+.geozone-row-description {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  white-space: pre-wrap;
+}
+
+/* Красная кнопка строки — одного роста и кегля с соседями по `.row-actions`. */
 .geozone-delete {
-  padding: 6px 12px;
+  min-height: 36px;
+  padding: 8px 16px;
   border: 1px solid var(--line-strong);
   border-radius: 8px;
   background: transparent;
   color: var(--danger);
+  font-size: 13px;
   cursor: pointer;
 }
 
-.geozone-delete:hover {
+.geozone-delete:hover:not(:disabled) {
   border-color: var(--danger);
 }
 
-/* --- Каталог рекламных конструкций ------------------------------------- */
+.geozone-delete:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Каталог рекламных конструкций (pages/CatalogPage.tsx) */
 
 .catalog-panel {
-  padding: 22px 26px;
   margin-bottom: 18px;
+  padding: 20px;
 }
 
 .catalog-panel h2 {
-  margin: 0 0 10px;
-  font-size: 17px;
+  margin: 0 0 8px;
+  font-size: 15px;
 }
 
 .catalog-panel h3 {
-  margin: 14px 0 6px;
-  font-size: 14px;
+  margin: 0 0 6px;
+  font-size: 13px;
 }
 
-.catalog-toolbar {
+.catalog-row {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-end;
+  align-items: end;
   gap: 14px;
 }
 
-.catalog-toolbar label {
+.catalog-row .action-button {
+  flex-shrink: 0;
+}
+
+/* Счётчики стоят рядом с выпадашкой в строке, выровненной по нижнему краю, —
+   поэтому одной строкой текста они садились на низ контрола, а не на его
+   середину. Даём тексту высоту контрола (те же 40px, что `min-height` у кнопок)
+   и центрируем внутри: низ коробки по-прежнему на общей линии, а текст
+   оказывается напротив выбранного значения. */
+.catalog-state {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-size: 13px;
-  color: var(--muted);
-}
-
-.hint {
-  margin: 0 0 12px;
+  align-items: center;
+  align-self: end;
+  min-height: 40px;
+  margin: 0;
   color: var(--muted);
   font-size: 13px;
 }
 
-.report-list,
-.report-block ul {
-  margin: 0 0 12px;
+.catalog-hint {
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.catalog-files {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.catalog-files .catalog-hint {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Плитки отчёта: «станет / появится / исчезнет» должны читаться с одного
+   взгляда — неполный файл виден именно по большому «исчезнет». */
+
+.catalog-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.catalog-metric {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(21, 21, 21, 0.6);
+}
+
+.catalog-metric strong {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.catalog-metric-label {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.catalog-metric-note {
+  color: var(--muted-2);
+  font-size: 12px;
+}
+
+.catalog-issues {
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.catalog-issues summary {
+  cursor: pointer;
+}
+
+.catalog-issues ul {
+  margin: 8px 0 0;
   padding-left: 18px;
   line-height: 1.7;
 }
 
-.report-block {
-  margin: 12px 0;
-  font-size: 13px;
-  color: var(--muted);
+.catalog-search {
+  width: min(360px, 100%);
+  margin-bottom: 6px;
 }
 
-.report-block summary {
-  cursor: pointer;
+.catalog-badge {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* Таблицы каталога и истории ревизий */
+
+.table-scroll {
+  overflow-x: auto;
+  margin-top: 12px;
 }
 
 .data-table {
   width: 100%;
-  margin-top: 12px;
   border-collapse: collapse;
   font-size: 13px;
+  white-space: nowrap;
 }
 
 .data-table th,
 .data-table td {
-  padding: 8px 10px;
+  padding: 9px 12px;
   border-bottom: 1px solid var(--line);
   text-align: left;
 }
 
 .data-table th {
   color: var(--muted);
-  font-weight: 500;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.data-table th.numeric,
+.data-table td.numeric {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.data-table tbody tr:hover td {
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .data-table tr.is-current td {
   color: var(--accent);
 }
 
+.data-table tr.is-clickable {
+  cursor: pointer;
+}
+
+/* По центру, а не по растяжке: рядом с кнопками в строке стоит текстовый бейдж
+   («показывается»), у него своей высоты нет — он растягивался на высоту кнопки,
+   а текст оставался прижат к верху коробки. */
 .row-actions {
   display: inline-flex;
+  align-items: center;
   gap: 8px;
+}
+
+/* Кнопки строки — компактные, но не крошечные. На 30px они не добирали высоту
+   строки: слева два ряда текста, справа мелкие кнопки, и под ними оставалась
+   пустота. 36px и 13px кегля закрывают строку по высоте и читаются с рабочей
+   дистанции; до полноразмерных 40px не дотягиваем намеренно — это действия над
+   элементом списка, а не главные кнопки формы. */
+.row-actions .ghost-button {
+  min-height: 36px;
+  padding: 8px 16px;
+  font-size: 13px;
 }
 
 /* Точки каталога поверх дорог: размер кружка растёт от числа поверхностей. */
@@ -3823,4 +4658,208 @@ button:disabled,
   fill-opacity: 0.75;
   stroke: rgba(0, 0, 0, 0.55);
   stroke-width: 1;
+}
+
+/* ── Инструкция «Как завести город» ───────────────────────────────────────
+   Отдельной страницей, а не абзацами над формами: длинные пояснения в
+   админ-панели уже были и от них избавились. Этот текст читают один раз при
+   заведении города — ему место там, куда заходят нарочно. */
+.manual-page {
+  max-width: 900px;
+}
+
+.manual-steps {
+  display: grid;
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.manual-step {
+  display: flex;
+  gap: 18px;
+  padding: 24px 26px;
+}
+
+/* Номер — кружок фиксированного размера: шаги разной высоты, и без него
+   взглядом не найти, где начинается следующий. */
+.manual-step-number {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  margin-top: 1px;
+  border-radius: 50%;
+  background: var(--surface-3);
+  color: var(--accent);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.manual-step-body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.manual-step-body h2 {
+  margin: 3px 0 14px;
+  font-size: 19px;
+  letter-spacing: -0.01em;
+}
+
+/* 15px, а не 13px как в карточках и таблицах: это сплошной текст, который
+   читают подряд с начала до конца, а не цифра, которую выхватывают взглядом. */
+.manual-step-body p,
+.manual-step-body li {
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+.manual-step-body p {
+  margin: 0 0 12px;
+}
+
+.manual-step-body ol,
+.manual-step-body ul {
+  margin: 0 0 12px;
+  padding-left: 22px;
+}
+
+.manual-step-body li {
+  margin-bottom: 7px;
+}
+
+.manual-step-body > :last-child,
+.manual-step-body li:last-child {
+  margin-bottom: 0;
+}
+
+.manual-step-body strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.manual-step-body code,
+.manual-troubles code {
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: var(--surface-3);
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13.5px;
+}
+
+.manual-link {
+  color: var(--accent);
+  text-underline-offset: 3px;
+}
+
+.manual-code {
+  position: relative;
+  margin: 0 0 12px;
+}
+
+/* Запрос показываем целиком и без переносов: перенос в середине строки
+   ["highway"~"…"] читался бы как ошибка в самом запросе. Длинную строку
+   уводим в горизонтальную прокрутку внутри блока — страница от неё не едет. */
+.manual-code pre {
+  margin: 0;
+  padding: 18px 124px 18px 20px;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.manual-code button {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  min-height: 32px;
+  padding: 6px 14px;
+  font-size: 13px;
+}
+
+/* Врезка про {{bbox}}: единственное место инструкции, где ошибка не видна
+   сразу, — слой просто окажется обрезанным по краю кадра. */
+.manual-note {
+  margin: 0 0 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--accent);
+  border-radius: 0 10px 10px 0;
+  background: rgba(5, 195, 161, 0.06);
+}
+
+.manual-note p:last-child {
+  margin-bottom: 0;
+}
+
+.manual-troubles {
+  margin-top: 16px;
+  padding: 24px 26px;
+}
+
+/* Заголовок и подводка тянут размер из `.catalog-panel`, где всё мельче:
+   там это подпись над формой, здесь — конец сплошного текста. */
+.manual-troubles h2 {
+  margin-bottom: 10px;
+  font-size: 19px;
+}
+
+.manual-troubles .catalog-hint {
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+.manual-troubles-list {
+  display: grid;
+  gap: 14px;
+  margin: 0;
+}
+
+.manual-troubles-list dt {
+  margin-bottom: 5px;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.manual-troubles-list dd {
+  margin: 0;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+@media (max-width: 620px) {
+  .manual-step,
+  .manual-troubles {
+    padding: 18px 16px;
+  }
+
+  /* Номер уходит над заголовком: на узком экране он съедал треть строки
+     заголовка, и тот ломался на четыре слова в столбик. */
+  .manual-step {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  /* Кнопка «Скопировать» переезжает под запрос: над ним она накрывала первую
+     строку, а укоротить её нечем — запрос нужен целиком. */
+  .manual-code pre {
+    padding: 16px 18px;
+  }
+
+  .manual-code button {
+    position: static;
+    margin-top: 8px;
+  }
 }

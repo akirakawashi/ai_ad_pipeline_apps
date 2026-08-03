@@ -50,8 +50,6 @@ class AdCatalogRepository(Protocol):
         """Кладёт разобранный пак неактуальным: до применения его никто не видит."""
         ...
 
-    def get_import(self, import_id: str) -> CatalogImportDTO | None: ...
-
     def list_imports(self, city_slug: str) -> list[CatalogImportDTO] | None:
         """История ревизий города, свежие сверху. None — города нет."""
         ...
@@ -66,6 +64,13 @@ class AdCatalogRepository(Protocol):
 
     def restore_import(self, import_id: str) -> CatalogImportDTO | None:
         """Возвращает город на прежнюю ревизию: гасит текущую, зажигает эту."""
+        ...
+
+    def hide_import(self, import_id: str) -> CatalogImportDTO | None:
+        """Снимает ревизию с показа, не назначая другую.
+
+        None — пака нет. `CatalogImportStateError`, если он и так не показан.
+        """
         ...
 
     def delete_import(self, import_id: str) -> bool:

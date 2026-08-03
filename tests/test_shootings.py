@@ -10,9 +10,10 @@ from __future__ import annotations
 from datetime import datetime
 
 import pytest
-from sqlmodel import Session, text
+from sqlmodel import Session, select, text
 
 from conftest import payload
+from infrastructure.database.models import PipelineRunEvent
 from infrastructure.database.session import engine
 
 
@@ -24,7 +25,15 @@ def assignment(client, city_route) -> dict:
 
 
 @pytest.fixture
-def operator(client) -> dict:
+def other_assignment(client, city_route) -> dict:
+    """Второе задание на том же маршруте — чтобы фильтру было из чего выбирать."""
+    city_slug, route_slug = city_route
+    url = f"/api/v1/cities/{city_slug}/routes/{route_slug}/assignments"
+    return payload(client.post(url, json={}))
+
+
+@pytest.fixture
+def uploaded_by(client) -> dict:
     return payload(client.post("/api/v1/users", json={"full_name": "Петров Пётр"}))
 
 
@@ -33,6 +42,7 @@ def create_run(client, **overrides):
         "file_name": "pass.mp4",
         "content_type": "video/mp4",
         "size_bytes": 1024,
+        "shot_started_at": "2026-08-02T09:30:00Z",
     }
     body.update(overrides)
     return client.post("/api/v1/runs", json=body)
@@ -41,7 +51,8 @@ def create_run(client, **overrides):
 def set_duration(run_id: str, seconds: float) -> None:
     """Длительность проставляет воркер после обработки — здесь имитируем."""
     with Session(engine) as session:
-        session.exec(
+        # execute, а не exec: exec у SQLModel типизирован под select.
+        session.execute(
             text(
                 "UPDATE pipeline_runs SET duration_sec = :d WHERE pipeline_runs_id = :i"
             ).bindparams(d=seconds, i=run_id)
@@ -49,18 +60,18 @@ def set_duration(run_id: str, seconds: float) -> None:
         session.commit()
 
 
-def test_stores_shooting_details(client, assignment, operator):
+def test_stores_shooting_details(client, assignment, uploaded_by):
     run = payload(
         create_run(
             client,
             assignment_id=assignment["id"],
             shot_started_at="2026-08-02T09:30:00Z",
-            operator_user_id=operator["id"],
+            uploaded_by_user_id=uploaded_by["id"],
         )
     )
     got = payload(client.get(f"/api/v1/runs/{run['run_id']}"))
     assert got["shot_started_at"].startswith("2026-08-02T09:30")
-    assert got["operator"]["full_name"] == "Петров Пётр"
+    assert got["uploaded_by"]["full_name"] == "Петров Пётр"
 
 
 def test_processing_times_are_separate_from_shooting(client, assignment):
@@ -105,27 +116,21 @@ def test_finish_is_start_plus_duration(client, assignment):
     assert (finished - started).total_seconds() == pytest.approx(754.5)
 
 
-def test_finish_unknown_without_start(client, assignment):
-    run = payload(create_run(client, assignment_id=assignment["id"]))
-    set_duration(run["run_id"], 100.0)
-    assert payload(client.get(f"/api/v1/runs/{run['run_id']}"))["shot_finished_at"] is None
-
-
-def test_patch_changes_operator_only(client, assignment, operator):
+def test_patch_changes_uploaded_by_only(client, assignment, uploaded_by):
     run = payload(
         create_run(
             client,
             assignment_id=assignment["id"],
             shot_started_at="2026-08-02T09:30:00Z",
-            operator_user_id=operator["id"],
+            uploaded_by_user_id=uploaded_by["id"],
         )
     )
     other = payload(client.post("/api/v1/users", json={"full_name": "Сидоров Сидор"}))
 
     updated = payload(
-        client.patch(f"/api/v1/runs/{run['run_id']}", json={"operator_user_id": other["id"]})
+        client.patch(f"/api/v1/runs/{run['run_id']}", json={"uploaded_by_user_id": other["id"]})
     )
-    assert updated["operator"]["id"] == other["id"]
+    assert updated["uploaded_by"]["id"] == other["id"]
     assert updated["shot_started_at"].startswith("2026-08-02T09:30")
 
 
@@ -137,11 +142,11 @@ def test_patch_rejects_naive_datetime(client, assignment):
     assert response.status_code == 422
 
 
-def test_unknown_operator_is_not_500(client, assignment):
+def test_unknown_uploader_is_not_500(client, assignment):
     run = payload(create_run(client, assignment_id=assignment["id"]))
     response = client.patch(
         f"/api/v1/runs/{run['run_id']}",
-        json={"operator_user_id": "00000000-0000-0000-0000-000000000000"},
+        json={"uploaded_by_user_id": "00000000-0000-0000-0000-000000000000"},
     )
     assert response.status_code == 400
 
@@ -176,28 +181,152 @@ def test_unknown_assignment_is_404(client):
     assert response.status_code == 404
 
 
+class TestAssignmentIsMandatory:
+    """Съёмки вне маршрута не существует — ни завести, ни отфильтровать.
+
+    Это не только правило продукта: без маршрута у съёмки нет геозон, значит нет
+    и значимости места, и положить её в сводку задания или маршрута некуда.
+    Такое видео занимало место в хранилище и не отвечало ни на один вопрос.
+    """
+
+    def test_without_assignment_is_refused(self, client):
+        """Поле обязательное, поэтому отказ приходит от разбора запроса — 422."""
+        assert create_run(client, file_name="solo.mp4").status_code == 422
+
+    def test_explicit_null_is_refused_too(self, client):
+        """Явный null — та же дыра, что и пропущенное поле; закрыта тем же."""
+        response = create_run(client, file_name="solo.mp4", assignment_id=None)
+        assert response.status_code == 422
+
+    def test_empty_string_is_refused(self, client):
+        """Пустая строка прошла бы `str`, поэтому у поля есть min_length."""
+        response = create_run(client, file_name="solo.mp4", assignment_id="")
+        assert response.status_code == 422
+
+
+class TestShootingDateIsMandatory:
+    """Съёмку без места на оси времени нельзя ни создать, ни получить через PATCH."""
+
+    def test_without_date_is_refused(self, client, assignment):
+        response = client.post(
+            "/api/v1/runs",
+            json={
+                "file_name": "undated.mp4",
+                "content_type": "video/mp4",
+                "size_bytes": 1024,
+                "assignment_id": assignment["id"],
+            },
+        )
+        assert response.status_code == 422
+
+    def test_explicit_null_is_refused_too(self, client, assignment):
+        response = create_run(
+            client,
+            assignment_id=assignment["id"],
+            shot_started_at=None,
+        )
+        assert response.status_code == 422
+
+    def test_patch_cannot_clear_date(self, client, assignment):
+        run = payload(create_run(client, assignment_id=assignment["id"]))
+        response = client.patch(
+            f"/api/v1/runs/{run['run_id']}",
+            json={"shot_started_at": None},
+        )
+        assert response.status_code == 422
+
+
+class TestHiddenAssignment:
+    """Скрыли задание — вместе с ним пропали и его съёмки.
+
+    Не косметика: съёмка скрытого задания не должна остаться ни в списке видео,
+    ни по прямой ссылке. Иначе карточка вела бы на страницу, которой нет, а
+    «скрыто» означало бы разное в разных местах.
+    """
+
+    def hide(self, client, assignment: dict) -> None:
+        response = client.patch(
+            f"/api/v1/assignments/{assignment['id']}", json={"is_active": False}
+        )
+        assert response.status_code == 200
+
+    def test_shootings_leave_the_list(self, client, assignment, other_assignment):
+        create_run(client, file_name="hidden.mp4", assignment_id=assignment["id"])
+        create_run(client, file_name="visible.mp4", assignment_id=other_assignment["id"])
+        self.hide(client, assignment)
+
+        items = payload(client.get("/api/v1/runs?page_size=50"))["items"]
+        assert [item["source_name"] for item in items] == ["visible.mp4"]
+
+    def test_direct_link_to_a_shooting_is_404(self, client, assignment):
+        run = payload(create_run(client, assignment_id=assignment["id"]))
+        self.hide(client, assignment)
+        assert client.get(f"/api/v1/runs/{run['run_id']}").status_code == 404
+
+    def test_uploading_into_it_is_refused(self, client, assignment):
+        """Идентификатор задания стоит в адресе страницы загрузки.
+
+        Из выпадашки скрытое уже не выбрать, но открытая со вчера вкладка
+        отправила бы видео по старой ссылке — отказ приходит с сервера.
+        """
+        self.hide(client, assignment)
+        assert create_run(client, assignment_id=assignment["id"]).status_code == 404
+
+    def test_restoring_brings_the_shootings_back(self, client, assignment):
+        run = payload(create_run(client, assignment_id=assignment["id"]))
+        self.hide(client, assignment)
+        client.patch(f"/api/v1/assignments/{assignment['id']}", json={"is_active": True})
+
+        assert client.get(f"/api/v1/runs/{run['run_id']}").status_code == 200
+
+    def test_upload_started_before_hiding_still_completes(self, client, assignment):
+        """Файл уже в хранилище: отказать здесь — оставить мусор и строку в `uploading`.
+
+        Дозагрузка — путь записи, а пути записи скрытия не знают: по ним же
+        ходит воркер. Видно съёмку всё равно не будет, пока задание не вернут.
+        """
+        run = payload(create_run(client, assignment_id=assignment["id"]))
+        self.hide(client, assignment)
+
+        response = client.post(f"/api/v1/runs/{run['run_id']}/upload-complete")
+        assert response.status_code == 200
+        assert payload(response)["status"] == "queued"
+
+
 class TestFilters:
-    def test_unassigned_only(self, client, assignment):
+    def test_by_assignment(self, client, assignment, other_assignment):
         create_run(client, file_name="in.mp4", assignment_id=assignment["id"])
-        create_run(client, file_name="solo.mp4")
-
-        items = payload(client.get("/api/v1/runs?assigned=false&page_size=50"))["items"]
-        assert len(items) == 1
-        assert items[0]["assignment"] is None
-
-    def test_by_assignment(self, client, assignment):
-        create_run(client, file_name="in.mp4", assignment_id=assignment["id"])
-        create_run(client, file_name="solo.mp4")
+        create_run(client, file_name="solo.mp4", assignment_id=other_assignment["id"])
 
         page = payload(
             client.get(f"/api/v1/runs?assignment_id={assignment['id']}&page_size=50")
         )
         assert page["total"] == 1
 
-    def test_list_carries_assignment_and_operator(self, client, assignment, operator):
+    def test_list_carries_assignment_and_uploader(self, client, assignment, uploaded_by):
         create_run(
-            client, assignment_id=assignment["id"], operator_user_id=operator["id"]
+            client, assignment_id=assignment["id"], uploaded_by_user_id=uploaded_by["id"]
         )
         items = payload(client.get("/api/v1/runs?page_size=50"))["items"]
         assert items[0]["assignment"]["assignment_id"] == assignment["id"]
-        assert items[0]["operator"]["id"] == operator["id"]
+        assert items[0]["uploaded_by"]["id"] == uploaded_by["id"]
+
+
+class TestProcessingLog:
+    """Журнал обработки: таблица, у которой есть только запись.
+
+    Ход обработки интерфейс берёт из полей самой съёмки, а `pipeline_run_events`
+    читают запросом к базе, когда надо понять, на чём всё сломалось. Читателя в
+    коде у неё нет — значит, если запись однажды отвалится, заметить это будет
+    нечем. Этот тест и есть тот, кто заметит.
+    """
+
+    def test_creating_a_shooting_writes_an_event(self, client, assignment):
+        run = payload(create_run(client, assignment_id=assignment["id"]))
+        with Session(engine) as session:
+            rows = session.exec(
+                select(PipelineRunEvent).where(
+                    PipelineRunEvent.pipeline_runs_id == run["run_id"]
+                )
+            ).all()
+        assert [(row.stage, row.progress) for row in rows] == [("upload", 0)]

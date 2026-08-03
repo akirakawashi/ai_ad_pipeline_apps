@@ -44,6 +44,7 @@ def create_route_geozone(
         city_slug=city_slug,
         route_slug=route_slug,
         name=payload.name,
+        description=payload.description,
         start_fraction=payload.start_fraction,
         end_fraction=payload.end_fraction,
         coefficient=payload.coefficient,

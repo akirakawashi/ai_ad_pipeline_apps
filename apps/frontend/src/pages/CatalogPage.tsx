@@ -1,56 +1,52 @@
-import { useEffect, useRef, useState } from 'react'
-import {
-  applyCatalogImport,
-  deleteCatalogImport,
-  getAdStructures,
-  getCatalogImports,
-  getCities,
-  restoreCatalogImport,
-  uploadCatalogImport,
-} from '../api'
+import { useEffect, useState } from 'react'
+import { getAdStructures, getCatalogImports, getCities } from '../api'
 import { EmptyState, ErrorBanner } from '../components/common/Feedback'
 import { PageHeader } from '../components/common/PageHeader'
-import { UserSelect } from '../components/common/UserSelect'
-import type { AdStructure, CatalogImport, CatalogImportReport, City } from '../types'
-
-const ACCEPTED = '.xlsx,.xls,.csv'
+import { Select } from '../components/common/Select'
+import type { AdStructure, CatalogImport, City } from '../types'
 
 function errorMessage(reason: unknown): string {
   return reason instanceof Error ? reason.message : String(reason)
 }
 
-function formatMoment(value: string | null): string {
-  if (!value) return '—'
-  return new Date(value).toLocaleString('ru-RU', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
+// Пауза перед запросом по набранному в поиске. Без неё каждое нажатие клавиши
+// уходило в базу: «Ленина» — это шесть запросов подряд, пять из которых
+// устаревают, не успев вернуться.
+const SEARCH_DELAY_MS = 300
 
 /**
- * Каталог рекламных конструкций города.
+ * Справочник рекламных конструкций города — только чтение.
  *
- * Пак файлов сначала только разбирается: человек видит отчёт и решает,
- * применять или нет. До применения каталог не меняется ни на одну точку —
- * поэтому «−180 точек» в отчёте важнее всех остальных цифр, неполный файл
- * выглядит именно так.
+ * Загрузка паков и откат ревизий отсюда убраны в админ-панель: заменить каталог
+ * целиком — административное действие, и держать его на экране, куда приходят
+ * посмотреть список, значило класть кнопку «Удалить ревизию» под руку тому, кто
+ * искал адрес. Историю ревизий страница всё же читает — из неё берётся номер
+ * текущей, без него непонятно, на что смотришь.
  */
 export function CatalogPage() {
-  const [cities, setCities] = useState<City[]>([])
-  const [citySlug, setCitySlug] = useState<string>('')
-  const [structures, setStructures] = useState<AdStructure[]>([])
-  const [total, setTotal] = useState(0)
-  const [imports, setImports] = useState<CatalogImport[]>([])
+  // null — список городов ещё не пришёл. Отличать это от «городов нет» надо:
+  // без города не запускается ни одна загрузка, и страница иначе висела бы на
+  // «Загружаем…» вечно, ничего при этом не загружая.
+  const [cities, setCities] = useState<City[] | null>(null)
+  const [citySlug, setCitySlug] = useState('')
   const [search, setSearch] = useState('')
-  const [uploaderId, setUploaderId] = useState('')
-  const [report, setReport] = useState<CatalogImportReport | null>(null)
-  const [busy, setBusy] = useState(false)
+  // Что реально ушло в запрос: `search` меняется на каждую букву, это — с паузой.
+  const [searchQuery, setSearchQuery] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
-  const fileInput = useRef<HTMLInputElement>(null)
+
+  // Загруженное храним с меткой, чьего оно города: между сменой города и ответом
+  // сервера иначе показываются конструкции предыдущего. Метка — только город,
+  // без строки поиска, и это намеренно: уточняя поиск, человек должен видеть
+  // прежний результат, пока едет новый, а не пустую таблицу на каждой букве.
+  const [loadedStructures, setLoadedStructures] = useState<{
+    citySlug: string
+    items: AdStructure[]
+    total: number
+  } | null>(null)
+  const [loadedImports, setLoadedImports] = useState<{
+    citySlug: string
+    items: CatalogImport[]
+  } | null>(null)
 
   useEffect(() => {
     getCities()
@@ -61,24 +57,21 @@ export function CatalogPage() {
       .catch((reason) => setError(errorMessage(reason)))
   }, [])
 
-  // Счётчик перезагрузок: действия над ревизиями меняют данные на сервере, и
-  // экран должен перечитать их тем же путём, что и при смене города.
-  const [version, setVersion] = useState(0)
-  const reload = () => setVersion((current) => current + 1)
+  useEffect(() => {
+    const timer = setTimeout(() => setSearchQuery(search), SEARCH_DELAY_MS)
+    return () => clearTimeout(timer)
+  }, [search])
 
+  // История ревизий зависит только от города. Раньше она ехала в одном
+  // Promise.all с конструкциями и потому перезапрашивалась на каждую букву
+  // поиска, хотя от текста поиска не меняется вовсе.
   useEffect(() => {
     if (!citySlug) return
     let disposed = false
 
-    Promise.all([
-      getAdStructures(citySlug, { search: search || undefined }),
-      getCatalogImports(citySlug),
-    ])
-      .then(([page, history]) => {
-        if (disposed) return
-        setStructures(page.items)
-        setTotal(page.total)
-        setImports(history)
+    getCatalogImports(citySlug)
+      .then((items) => {
+        if (!disposed) setLoadedImports({ citySlug, items })
       })
       .catch((reason) => {
         if (!disposed) setError(errorMessage(reason))
@@ -87,274 +80,112 @@ export function CatalogPage() {
     return () => {
       disposed = true
     }
-  }, [citySlug, search, version])
+  }, [citySlug])
 
-  const currentRevision = imports.find((item) => item.is_current)
+  useEffect(() => {
+    if (!citySlug) return
+    let disposed = false
 
-  const handleUpload = async () => {
-    const files = Array.from(fileInput.current?.files ?? [])
-    if (!files.length || !uploaderId) return
-    setBusy(true)
-    setError(null)
-    setNotice(null)
-    try {
-      setReport(await uploadCatalogImport(citySlug, files, uploaderId))
-    } catch (reason) {
-      setError(errorMessage(reason))
-    } finally {
-      setBusy(false)
+    getAdStructures(citySlug, { search: searchQuery || undefined })
+      .then((page) => {
+        if (disposed) return
+        setLoadedStructures({ citySlug, items: page.items, total: page.total })
+      })
+      .catch((reason) => {
+        if (!disposed) setError(errorMessage(reason))
+      })
+
+    return () => {
+      disposed = true
     }
-  }
+  }, [citySlug, searchQuery])
 
-  const finishImport = async (action: 'apply' | 'cancel') => {
-    if (!report) return
-    setBusy(true)
-    setError(null)
-    try {
-      if (action === 'apply') {
-        const applied = await applyCatalogImport(report.catalog_import.id)
-        setNotice(`Применена ревизия ${applied.revision}.`)
-      } else {
-        await deleteCatalogImport(report.catalog_import.id)
-        setNotice('Загрузка отменена, каталог не изменился.')
-      }
-      setReport(null)
-      if (fileInput.current) fileInput.current.value = ''
-      reload()
-    } catch (reason) {
-      setError(errorMessage(reason))
-    } finally {
-      setBusy(false)
-    }
-  }
+  // Выводим, а не сбрасываем в эффекте — как маршруты в VideosPage.
+  const structuresOfCity =
+    loadedStructures?.citySlug === citySlug ? loadedStructures : null
+  const importsOfCity = loadedImports?.citySlug === citySlug ? loadedImports : null
 
-  const handleRestore = async (item: CatalogImport) => {
-    setBusy(true)
-    setError(null)
-    try {
-      await restoreCatalogImport(item.id)
-      setNotice(`Возвращена ревизия ${item.revision}.`)
-      reload()
-    } catch (reason) {
-      setError(errorMessage(reason))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const handleDelete = async (item: CatalogImport) => {
-    setBusy(true)
-    setError(null)
-    try {
-      await deleteCatalogImport(item.id)
-      reload()
-    } catch (reason) {
-      setError(errorMessage(reason))
-    } finally {
-      setBusy(false)
-    }
-  }
+  const structures = structuresOfCity?.items ?? []
+  const total = structuresOfCity?.total ?? 0
+  const currentRevision = importsOfCity?.items.find((item) => item.is_current)
 
   return (
     <div className="page">
       <PageHeader
         eyebrow="Каталог"
         title="Рекламные конструкции"
-        description="Загружается паком файлов на город. Новый пак заменяет прежний целиком."
+        description="Конструкции текущей ревизии города. Загружаются паком файлов в админ-панели."
       />
 
       {error && <ErrorBanner text={error} />}
-      {notice && <p className="hint">{notice}</p>}
 
-      <section className="panel catalog-panel">
-        <div className="catalog-toolbar">
-          <label>
-            Город
-            <select
-              value={citySlug}
-              onChange={(event) => {
-                setCitySlug(event.target.value)
-                setReport(null)
-              }}
-            >
-              {cities.map((city) => (
-                <option key={city.id} value={city.slug}>
-                  {city.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <span className="hint">
-            {currentRevision
+      <section className="filter-bar">
+        <div className="field">
+          Город
+          <Select
+            ariaLabel="Город"
+            value={citySlug}
+            options={
+              cities?.map((city) => ({ value: city.slug, label: city.name })) ?? []
+            }
+            onChange={setCitySlug}
+          />
+        </div>
+        <p className="catalog-state">
+          {/* Пока не пришли обе половины, честнее молчать: «Каталог пуст» на
+              полсекунды при каждой смене города — это неправда, а не задержка. */}
+          {!importsOfCity || !structuresOfCity
+            ? 'Загружаем…'
+            : currentRevision
               ? `Ревизия ${currentRevision.revision} · точек: ${total}`
               : 'Каталог пуст'}
-          </span>
-        </div>
-      </section>
-
-      <section className="panel catalog-panel">
-        <h2>Загрузка пака</h2>
-        <p className="hint">
-          До 20 файлов формата xlsx, xls или csv — все по одному городу. Файлы
-          разбираются и не сохраняются: в базу уезжают только данные.
         </p>
-        <div className="catalog-toolbar">
-          <input ref={fileInput} type="file" accept={ACCEPTED} multiple />
-          <UserSelect
-            label="Кто загрузил"
-            value={uploaderId}
-            onChange={setUploaderId}
-          />
-          <button
-            className="primary"
-            disabled={busy || !citySlug || !uploaderId}
-            onClick={handleUpload}
-          >
-            Разобрать файлы
-          </button>
-        </div>
       </section>
-
-      {report && (
-        <section className="panel catalog-panel">
-          <h2>Что произойдёт</h2>
-          <ul className="report-list">
-            <li>
-              Точек было {report.points_before}, станет {report.points_after}
-            </li>
-            <li>
-              Появится {report.added}, исчезнет {report.removed}
-            </li>
-            <li>Строк схлопнуто в точки: {report.collapsed_rows}</li>
-            <li>Строк отброшено: {report.catalog_import.rows_rejected}</li>
-          </ul>
-
-          {report.rejected_files.length > 0 && (
-            <div className="report-block">
-              <h3>Файлы отклонены целиком</h3>
-              <ul>
-                {report.rejected_files.map((file) => (
-                  <li key={file.file_name}>
-                    {file.file_name} — {file.reason}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {report.files_with_extra_sheets.length > 0 && (
-            <p className="hint">
-              Лишние листы (читаем только первый):{' '}
-              {report.files_with_extra_sheets.join(', ')}
-            </p>
-          )}
-
-          {report.row_errors.length > 0 && (
-            <details className="report-block">
-              <summary>Пропущенные строки: {report.row_errors.length}</summary>
-              <ul>
-                {report.row_errors.slice(0, 50).map((row, index) => (
-                  <li key={index}>
-                    {row.file_name}, строка {row.row_number} — {row.reason}
-                  </li>
-                ))}
-              </ul>
-            </details>
-          )}
-
-          <div className="catalog-toolbar">
-            <button
-              className="primary"
-              disabled={busy}
-              onClick={() => finishImport('apply')}
-            >
-              Применить
-            </button>
-            <button disabled={busy} onClick={() => finishImport('cancel')}>
-              Отменить
-            </button>
-          </div>
-        </section>
-      )}
 
       <section className="panel catalog-panel">
         <h2>Конструкции</h2>
         <input
+          className="text-input catalog-search"
           type="search"
           placeholder="Поиск по адресу"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
         />
-        {structures.length === 0 ? (
-          <EmptyState text="Пока пусто. Загрузите пак файлов." />
+        {cities !== null && cities.length === 0 ? (
+          <EmptyState text="Городов пока нет. Город заводится в админ-панели." />
+        ) : !structuresOfCity ? (
+          <EmptyState text="Загружаем конструкции…" />
+        ) : structures.length === 0 ? (
+          <EmptyState
+            text={
+              searchQuery
+                ? 'По этому адресу ничего не нашлось.'
+                : 'Каталог пуст. Пак файлов загружается в админ-панели.'
+            }
+          />
         ) : (
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Адрес</th>
-                <th>Поверхностей</th>
-                <th>Координаты</th>
-              </tr>
-            </thead>
-            <tbody>
-              {structures.map((structure) => (
-                <tr key={structure.id}>
-                  <td>{structure.address}</td>
-                  <td>{structure.surfaces_count}</td>
-                  <td>
-                    {structure.latitude.toFixed(6)}, {structure.longitude.toFixed(6)}
-                  </td>
+          <div className="table-scroll">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Адрес</th>
+                  <th className="numeric">Поверхностей</th>
+                  <th className="numeric">Координаты</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
-
-      <section className="panel catalog-panel">
-        <h2>История ревизий</h2>
-        {imports.length === 0 ? (
-          <EmptyState text="Загрузок ещё не было." />
-        ) : (
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Ревизия</th>
-                <th>Когда</th>
-                <th>Кто</th>
-                <th>Файлы</th>
-                <th>Точек</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {imports.map((item) => (
-                <tr key={item.id} className={item.is_current ? 'is-current' : ''}>
-                  <td>{item.revision ?? 'не применена'}</td>
-                  <td>{formatMoment(item.applied_at ?? item.created_at)}</td>
-                  <td>{item.uploaded_by?.full_name ?? '—'}</td>
-                  <td>{item.file_names.join(', ')}</td>
-                  <td>{item.points_total}</td>
-                  <td>
-                    {item.is_current ? (
-                      <span className="hint">показывается</span>
-                    ) : (
-                      <span className="row-actions">
-                        {item.revision !== null && (
-                          <button disabled={busy} onClick={() => handleRestore(item)}>
-                            Вернуть
-                          </button>
-                        )}
-                        <button disabled={busy} onClick={() => handleDelete(item)}>
-                          Удалить
-                        </button>
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {structures.map((structure) => (
+                  <tr key={structure.id}>
+                    <td>{structure.address}</td>
+                    <td className="numeric">{structure.surfaces_count}</td>
+                    <td className="numeric">
+                      {structure.latitude.toFixed(6)}, {structure.longitude.toFixed(6)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
     </div>

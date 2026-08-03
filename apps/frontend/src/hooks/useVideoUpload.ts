@@ -1,15 +1,37 @@
 import { useCallback, useRef, useState, type DragEvent } from 'react'
 import { completeUpload, createRun, uploadVideo } from '../api'
+import { isoFromDateInput } from '../utils/formatters'
 
 export type UploadItemStatus = 'queued' | 'uploading' | 'done' | 'error'
 
 export interface UploadItem {
   key: string
   file: File
+  /**
+   * Когда снимали, «ГГГГ-ММ-ДД». У каждого файла своя: партия из двадцати
+   * видео — это, как правило, двадцать разных проездов, иногда в разные дни,
+   * а график маршрута строится именно по этой дате. Общее на партию поле
+   * проставило бы всем одинаковую и молча свело бы проезды в одну точку.
+   */
+  shotDate: string
   status: UploadItemStatus
   progress: number
   error?: string
   runId?: string
+}
+
+/**
+ * Что уходит на сервер как время съёмки.
+ *
+ * Дату человек обязательно ставит сам для каждого файла. Время из файла не
+ * используем: `lastModified` после переноса с карты памяти может быть временем
+ * копирования. Поля времени в форме нет, поэтому отправляем начало выбранного
+ * дня в локальном часовом поясе.
+ */
+function shotStartedAt(item: UploadItem): string {
+  const fromInput = isoFromDateInput(item.shotDate)
+  if (!fromInput) throw new Error('Укажите дату записи.')
+  return fromInput
 }
 
 export interface UploadResult {
@@ -20,15 +42,15 @@ export interface UploadResult {
 export interface UseVideoUploadOptions {
   maxFiles: number
   /**
-   * Задание, в которое кладём съёмки. null — «Без задания».
+   * Задание, в которое кладём съёмки. Обязательно: съёмок вне маршрута нет.
    *
    * Задание создаётся заранее, в форме на странице маршрута: съёмка
    * подгружается в готовое задание, а не рождает его по ходу загрузки.
    * Поэтому ретраю упавших файлов не нужен ref — id задания неизменен.
    */
-  assignmentId: string | null
-  /** Оператор — один на всю партию: снимал её один человек. */
-  operatorUserId: string | null
+  assignmentId: string
+  /** Загрузивший — один на всю партию: файлы приносит один человек. */
+  uploadedByUserId: string | null
   onFinish?: (result: UploadResult) => void
 }
 
@@ -39,7 +61,7 @@ function makeKey(file: File) {
 export function useVideoUpload({
   maxFiles,
   assignmentId,
-  operatorUserId,
+  uploadedByUserId,
   onFinish,
 }: UseVideoUploadOptions) {
   const [items, setItems] = useState<UploadItem[]>([])
@@ -61,6 +83,7 @@ export function useVideoUpload({
       const incoming = Array.from(fileList).map((file) => ({
         key: makeKey(file),
         file,
+        shotDate: '',
         status: 'queued' as UploadItemStatus,
         progress: 0,
       }))
@@ -92,6 +115,14 @@ export function useVideoUpload({
     [busy],
   )
 
+  const setShotDate = useCallback(
+    (key: string, value: string) => {
+      if (busy) return
+      patch(key, { shotDate: value })
+    },
+    [busy, patch],
+  )
+
   const clearAll = useCallback(() => {
     if (busy) return
     setItems([])
@@ -111,7 +142,11 @@ export function useVideoUpload({
       for (const item of queue) {
         patch(item.key, { status: 'uploading', progress: 0, error: undefined })
         try {
-          const run = await createRun(item.file, { assignmentId, operatorUserId })
+          const run = await createRun(item.file, {
+            assignmentId,
+            uploadedByUserId,
+            shotStartedAt: shotStartedAt(item),
+          })
           await uploadVideo(run.upload, item.file, (progress) =>
             patch(item.key, { progress }),
           )
@@ -130,7 +165,7 @@ export function useVideoUpload({
       setBusy(false)
       onFinish?.({ runIds, failed })
     },
-    [assignmentId, onFinish, operatorUserId, patch],
+    [assignmentId, onFinish, uploadedByUserId, patch],
   )
 
   const start = useCallback(() => {
@@ -168,6 +203,7 @@ export function useVideoUpload({
 
   const doneCount = items.filter((item) => item.status === 'done').length
   const failedCount = items.filter((item) => item.status === 'error').length
+  const datesReady = items.every((item) => Boolean(item.shotDate))
 
   return {
     items,
@@ -177,9 +213,11 @@ export function useVideoUpload({
     error,
     doneCount,
     failedCount,
-    canStart: items.length > 0 && !busy && doneCount < items.length,
+    datesReady,
+    canStart: items.length > 0 && datesReady && !busy && doneCount < items.length,
     addFiles,
     removeItem,
+    setShotDate,
     clearAll,
     start,
     retryFailed,

@@ -6,23 +6,101 @@ from typing import Protocol
 from application.common.dto import (
     CityDetailDTO,
     CityDTO,
+    GeometryDTO,
     GeozoneDTO,
     PipelineRunDTO,
     RouteDTO,
     AssignmentDTO,
 )
+from domain.catalog import CityBounds
 
 
 class CatalogRepository(Protocol):
-    def list_cities(self) -> list[CityDTO]: ...
+    def list_cities(self, *, include_inactive: bool = False) -> list[CityDTO]: ...
 
-    def get_city(self, city_slug: str) -> CityDetailDTO | None: ...
+    def get_city(
+        self,
+        city_slug: str,
+        *,
+        include_inactive: bool = False,
+    ) -> CityDetailDTO | None: ...
 
     def get_route(
         self,
         city_slug: str,
         route_slug: str,
+        *,
+        include_inactive: bool = False,
     ) -> RouteDTO | None: ...
+
+    # --- справочники: правка ------------------------------------------------
+
+    def city_slug_taken(self, slug: str) -> bool: ...
+
+    def create_city(
+        self,
+        *,
+        slug: str,
+        name: str,
+        region: str | None,
+        display_order: int,
+    ) -> CityDTO: ...
+
+    def update_city(self, city_slug: str, *, fields: dict[str, object]) -> bool:
+        """False — города нет."""
+        ...
+
+    def route_slug_taken(self, city_slug: str, slug: str) -> bool: ...
+
+    def create_route(
+        self,
+        *,
+        city_slug: str,
+        slug: str,
+        name: str,
+        color_label: str | None,
+        color_hex: str | None,
+        description: str | None,
+        display_order: int,
+    ) -> RouteDTO | None:
+        """None — города нет."""
+        ...
+
+    def update_route(
+        self,
+        city_slug: str,
+        route_slug: str,
+        *,
+        fields: dict[str, object],
+    ) -> bool: ...
+
+    # --- справочники: геометрия ---------------------------------------------
+
+    def set_roads_geometry(
+        self,
+        city_slug: str,
+        *,
+        geometry: dict,
+        bounds: CityBounds | None,
+    ) -> bool:
+        """Заливает дорожный слой и переписывает рамку города одной операцией."""
+        ...
+
+    def get_roads_geometry(self, city_slug: str) -> GeometryDTO | None: ...
+
+    def set_route_geometry(
+        self,
+        city_slug: str,
+        route_slug: str,
+        *,
+        geometry: dict,
+    ) -> bool: ...
+
+    def get_route_geometry(
+        self,
+        city_slug: str,
+        route_slug: str,
+    ) -> GeometryDTO | None: ...
 
     def list_assignments(
         self,
@@ -31,6 +109,7 @@ class CatalogRepository(Protocol):
         route_slug: str,
         page: int,
         page_size: int,
+        include_inactive: bool = False,
     ) -> tuple[list[AssignmentDTO], int]: ...
 
     def create_assignment(
@@ -59,9 +138,28 @@ class CatalogRepository(Protocol):
         """Перезаписывает только переданные поля. None — задания нет."""
         ...
 
-    def get_assignment(self, assignment_id: str) -> AssignmentDTO | None: ...
+    def get_assignment(
+        self,
+        assignment_id: str,
+        *,
+        include_inactive: bool = False,
+    ) -> AssignmentDTO | None: ...
 
     def list_assignment_runs(self, assignment_id: str) -> list[PipelineRunDTO]: ...
+
+    def list_route_runs(
+        self,
+        city_slug: str,
+        route_slug: str,
+        *,
+        shot_from: datetime | None = None,
+        shot_to: datetime | None = None,
+    ) -> list[PipelineRunDTO] | None:
+        """Съёмки всех заданий маршрута с загруженным заданием. None — маршрута
+        нет. Порядок — по времени съёмки.
+
+        Период — полуинтервал [shot_from, shot_to) по `shot_started_at`."""
+        ...
 
     def list_geozones(
         self,
@@ -77,6 +175,7 @@ class CatalogRepository(Protocol):
         city_slug: str,
         route_slug: str,
         name: str,
+        description: str,
         start_fraction: float,
         end_fraction: float,
         coefficient: float,

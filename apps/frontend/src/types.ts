@@ -1,20 +1,3 @@
-export interface Artifact {
-  id: string
-  artifact_type: string
-  object_key: string
-  content_type: string
-  size_bytes: number
-  created_at: string
-}
-
-export interface RunEvent {
-  id: string
-  stage: string
-  progress: number
-  message: string | null
-  created_at: string
-}
-
 /** Человек из справочника: постановщик задания или оператор съёмки. */
 export interface User {
   id: string
@@ -36,7 +19,7 @@ export interface RouteRef {
   color_hex: string | null
 }
 
-/** Ссылка на задание с карточки видео. null — «Без задания». */
+/** Ссылка на задание с карточки видео. */
 export interface RunAssignmentRef {
   assignment_id: string
   sequence_number: number
@@ -52,9 +35,11 @@ export interface Route {
   color_label: string | null
   color_hex: string | null
   description: string | null
-  /** Путь относительно public/, без ведущего слэша: 'routes/simferopol/route_1.geojson'. */
-  geojson_path: string
+  /** Есть ли залитая линия. Сама геометрия — отдельным запросом: она тяжёлая. */
+  has_geometry: boolean
   display_order: number
+  /** false — маршрут скрыт: пропал из выбора, его задания и съёмки на месте. */
+  is_active: boolean
   assignment_count: number
   video_count: number
 }
@@ -64,9 +49,11 @@ export interface City {
   slug: string
   name: string
   region: string | null
-  /** Путь относительно public/, без ведущего слэша. */
-  roads_geojson_path: string | null
+  /** Есть ли залитый дорожный слой. Сам слой — до полутора мегабайт, отдельно. */
+  has_roads_geometry: boolean
   display_order: number
+  /** false — город скрыт: виден только в справочниках, чтобы было чем вернуть. */
+  is_active: boolean
   route_count: number
   assignment_count: number
   video_count: number
@@ -74,6 +61,42 @@ export interface City {
 
 export interface CityDetail extends City {
   routes: Route[]
+}
+
+/** Тело POST города. Слаг задаётся один раз: он в URL. */
+export interface CityPayload {
+  slug: string
+  name: string
+  region?: string | null
+  display_order?: number
+}
+
+/** Тело PATCH города: отсутствующий ключ = «не менять». Слага здесь нет. */
+export interface CityUpdatePayload {
+  name?: string
+  region?: string | null
+  display_order?: number
+  /** Скрыть/показать. Удаления города нет — снос утащил бы задания и съёмки. */
+  is_active?: boolean
+}
+
+export interface RoutePayload {
+  slug: string
+  name: string
+  color_label?: string | null
+  color_hex?: string | null
+  description?: string | null
+  display_order?: number
+}
+
+export interface RouteUpdatePayload {
+  name?: string
+  color_label?: string | null
+  color_hex?: string | null
+  description?: string | null
+  display_order?: number
+  /** Скрыть/показать. Удаления маршрута нет. */
+  is_active?: boolean
 }
 
 export interface AssignmentStatusCounts {
@@ -105,6 +128,8 @@ export interface Assignment {
   actual_end_at: string | null
   video_count: number
   status_counts: AssignmentStatusCounts
+  /** Скрытое задание видно только в админке — там же его и возвращают. */
+  is_active: boolean
   created_at: string
 }
 
@@ -115,6 +140,8 @@ export interface AssignmentPayload {
   planned_start_at?: string | null
   planned_end_at?: string | null
   author_user_id?: string | null
+  /** Только PATCH: «скрыть» и «показать». Удаления задания нет. */
+  is_active?: boolean
 }
 
 export interface AssignmentsPage {
@@ -124,8 +151,17 @@ export interface AssignmentsPage {
   total: number
 }
 
-export interface AssignmentStat {
+/** Что считаем «типичной» съёмкой. Выбор живёт только на фронте. */
+export type Aggregate = 'mean' | 'median'
+
+/**
+ * Величина «на съёмку»: две оценки центра и разброс между съёмками. Сервер
+ * отдаёт обе сразу — переключение это показ, а не пересчёт. Разброс общий:
+ * он про то, как разошлись проезды, а не про выбранную оценку.
+ */
+export interface MetricStat {
   mean: number
+  median: number
   std: number
 }
 
@@ -135,37 +171,56 @@ export interface ShootingBrand {
   visibility_index: number
 }
 
-/** Сырые метрики одной съёмки — вход для сравнения съёмок. */
+/**
+ * Сырые метрики одной съёмки — единица учёта во всей аналитике. И задание, и
+ * маршрут считаются из списка таких записей напрямую, без промежуточных средних.
+ */
 export interface ShootingMetrics {
   run_id: string
   source_name: string
+  /** Когда снимали, а не когда обрабатывали. */
+  shot_started_at: string
   duration_sec: number
   objects_count: number
   visibility_index: number
   brands: ShootingBrand[]
 }
 
-export interface AssignmentBrand {
-  brand: string
-  objects_per_shooting: AssignmentStat
-  visibility_per_shooting: AssignmentStat
-  visibility_share: number
+/** То же плюс задание: на уровне маршрута его показываем в списке. */
+export interface RouteShootingMetrics extends ShootingMetrics {
+  assignment: RunAssignmentRef
 }
 
-export interface AssignmentTotals {
+/** Доли здесь нет: она зависит от выбранной оценки и считается на месте показа. */
+export interface RollupBrand {
+  brand: string
+  objects_per_shooting: MetricStat
+  visibility_per_shooting: MetricStat
+}
+
+export interface RollupTotals {
   shootings_total: number
   shootings_completed: number
   /** Сумма — «сколько наснимали». Остальное усредняется по съёмкам. */
   duration_sec: number
-  objects_per_shooting: AssignmentStat
-  visibility_per_shooting: AssignmentStat
+  objects_per_shooting: MetricStat
+  visibility_per_shooting: MetricStat
 }
 
 export interface AssignmentSummary {
   assignment: Assignment
-  totals: AssignmentTotals
-  brands: AssignmentBrand[]
+  totals: RollupTotals
+  brands: RollupBrand[]
   shootings: ShootingMetrics[]
+}
+
+/** Свёртка маршрута: та же форма, тот же код, но список съёмок длиннее. */
+export interface RouteSummary {
+  route: Route
+  assignments_total: number
+  totals: RollupTotals
+  brands: RollupBrand[]
+  shootings: RouteShootingMetrics[]
 }
 
 
@@ -192,20 +247,22 @@ export interface PipelineRun {
   completed_at: string | null
   updated_at: string
   /** Когда снимали. Не путать со started_at выше — там начало обработки. */
-  shot_started_at: string | null
+  shot_started_at: string
   /** Считает сервер: shot_started_at + duration_sec. Не хранится. */
   shot_finished_at: string | null
-  /** null — «Без задания» либо связь не запрашивали. */
+  /**
+   * null означает «связь не запрашивали», а не «задания нет»: съёмок вне
+   * маршрута не бывает. Так отвечает `/assignments/{id}/runs` — там задание и
+   * так известно из адреса, и грузить его к каждой съёмке незачем.
+   */
   assignment: RunAssignmentRef | null
-  operator: User | null
-  artifacts: Artifact[]
-  events: RunEvent[]
+  uploaded_by: User | null
 }
 
 /** Тело PATCH съёмки. Ход обработки этим не меняется. */
 export interface ShootingPayload {
-  shot_started_at?: string | null
-  operator_user_id?: string | null
+  shot_started_at?: string
+  uploaded_by_user_id?: string | null
 }
 
 export interface RunsPage {
@@ -278,7 +335,6 @@ export interface RunTimeline {
 
 export interface Playback {
   source_url: string | null
-  annotated_url: string | null
 }
 
 /** Участок значимости маршрута: доля [start, end) времени видео и множитель β. */
@@ -286,6 +342,8 @@ export interface Geozone {
   id: string
   route_id: string
   name: string
+  /** Зачем такой коэффициент. Может быть пустым, но не null. */
+  description: string
   start_fraction: number
   end_fraction: number
   coefficient: number
@@ -296,14 +354,16 @@ export interface Geozone {
 /** Тело POST участка: границы — доли [0,1] от длительности видео. */
 export interface CreateGeozonePayload {
   name: string
+  description: string
   start_fraction: number
   end_fraction: number
   coefficient: number
 }
 
-/** Тело PATCH участка: отсутствующий ключ = «не менять». */
+/** Тело PATCH участка: отсутствующий ключ = «не менять», пустая строка стирает. */
 export interface UpdateGeozonePayload {
   name?: string
+  description?: string
   start_fraction?: number
   end_fraction?: number
   coefficient?: number

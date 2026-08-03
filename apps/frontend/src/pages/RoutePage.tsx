@@ -1,11 +1,18 @@
 import { useEffect, useState } from 'react'
-import { createAssignment, getCity, getRouteAssignments } from '../api'
-import { AssignmentForm } from '../components/AssignmentForm'
+import { getCity, getRouteAssignments, getRouteSummary } from '../api'
+import { RouteSummaryPanel } from '../components/RouteSummaryPanel'
 import { EmptyState, ErrorBanner } from '../components/common/Feedback'
 import { PageHeader } from '../components/common/PageHeader'
 import { RunsSkeleton } from '../components/common/Skeletons'
-import { navigate } from '../routing'
-import type { Assignment, AssignmentPayload, Route } from '../types'
+import { Tabs } from '../components/common/Tabs'
+import {
+  assignmentPath,
+  navigate,
+  routePath,
+  type PageView,
+  type RoutePeriod,
+} from '../routing'
+import type { Aggregate, Assignment, Route, RouteSummary } from '../types'
 import { formatPeriod, pluralAssignments } from '../utils/formatters'
 
 function assignmentProgressLabel(assignment: Assignment): string {
@@ -20,21 +27,33 @@ function assignmentProgressLabel(assignment: Assignment): string {
   return parts.join(' · ') || 'Пусто'
 }
 
+const VIEW_TABS = [
+  { value: 'work', label: 'Задания' },
+  { value: 'analytics', label: 'Аналитика' },
+]
+
 export function RoutePage({
   citySlug,
   routeSlug,
+  period,
+  view,
 }: {
   citySlug: string
   routeSlug: string
+  period: RoutePeriod
+  view: PageView
 }) {
   const [route, setRoute] = useState<Route | null>(null)
   const [cityName, setCityName] = useState('')
   const [assignments, setAssignments] = useState<Assignment[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [creating, setCreating] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [formError, setFormError] = useState<string | null>(null)
+  const [summary, setSummary] = useState<RouteSummary | null>(null)
+  // Оценка живёт на странице, а не в панели: панель размонтируется при уходе на
+  // вкладку заданий, а выбранная медиана это пережить должна. Среднее по
+  // умолчанию — оно слышит каждый проезд; медиана показывает те же съёмки без
+  // влияния выбившегося.
+  const [aggregate, setAggregate] = useState<Aggregate>('mean')
 
   useEffect(() => {
     let disposed = false
@@ -66,24 +85,37 @@ export function RoutePage({
     (sum, assignment) => sum + assignment.video_count,
     0,
   )
-
-  const submit = (payload: AssignmentPayload) => {
-    setSaving(true)
-    setFormError(null)
-    createAssignment(citySlug, routeSlug, payload)
-      // Сразу внутрь задания: следующий шаг — загрузить в него съёмки.
-      .then((assignment) => navigate(`/assignments/${assignment.id}`))
-      .catch((reason) => {
-        setFormError(String(reason))
-        setSaving(false)
-      })
-  }
-
-  const newAssignmentButton = (
-    <button className="primary" onClick={() => setCreating(true)}>
-      Новое задание
-    </button>
+  const completedVideos = assignments.reduce(
+    (sum, assignment) => sum + assignment.status_counts.completed,
+    0,
   )
+
+  // Сводка маршрута читает tracks.csv каждой готовой съёмки, поэтому её нельзя
+  // тянуть на пятисекундном таймере вместе с заданиями. Перечитываем только
+  // когда обработалась ещё одна съёмка (это видно по счётчикам заданий) или
+  // когда поменяли период — там список съёмок другой, а считать его должен
+  // сервер: вторая реализация усреднения разошлась бы с первой.
+  // Границы разбираем на строки: объект периода приезжает из разбора адреса и
+  // при каждом переходе новый, даже если даты те же. По самим датам эффект
+  // срабатывает ровно тогда, когда окно действительно поменялось.
+  // Вкладка в зависимостях не для красоты: пока открыта работа, запрос не
+  // уходит вообще. Раньше он уходил при каждом открытии страницы, даже когда
+  // человек зашёл найти видео и цифры ему не нужны.
+  const { from: periodFrom, to: periodTo } = period
+  const analytics = view === 'analytics'
+
+  useEffect(() => {
+    if (!analytics) return
+    let disposed = false
+    getRouteSummary(citySlug, routeSlug, { from: periodFrom, to: periodTo })
+      .then((loaded) => {
+        if (!disposed) setSummary(loaded)
+      })
+      .catch(() => undefined)
+    return () => {
+      disposed = true
+    }
+  }, [analytics, citySlug, routeSlug, completedVideos, periodFrom, periodTo])
 
   return (
     <div className="page">
@@ -95,33 +127,68 @@ export function RoutePage({
             ? `${pluralAssignments(assignments.length)} · ${totalVideos} видео`
             : undefined
         }
-        actions={creating ? undefined : newAssignmentButton}
       />
 
       {error && <ErrorBanner text={error} />}
 
       {route?.description && <p className="route-description">{route.description}</p>}
 
-      {creating && (
-        <AssignmentForm
-          submitLabel="Создать задание"
-          busy={saving}
-          error={formError}
-          onSubmit={submit}
-          onCancel={() => {
-            setCreating(false)
-            setFormError(null)
-          }}
+      {/* Работа и цифры разведены по вкладкам: аналитика — это тысяча с лишним
+          пикселей графиков, и держать её над списком заданий значило бы
+          отправлять в прокрутку каждого, кто зашёл за конкретным видео. */}
+      <div className="page-view-tabs">
+        <Tabs
+          value={view}
+          options={VIEW_TABS}
+          ariaLabel="Что показывать"
+          onChange={(next) =>
+            navigate(routePath(citySlug, routeSlug, period, next as PageView))
+          }
         />
-      )}
+      </div>
 
       {loading && <RunsSkeleton />}
 
-      {!loading && !error && !creating && !assignments.length && (
-        <EmptyState
-          text="На этом маршруте ещё нет заданий. Создайте первое."
-          action={newAssignmentButton}
-        />
+      {analytics ? (
+        summary ? (
+          <section className="route-summary">
+            <RouteSummaryPanel
+              summary={summary}
+              period={period}
+              onPeriodChange={(next) =>
+                navigate(routePath(citySlug, routeSlug, next, 'analytics'))
+              }
+              aggregate={aggregate}
+              onAggregateChange={setAggregate}
+            />
+          </section>
+        ) : (
+          <RunsSkeleton />
+        )
+      ) : (
+        <RouteWork assignments={assignments} loading={loading} error={error} />
+      )}
+    </div>
+  )
+}
+
+/** Операционная вкладка маршрута: задания и их состояние, без единой цифры метрики. */
+function RouteWork({
+  assignments,
+  loading,
+  error,
+}: {
+  assignments: Assignment[]
+  loading: boolean
+  error: string | null
+}) {
+  return (
+    <>
+      {/* Кнопки «Новое задание» здесь больше нет: задание заводят в админке.
+          Пустой маршрут поэтому не предлагает создать, а говорит, где это
+          делается, — иначе экран выглядел бы сломанным. */}
+      {!loading && !error && !assignments.length && (
+        <EmptyState text="На этом маршруте ещё нет заданий. Их заводят в админ-панели, на вкладке «Задания»." />
       )}
 
       <div className="runs-grid">
@@ -129,7 +196,7 @@ export function RoutePage({
           <button
             className="run-card"
             key={assignment.id}
-            onClick={() => navigate(`/assignments/${assignment.id}`)}
+            onClick={() => navigate(assignmentPath(assignment.id))}
           >
             <div
               className="run-preview"
@@ -159,6 +226,6 @@ export function RoutePage({
           </button>
         ))}
       </div>
-    </div>
+    </>
   )
 }
