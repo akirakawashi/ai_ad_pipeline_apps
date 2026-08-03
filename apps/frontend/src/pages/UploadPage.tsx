@@ -46,7 +46,7 @@ export function UploadPage({ citySlug, routeSlug, assignmentId }: UploadPageProp
   const [selectedCity, setSelectedCity] = useState(citySlug ?? '')
   const [selectedRoute, setSelectedRoute] = useState(routeSlug ?? '')
   const [selectedAssignment, setSelectedAssignment] = useState('')
-  const [operatorId, setOperatorId] = useState('')
+  const [uploadedById, setUploadedById] = useState('')
   const [catalogError, setCatalogError] = useState<string | null>(null)
 
   const pinned = Boolean(assignmentId)
@@ -144,12 +144,12 @@ export function UploadPage({ citySlug, routeSlug, assignmentId }: UploadPageProp
   // Файлы выбирают только после реквизитов партии. Кроме честного порядка
   // действий это закрывает двусмысленное состояние: зелёная, но disabled
   // кнопка раньше выглядела как разрешение грузить без задания.
-  const uploadReady = destinationReady && Boolean(operatorId)
+  const uploadReady = destinationReady && Boolean(uploadedById)
   const missingUploadFields: string[] = []
   if (!pinned && !selectedCity) missingUploadFields.push('город')
   if (!pinned && !selectedRoute) missingUploadFields.push('маршрут')
   if (!destinationReady) missingUploadFields.push('задание')
-  if (!operatorId) missingUploadFields.push('сотрудника')
+  if (!uploadedById) missingUploadFields.push('сотрудника')
   const missingUploadLabel =
     missingUploadFields.length > 1
       ? `${missingUploadFields.slice(0, -1).join(', ')} и ${
@@ -160,7 +160,7 @@ export function UploadPage({ citySlug, routeSlug, assignmentId }: UploadPageProp
   const upload = useVideoUpload({
     maxFiles: MAX_FILES,
     assignmentId: targetAssignmentId,
-    operatorUserId: operatorId || null,
+    uploadedByUserId: uploadedById || null,
     onFinish: ({ failed }) => {
       // При частичном сбое остаёмся на странице: «Повторить» дольёт туда же.
       if (failed > 0) return
@@ -259,10 +259,10 @@ export function UploadPage({ citySlug, routeSlug, assignmentId }: UploadPageProp
         <div className="destination-fields">
           <UserSelect
             label="Кто загрузил"
-            value={operatorId}
+            value={uploadedById}
             disabled={upload.busy}
             placeholder="Кто загрузил"
-            onChange={setOperatorId}
+            onChange={setUploadedById}
           />
         </div>
       </section>

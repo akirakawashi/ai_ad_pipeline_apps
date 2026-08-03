@@ -256,13 +256,13 @@ export interface PipelineRun {
    * так известно из адреса, и грузить его к каждой съёмке незачем.
    */
   assignment: RunAssignmentRef | null
-  operator: User | null
+  uploaded_by: User | null
 }
 
 /** Тело PATCH съёмки. Ход обработки этим не меняется. */
 export interface ShootingPayload {
   shot_started_at?: string
-  operator_user_id?: string | null
+  uploaded_by_user_id?: string | null
 }
 
 export interface RunsPage {

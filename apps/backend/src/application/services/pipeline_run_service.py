@@ -93,7 +93,7 @@ class PipelineRunService:
         size_bytes: int,
         assignment_id: str,
         shot_started_at: datetime,
-        operator_user_id: str | None = None,
+        uploaded_by_user_id: str | None = None,
     ) -> CreateRunDTO:
         safe_name = safe_file_name(file_name)
         if Path(safe_name).suffix.casefold() not in ALLOWED_VIDEO_EXTENSIONS:
@@ -125,7 +125,7 @@ class PipelineRunService:
             size_bytes=size_bytes,
             assignment_id=assignment_id,
             shot_started_at=shot_started_at,
-            operator_user_id=operator_user_id,
+            uploaded_by_user_id=uploaded_by_user_id,
         )
         self._repository.commit()
 

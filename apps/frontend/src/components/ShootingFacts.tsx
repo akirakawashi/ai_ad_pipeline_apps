@@ -27,11 +27,11 @@ export function ShootingFacts({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [startAt, setStartAt] = useState(localInputFromIso(run.shot_started_at))
-  const [operatorId, setOperatorId] = useState(run.operator?.id ?? '')
+  const [uploadedById, setUploadedById] = useState(run.uploaded_by?.id ?? '')
 
   const open = () => {
     setStartAt(localInputFromIso(run.shot_started_at))
-    setOperatorId(run.operator?.id ?? '')
+    setUploadedById(run.uploaded_by?.id ?? '')
     setError(null)
     setEditing(true)
   }
@@ -46,7 +46,7 @@ export function ShootingFacts({
     setError(null)
     updateShooting(run.run_id, {
       shot_started_at: shotStartedAt,
-      operator_user_id: operatorId || null,
+      uploaded_by_user_id: uploadedById || null,
     })
       .then((updated) => {
         onUpdated(updated)
@@ -75,11 +75,11 @@ export function ShootingFacts({
           </div>
           <UserSelect
             label="Кто загрузил"
-            value={operatorId}
-            current={run.operator}
+            value={uploadedById}
+            current={run.uploaded_by}
             disabled={busy}
             placeholder="Кто загрузил"
-            onChange={setOperatorId}
+            onChange={setUploadedById}
           />
         </div>
         <p className="assignment-form-hint">
@@ -106,7 +106,7 @@ export function ShootingFacts({
     <dl className="assignment-facts">
       <div>
         <dt>Кто загрузил</dt>
-        <dd>{run.operator?.full_name ?? '—'}</dd>
+        <dd>{run.uploaded_by?.full_name ?? '—'}</dd>
       </div>
       <div>
         <dt>Начало записи</dt>

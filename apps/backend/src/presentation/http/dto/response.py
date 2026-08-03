@@ -81,15 +81,15 @@ class CreateRunRequest(ApiModel):
     # Дата обязательна: это ось графика и серверного фильтра маршрута. Браузер
     # подставляет метку файла, но человек подтверждает или исправляет её.
     shot_started_at: AwareDatetime
-    # Оператор общий на всю партию загрузки.
-    operator_user_id: str | None = Field(default=None, max_length=36)
+    # Загрузивший общий на всю партию: файлы приносит один человек.
+    uploaded_by_user_id: str | None = Field(default=None, max_length=36)
 
 
 class UpdateShootingRequest(ApiModel):
     """PATCH реквизитов съёмки. Ход обработки этим эндпоинтом не меняется."""
 
     shot_started_at: AwareDatetime | None = None
-    operator_user_id: str | None = Field(default=None, max_length=36)
+    uploaded_by_user_id: str | None = Field(default=None, max_length=36)
 
     @field_validator("shot_started_at")
     @classmethod
@@ -103,7 +103,7 @@ class UpdateShootingRequest(ApiModel):
         return value
 
     def changed_fields(self) -> dict[str, object]:
-        column_by_field = {"operator_user_id": "operator_users_id"}
+        column_by_field = {"uploaded_by_user_id": "uploaded_by_users_id"}
         return {
             column_by_field.get(name, name): getattr(self, name)
             for name in self.model_fields_set
@@ -367,7 +367,7 @@ class PipelineRunResponse(ApiModel):
     shot_started_at: datetime
     shot_finished_at: datetime | None = None
     assignment: RunAssignmentRefResponse | None = None
-    operator: UserResponse | None = None
+    uploaded_by: UserResponse | None = None
 
 
 class PaginatedRunsResponse(ApiModel):

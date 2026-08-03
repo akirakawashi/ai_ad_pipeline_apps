@@ -90,7 +90,7 @@ class PipelineRunDTO(ApplicationDTO):
     # всегда — колонка обязательная. Поле остаётся необязательным именно ради
     # такого ответа: так отдают воркер и `GET /assignments/{id}/runs`.
     assignment: RunAssignmentRefDTO | None = None
-    operator: UserDTO | None = None
+    uploaded_by: UserDTO | None = None
     # Артефакты нужны самому бэкенду, а не браузеру: из них берутся ключи
     # tracks.csv, detections.csv, overlay.json и исходного видео. В ответ они
     # не уезжают — читать их в интерфейсе нечем и незачем.

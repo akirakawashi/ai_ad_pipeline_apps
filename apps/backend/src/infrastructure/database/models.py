@@ -27,7 +27,13 @@ def uuid_string() -> str:
 
 
 class User(SQLModel, table=True):
-    """Справочник людей: постановщики заданий и операторы съёмок.
+    """Справочник людей: постановщики заданий и те, кто загружает файлы.
+
+    Ролей две, и обе ссылаются сюда: постановщик задания
+    (`assignments.author_users_id`) и загрузивший — видео
+    (`pipeline_runs.uploaded_by_users_id`) или пак каталога
+    (`catalog_imports.uploaded_by_users_id`). Кто вёл машину и снимал, система не
+    хранит: спрашивали об этом только для отчётности «кто принёс файл».
 
     Заглушка под будущую авторизацию. Когда она понадобится, сюда добавятся
     email / password_hash / role — и справочник станет таблицей пользователей
@@ -735,7 +741,11 @@ class PipelineRun(SQLModel, table=True):
     shot_started_at: datetime = Field(
         sa_column=Column(DateTime(timezone=True), nullable=False),
     )
-    operator_users_id: str | None = Field(
+    # Кто принёс файл, а не кто вёл машину: съёмку и загрузку система не
+    # различает и различать не собирается. То же имя, что у заливающего пак
+    # каталога (`catalog_imports.uploaded_by_users_id`) — роль одна, справочник
+    # людей один, значит и слово должно быть одно.
+    uploaded_by_users_id: str | None = Field(
         default=None,
         sa_column=Column(
             String(36),
@@ -855,7 +865,7 @@ class PipelineRun(SQLModel, table=True):
     )
 
     assignment: Assignment | None = Relationship(back_populates="runs")
-    operator: User | None = Relationship()
+    uploaded_by: User | None = Relationship()
     artifacts: list["PipelineArtifact"] = Relationship(
         back_populates="run",
         cascade_delete=True,

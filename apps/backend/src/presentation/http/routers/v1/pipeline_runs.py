@@ -33,7 +33,7 @@ def create_run(
         size_bytes=request.size_bytes,
         assignment_id=request.assignment_id,
         shot_started_at=request.shot_started_at,
-        operator_user_id=request.operator_user_id,
+        uploaded_by_user_id=request.uploaded_by_user_id,
     )
     return OkResponse(data=CreateRunResponse.model_validate(result))
 

@@ -49,8 +49,8 @@ export interface UseVideoUploadOptions {
    * Поэтому ретраю упавших файлов не нужен ref — id задания неизменен.
    */
   assignmentId: string
-  /** Оператор — один на всю партию: снимал её один человек. */
-  operatorUserId: string | null
+  /** Загрузивший — один на всю партию: файлы приносит один человек. */
+  uploadedByUserId: string | null
   onFinish?: (result: UploadResult) => void
 }
 
@@ -61,7 +61,7 @@ function makeKey(file: File) {
 export function useVideoUpload({
   maxFiles,
   assignmentId,
-  operatorUserId,
+  uploadedByUserId,
   onFinish,
 }: UseVideoUploadOptions) {
   const [items, setItems] = useState<UploadItem[]>([])
@@ -144,7 +144,7 @@ export function useVideoUpload({
         try {
           const run = await createRun(item.file, {
             assignmentId,
-            operatorUserId,
+            uploadedByUserId,
             shotStartedAt: shotStartedAt(item),
           })
           await uploadVideo(run.upload, item.file, (progress) =>
@@ -165,7 +165,7 @@ export function useVideoUpload({
       setBusy(false)
       onFinish?.({ runIds, failed })
     },
-    [assignmentId, onFinish, operatorUserId, patch],
+    [assignmentId, onFinish, uploadedByUserId, patch],
   )
 
   const start = useCallback(() => {

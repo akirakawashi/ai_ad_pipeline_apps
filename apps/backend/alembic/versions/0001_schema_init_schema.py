@@ -160,7 +160,7 @@ def upgrade() -> None:
     sa.Column('source_size_bytes', sa.BigInteger(), nullable=False),
     sa.Column('assignments_id', sa.String(length=36), nullable=False),
     sa.Column('shot_started_at', sa.DateTime(timezone=True), nullable=False),
-    sa.Column('operator_users_id', sa.String(length=36), nullable=True),
+    sa.Column('uploaded_by_users_id', sa.String(length=36), nullable=True),
     sa.Column('status', sa.String(length=32), nullable=False),
     sa.Column('stage', sa.String(length=64), nullable=False),
     sa.Column('progress', sa.Integer(), nullable=False),
@@ -179,13 +179,13 @@ def upgrade() -> None:
     sa.Column('started_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('completed_at', sa.DateTime(timezone=True), nullable=True),
     sa.ForeignKeyConstraint(['assignments_id'], ['assignments.assignments_id'], ondelete='CASCADE'),
-    sa.ForeignKeyConstraint(['operator_users_id'], ['users.users_id'], ondelete='SET NULL'),
+    sa.ForeignKeyConstraint(['uploaded_by_users_id'], ['users.users_id'], ondelete='SET NULL'),
     sa.PrimaryKeyConstraint('pipeline_runs_id'),
     sa.UniqueConstraint('source_object_key')
     )
     op.create_index(op.f('ix_pipeline_runs_assignments_id'), 'pipeline_runs', ['assignments_id'], unique=False)
     op.create_index(op.f('ix_pipeline_runs_created_at'), 'pipeline_runs', ['created_at'], unique=False)
-    op.create_index(op.f('ix_pipeline_runs_operator_users_id'), 'pipeline_runs', ['operator_users_id'], unique=False)
+    op.create_index(op.f('ix_pipeline_runs_uploaded_by_users_id'), 'pipeline_runs', ['uploaded_by_users_id'], unique=False)
     op.create_index('ix_pipeline_runs_queue', 'pipeline_runs', ['status', 'created_at'], unique=False)
     op.create_table('pipeline_artifacts',
     sa.Column('pipeline_artifacts_id', sa.String(length=36), nullable=False),
@@ -226,7 +226,7 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_pipeline_artifacts_artifact_type'), table_name='pipeline_artifacts')
     op.drop_table('pipeline_artifacts')
     op.drop_index('ix_pipeline_runs_queue', table_name='pipeline_runs')
-    op.drop_index(op.f('ix_pipeline_runs_operator_users_id'), table_name='pipeline_runs')
+    op.drop_index(op.f('ix_pipeline_runs_uploaded_by_users_id'), table_name='pipeline_runs')
     op.drop_index(op.f('ix_pipeline_runs_created_at'), table_name='pipeline_runs')
     op.drop_index(op.f('ix_pipeline_runs_assignments_id'), table_name='pipeline_runs')
     op.drop_table('pipeline_runs')

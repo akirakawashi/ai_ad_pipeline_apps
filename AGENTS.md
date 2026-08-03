@@ -207,7 +207,7 @@ only feed the pipeline's own `report.html`.
 | Change how a catalogue pack is uploaded or a revision rolled back | `components/CatalogImports.tsx` (admin only). `CatalogPage.tsx` is the read-only directory and must stay that way |
 | Change the «Как завести город» manual, or add a second one | `pages/ManualCityPage.tsx` (the page and the Overpass query) → `MANUAL_CITY_PATH` + the `manual` variant in `routing.ts` → `App.tsx` (render + backlink to `/admin`). The page fetches nothing and **is deliberately outside `require_admin`** — see §10. The Overpass query lives only in that file; `docs/pipeline-and-metrics.md` describes the page but does not copy the query, so the two cannot drift |
 | Add a section to the admin panel | a component under `components/`, mounted from `AdminPage.tsx`. City-scoped → a tab in `CITY_TABS`; not city-scoped → a page-level section in `AdminSection` (like `AdminUsers.tsx`). Keep the two switchers visually different — underlined text for sections, pill tabs inside a city — or they read as one level. Guard its writes with `require_admin` in the same change |
-| Change the people directory | `user_service.py` → `users.py` router → `AdminUsers.tsx` — creation, renaming and hiding all live there. `UserSelect.tsx` only selects; do not put a create form back into it (see §10) |
+| Change the people directory | `user_service.py` → `users.py` router → `AdminUsers.tsx` — creation, renaming and hiding all live there. `UserSelect.tsx` only selects; do not put a create form back into it (see §10). **A person is attached to a row in exactly two roles, and both are named `uploaded_by`**: `pipeline_runs.uploaded_by_users_id` (who brought the video) and `catalog_imports.uploaded_by_users_id` (who brought the catalogue pack). The third is `assignments.author_users_id` — the person who *set* the campaign, a different thing. **Who drove and filmed is not stored at all** — see §10 |
 | Change how the shooting date is entered | `useVideoUpload.ts` (`shotDate` per queued file, `shotStartedAt()` decides what is sent) → `DateField.tsx` + its mount in `UploadPage.tsx` → `createRun` in `api.ts` → `CreateRunRequest` / `UpdateShootingRequest` → `pipeline_run_service` → repository → the `PipelineRun` model and `0001_schema`. Use the shared `DateField`, never a native `<input type="date">`: the browser owns that popup and renders it outside the product theme. Date↔ISO conversion belongs in `utils/formatters.ts` and nowhere else — see the timezone trap in §10. Preserve the invariant at every layer: create requires `shot_started_at`, PATCH may omit it but may not send `null`, and the database column is `NOT NULL` |
 | Change what the overlay card shows | `viewer/payload.py` + `OverlayObjectPayload` in `pipeline_contracts/artifacts.py` + `VideoOverlayPlayer.tsx` |
 
@@ -281,7 +281,7 @@ is collected, and calls `pytest.exit` when postgres is unreachable. There is no 
 * **On screen the unit of account is «видео»; in the code and the comments it stays «съёмка».**
   Since 31.07.2026 no user-facing string says «съёмка» — the people who upload and read are holding
   a file, and a second word for it bought them nothing. Internally the two are not the same thing:
-  a «съёмка» is a row in `pipeline_runs` with an assignment, a date, an operator, a processing status
+  a «съёмка» is a row in `pipeline_runs` with an assignment, a date, an uploader, a processing status
   and artifacts, and the video is what sits in MinIO — comments routinely need both in one sentence
   («исходное видео съёмки»), which a blanket rename would turn into nonsense. So: identifiers stay
   `shooting*`, comments and `docs/` stay «съёмка», **new UI strings must say «видео»**. Where the
@@ -329,6 +329,17 @@ is collected, and calls `pytest.exit` when postgres is unreachable. There is no 
   401. Putting `require_admin` on an endpoint reached through one of them and forgetting the header
   produces the worst possible symptom: a screen that is already behind the login form answers
   «введите логин и пароль». Guard an endpoint → check which of the three reaches it.
+* **The system stores who *uploaded* a video, never who *shot* it — and that used to be two names for
+  one column.** `pipeline_runs.operator_users_id` said «оператор» in the database, the DTOs, the API
+  and the frontend state, while all three screens that show it said **«Кто загрузил»**. One field,
+  one person, two meanings — and the neighbouring table had already settled the question, because
+  `catalog_imports.uploaded_by_users_id` names the same role correctly. Renamed to
+  `uploaded_by_users_id` on 30.07.2026 through every layer including the column and its index; the UI
+  strings were not touched, they were right all along. **Do not reintroduce «оператор» anywhere**: the
+  owner's decision is that who drove and filmed is not interesting to this product, so there is no
+  field for it and no place to put one. If that ever changes, it is a *new* column next to this one,
+  not a renaming of it — the two are different people the moment anyone uploads a batch from someone
+  else's memory card.
 * **People are created in the admin panel only — `UserSelect` selects, it never creates.** It used
   to create: a free-text field in the «Кто загрузил» dropdown, filled in by whoever happened to be
   uploading. The directory collected twins («Иванов», «Иванов А.», «иванов») faster than anyone

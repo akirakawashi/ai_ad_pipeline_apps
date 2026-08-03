@@ -73,10 +73,10 @@ def _shot_finished_at(run: PipelineRun) -> datetime | None:
 def _run_to_dto(run: PipelineRun, *, with_refs: bool = False) -> PipelineRunDTO:
     # with_refs=True только там, где связи загружены через selectinload.
     # Воркер зовёт эту функцию на detached-инстансах — там assignment
-    # и operator трогать нельзя.
+    # и uploaded_by трогать нельзя.
     return PipelineRunDTO(
         assignment=assignment_ref(run) if with_refs else None,
-        operator=user_ref(run.operator) if with_refs else None,
+        uploaded_by=user_ref(run.uploaded_by) if with_refs else None,
         shot_started_at=run.shot_started_at,
         shot_finished_at=_shot_finished_at(run),
         run_id=run.pipeline_runs_id,
@@ -119,7 +119,7 @@ class SqlPipelineRunRepository:
         size_bytes: int,
         assignment_id: str,
         shot_started_at: datetime,
-        operator_user_id: str | None = None,
+        uploaded_by_user_id: str | None = None,
     ) -> PipelineRunDTO:
         run = PipelineRun(
             pipeline_runs_id=run_id,
@@ -129,7 +129,7 @@ class SqlPipelineRunRepository:
             source_size_bytes=size_bytes,
             assignments_id=assignment_id,
             shot_started_at=shot_started_at,
-            operator_users_id=operator_user_id,
+            uploaded_by_users_id=uploaded_by_user_id,
             status=PipelineRunStatus.UPLOADING.value,
             stage=PipelineRunStage.UPLOAD.value,
             progress=0,
@@ -491,11 +491,11 @@ class SqlPipelineRunRepository:
                 .defer(Route.geometry)
                 .selectinload(Route.city)
                 .defer(City.roads_geometry),
-                selectinload(PipelineRun.operator),
+                selectinload(PipelineRun.uploaded_by),
             )
         else:
             statement = statement.options(
                 noload(PipelineRun.assignment),
-                noload(PipelineRun.operator),
+                noload(PipelineRun.uploaded_by),
             )
         return self._session.exec(statement).one_or_none()

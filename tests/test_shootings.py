@@ -33,7 +33,7 @@ def other_assignment(client, city_route) -> dict:
 
 
 @pytest.fixture
-def operator(client) -> dict:
+def uploaded_by(client) -> dict:
     return payload(client.post("/api/v1/users", json={"full_name": "Петров Пётр"}))
 
 
@@ -60,18 +60,18 @@ def set_duration(run_id: str, seconds: float) -> None:
         session.commit()
 
 
-def test_stores_shooting_details(client, assignment, operator):
+def test_stores_shooting_details(client, assignment, uploaded_by):
     run = payload(
         create_run(
             client,
             assignment_id=assignment["id"],
             shot_started_at="2026-08-02T09:30:00Z",
-            operator_user_id=operator["id"],
+            uploaded_by_user_id=uploaded_by["id"],
         )
     )
     got = payload(client.get(f"/api/v1/runs/{run['run_id']}"))
     assert got["shot_started_at"].startswith("2026-08-02T09:30")
-    assert got["operator"]["full_name"] == "Петров Пётр"
+    assert got["uploaded_by"]["full_name"] == "Петров Пётр"
 
 
 def test_processing_times_are_separate_from_shooting(client, assignment):
@@ -116,21 +116,21 @@ def test_finish_is_start_plus_duration(client, assignment):
     assert (finished - started).total_seconds() == pytest.approx(754.5)
 
 
-def test_patch_changes_operator_only(client, assignment, operator):
+def test_patch_changes_uploaded_by_only(client, assignment, uploaded_by):
     run = payload(
         create_run(
             client,
             assignment_id=assignment["id"],
             shot_started_at="2026-08-02T09:30:00Z",
-            operator_user_id=operator["id"],
+            uploaded_by_user_id=uploaded_by["id"],
         )
     )
     other = payload(client.post("/api/v1/users", json={"full_name": "Сидоров Сидор"}))
 
     updated = payload(
-        client.patch(f"/api/v1/runs/{run['run_id']}", json={"operator_user_id": other["id"]})
+        client.patch(f"/api/v1/runs/{run['run_id']}", json={"uploaded_by_user_id": other["id"]})
     )
-    assert updated["operator"]["id"] == other["id"]
+    assert updated["uploaded_by"]["id"] == other["id"]
     assert updated["shot_started_at"].startswith("2026-08-02T09:30")
 
 
@@ -142,11 +142,11 @@ def test_patch_rejects_naive_datetime(client, assignment):
     assert response.status_code == 422
 
 
-def test_unknown_operator_is_not_500(client, assignment):
+def test_unknown_uploader_is_not_500(client, assignment):
     run = payload(create_run(client, assignment_id=assignment["id"]))
     response = client.patch(
         f"/api/v1/runs/{run['run_id']}",
-        json={"operator_user_id": "00000000-0000-0000-0000-000000000000"},
+        json={"uploaded_by_user_id": "00000000-0000-0000-0000-000000000000"},
     )
     assert response.status_code == 400
 
@@ -303,13 +303,13 @@ class TestFilters:
         )
         assert page["total"] == 1
 
-    def test_list_carries_assignment_and_operator(self, client, assignment, operator):
+    def test_list_carries_assignment_and_uploader(self, client, assignment, uploaded_by):
         create_run(
-            client, assignment_id=assignment["id"], operator_user_id=operator["id"]
+            client, assignment_id=assignment["id"], uploaded_by_user_id=uploaded_by["id"]
         )
         items = payload(client.get("/api/v1/runs?page_size=50"))["items"]
         assert items[0]["assignment"]["assignment_id"] == assignment["id"]
-        assert items[0]["operator"]["id"] == operator["id"]
+        assert items[0]["uploaded_by"]["id"] == uploaded_by["id"]
 
 
 class TestProcessingLog:

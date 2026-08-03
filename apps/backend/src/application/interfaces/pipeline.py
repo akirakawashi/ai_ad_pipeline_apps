@@ -60,7 +60,7 @@ class PipelineRunRepository(Protocol):
         size_bytes: int,
         assignment_id: str,
         shot_started_at: datetime,
-        operator_user_id: str | None = None,
+        uploaded_by_user_id: str | None = None,
     ) -> PipelineRunDTO: ...
 
     def update_shooting(

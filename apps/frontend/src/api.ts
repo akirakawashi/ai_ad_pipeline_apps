@@ -108,7 +108,7 @@ async function apiFetch<T>(
 export interface CreateRunOptions {
   /** Обязательно: съёмка всегда принадлежит заданию, а через него — маршруту. */
   assignmentId: string
-  operatorUserId?: string | null
+  uploadedByUserId?: string | null
   /**
    * Когда снимали, ISO с зоной. Дату для каждого файла человек обязательно
    * выбирает вручную; метку изменения файла не используем.
@@ -118,7 +118,7 @@ export interface CreateRunOptions {
 
 export function createRun(
   file: File,
-  { assignmentId, operatorUserId = null, shotStartedAt }: CreateRunOptions,
+  { assignmentId, uploadedByUserId = null, shotStartedAt }: CreateRunOptions,
 ): Promise<CreateRunResult> {
   return apiFetch('/runs', {
     method: 'POST',
@@ -128,7 +128,7 @@ export function createRun(
       size_bytes: file.size,
       assignment_id: assignmentId,
       shot_started_at: shotStartedAt,
-      operator_user_id: operatorUserId,
+      uploaded_by_user_id: uploadedByUserId,
     }),
   })
 }
