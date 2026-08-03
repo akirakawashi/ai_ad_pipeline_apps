@@ -51,6 +51,9 @@ services:
     volumes:
       - minio_data:/data
 
+  # Одноразовый сервис: отрабатывает и выходит. Бэкенд и воркер ждут его
+  # успешного завершения, поэтому голого `docker compose up` достаточно —
+  # миграции применятся сами, до того как кто-то полезет в таблицы.
   migrate:
     <<: *backend-service
     command:
@@ -89,6 +92,8 @@ services:
         condition: service_healthy
       minio:
         condition: service_started
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test:
         [
@@ -102,6 +107,87 @@ services:
       retries: 20
     restart: unless-stopped
 
+  # Обработка видео. Порта не имеет: задачи забирает сам из очереди в базе.
+  #
+  # `gpus: all` работает только когда на хосте стоит nvidia-container-toolkit —
+  # он монтирует внутрь драйвер и узел устройства (в WSL это /usr/lib/wsl/lib
+  # и /dev/dxg). Сама CUDA приезжает колёсами nvidia-* вместе с torch, ставить
+  # её в образ не нужно. Без тулкита контейнер не стартует вовсе: демон
+  # отвечает "no known GPU vendor found".
+  worker:
+    image: ai-ad-pipeline-worker:dev
+    container_name: ai-ad-worker
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
+      target: worker
+    command:
+      - uv
+      - run
+      - --no-sync
+      - python
+      - apps/backend/src/worker/main.py
+    env_file:
+      - ./apps/backend/.env
+    environment:
+      POSTGRES_HOST: postgres
+      MINIO_INTERNAL_ENDPOINT: http://minio:9000
+      PYTHONPATH: /app/apps/backend/src:/app
+      # Указан явно, хотя совпадает со значением по умолчанию: иначе связь с
+      # томом ниже держится на том, что умолчание не поменяют.
+      PIPELINE_WORKER_TEMP_DIR: /app/.runtime/worker
+      # ultralytics хранит свой settings.json в конфиге пользователя, которого
+      # в контейнере нет. Путь — родитель: подкаталог `Ultralytics` он дописывает
+      # сам, поэтому здесь именно `/tmp`, а не `/tmp/ultralytics`. Живёт в
+      # compose, а не в Dockerfile: правка ENV в образе рушит кеш слоёв и тянет
+      # пересборку всех зависимостей ради строчки в логе.
+      YOLO_CONFIG_DIR: /tmp
+    volumes:
+      - ./pipeline_contracts:/app/pipeline_contracts:ro
+      - ./apps/backend/src:/app/apps/backend/src:ro
+      - ./ml:/app/ml:ro
+      # Веса моделей — 350 МБ и не в git; монтируем, а не кладём в образ.
+      - ./models:/app/models:ro
+      # Исходное видео и результат прогона. Отдельный том, чтобы гигабайты не
+      # шли через overlayfs контейнера; каталог прогона чистится после работы.
+      - worker_runtime:/app/.runtime/worker
+    gpus: all
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_started
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  # Vite в режиме разработки, а не собранная статика: адрес API подставляется
+  # в сборку, и прод-образ пришлось бы пересобирать при каждой его смене.
+  # Порт 5173 уже прописан в CORS бэкенда (settings/http.py).
+  frontend:
+    image: ai-ad-pipeline-frontend:dev
+    container_name: ai-ad-frontend
+    build:
+      context: ./apps/frontend
+      target: dev
+    environment:
+      VITE_API_BASE_URL: http://127.0.0.1:8000/api/v1
+    volumes:
+      - ./apps/frontend:/app
+      # Том поверх исходников: в образе зависимости уже стоят, а с хоста сюда
+      # ничего попасть не должно. Наполняется из образа один раз, при создании,
+      # поэтому после правки package.json мало пересобрать образ — том нужно
+      # снести: docker volume rm ai_ad_pipeline_apps_frontend_node_modules
+      - frontend_node_modules:/app/node_modules
+    ports:
+      - "5173:5173"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   minio_data:
+  worker_runtime:
+  frontend_node_modules:

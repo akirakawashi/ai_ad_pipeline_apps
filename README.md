@@ -26,15 +26,38 @@ outputs/               локальные результаты standalone-зап
 
 ## Требования
 
-- Python `3.12`
-- `uv`
 - Docker + Docker Compose
-- Node.js и `pnpm` для frontend
+- `nvidia-container-toolkit` на хосте — без него worker не стартует
 - модели:
   - `models/detection/best.pt`
   - `models/classification/best.pt`
 
-GPU не обязателен. Если CUDA нет, поставь `PIPELINE_DEVICE=cpu` в `apps/backend/.env` или запускай standalone-скрипт с `DEVICE=cpu`.
+Python `3.12`, `uv`, Node.js и `pnpm` нужны только для тестов и линтеров: сам стенд целиком живет в контейнерах.
+
+### Видеокарта в контейнере
+
+CUDA в образ ставить не нужно — ее пользовательская часть приезжает колесами `nvidia-*` вместе с `torch`. От хоста нужен драйвер, и пробрасывает его внутрь именно `nvidia-container-toolkit`. Проверить, что он работает:
+
+```bash
+docker run --rm --gpus all nvidia/cuda:12.6.0-base-ubuntu24.04 nvidia-smi
+```
+
+Если ответ `no known GPU vendor found` — тулкита нет. Под Debian/Ubuntu (в том числе внутри WSL):
+
+```bash
+curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey \
+  | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list \
+  | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#' \
+  | sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
+sudo nvidia-ctk runtime configure --runtime=docker
+sudo service docker restart
+```
+
+Последняя команда перезапускает демон Docker, то есть заденет и контейнеры других проектов.
+
+Без видеокарты обработка все равно возможна: поставь `PIPELINE_DEVICE=cpu` в `apps/backend/.env` и убери `gpus: all` у сервиса `worker`. Это медленно и годится только чтобы убедиться, что цепочка работает.
 
 ## Переменные окружения
 
@@ -80,52 +103,48 @@ PYTHONPATH: /app/apps/backend/src:/app
 
 ## Быстрый запуск всего стенда
 
-Первый раз синхронизируй Python-окружение:
+Весь стенд поднимается одной командой:
 
 ```bash
-uv sync
+docker compose up
 ```
 
-Если менялись `pyproject.toml`, `uv.lock`, `Dockerfile` или зависимости backend-а, пересобери image:
+Она делает все по порядку:
+
+- поднимает `postgres` и `minio` и ждет их готовности;
+- прогоняет Alembic-миграции одноразовым сервисом `migrate`;
+- запускает backend на `http://127.0.0.1:8000`;
+- запускает worker с доступом к видеокарте;
+- запускает frontend на `http://127.0.0.1:5173`.
+
+Backend и worker ждут именно успешного завершения `migrate`, поэтому отдельно применять миграции не нужно.
+
+Первая сборка образа worker-а долгая: в него ставится `torch` с CUDA-колесами, это порядка 6 ГБ. Дальше образ кешируется и пересобирается только при изменении `uv.lock`.
+
+Остановить стенд:
+
+```bash
+docker compose down
+```
+
+Логи одного сервиса:
+
+```bash
+docker compose logs -f worker
+```
+
+Пересобрать образ, если менялись `pyproject.toml`, `uv.lock` или `Dockerfile`:
 
 ```bash
 docker compose build backend
+docker compose build worker
+docker compose build frontend
 ```
 
-Обычный запуск:
+Локальное Python-окружение нужно только для тестов и линтеров, стенду оно не требуется:
 
 ```bash
-./scripts/dev.sh
-```
-
-Это то же самое, что:
-
-```bash
-./scripts/dev.sh up
-```
-
-Скрипт делает все по порядку:
-
-- поднимает `postgres` и `minio`, если они не запущены;
-- ждет готовности PostgreSQL;
-- ждет готовности MinIO;
-- применяет Alembic-миграции через `docker compose run --rm migrate`;
-- запускает backend на `http://127.0.0.1:8000`;
-- ждет `/healthcheck`;
-- запускает локальный worker из `.venv`.
-
-Терминал остается занят worker-ом. Это нормально. Если нажать `Ctrl+C`, скрипт остановит worker. Docker-контейнеры при этом могут остаться запущенными.
-
-Остановить весь compose-стенд:
-
-```bash
-./scripts/dev.sh down
-```
-
-Посмотреть логи backend/PostgreSQL/MinIO:
-
-```bash
-./scripts/dev.sh logs
+uv sync
 ```
 
 Полная очистка контейнеров и данных этого проекта:
@@ -144,8 +163,10 @@ docker volume ls --filter label=com.docker.compose.project=ai_ad_pipeline_apps
 Ожидаемые volumes:
 
 ```text
+ai_ad_pipeline_apps_frontend_node_modules
 ai_ad_pipeline_apps_minio_data
 ai_ad_pipeline_apps_postgres_data
+ai_ad_pipeline_apps_worker_runtime
 ```
 
 ## Адреса
@@ -161,24 +182,31 @@ Frontend dev:    http://127.0.0.1:5173
 
 ## Frontend
 
-Frontend лежит отдельно в `apps/frontend`.
+Frontend лежит отдельно в `apps/frontend` и поднимается вместе со всем остальным — это сервис `frontend` в compose, Vite в режиме разработки на `5173`. Собранная статика намеренно не используется: адрес API подставляется в сборку, и прод-образ пришлось бы пересобирать при каждой его смене.
 
-```bash
-cd apps/frontend
-pnpm install
-pnpm dev
-```
-
-По умолчанию API берется отсюда:
+Адрес API задается переменной сервиса в `docker-compose.yml`:
 
 ```env
 VITE_API_BASE_URL=http://127.0.0.1:8000/api/v1
 ```
 
-Если нужен локальный `.env`:
+Зависимости стоят в образе, поверх исходников смонтирован том `frontend_node_modules`. Том наполняется из образа один раз, при создании, поэтому после правки `package.json` пересборки образа мало — том надо снести:
 
 ```bash
-cp apps/frontend/.env.example apps/frontend/.env
+docker compose build frontend
+docker compose down frontend
+docker volume rm ai_ad_pipeline_apps_frontend_node_modules
+docker compose up -d frontend
+```
+
+Если пропустить снос тома, в контейнере останутся старые зависимости, а образ будет свежий — расхождение тихое.
+
+Запускать `pnpm` локально нужно только для линтера и проверки сборки:
+
+```bash
+cd apps/frontend
+pnpm install
+pnpm lint && pnpm build
 ```
 
 ## Как проходит обработка видео
@@ -341,6 +369,8 @@ Source backend-а и Alembic монтируются в контейнер read-o
 
 `pipeline_contracts` тоже монтируется read-only. Это позволяет менять Python-код и контракты без пересборки image.
 
+Worker монтирует то же самое плюс `./ml` и `./models`. Веса в образ не кладутся: они весят 350 МБ и лежат вне git. Рабочий каталог прогона — том `worker_runtime`, а не слой контейнера: через overlayfs гигабайты видео ходят медленно.
+
 Image все равно нужно пересобрать, если изменились зависимости или Dockerfile:
 
 ```bash
@@ -351,7 +381,7 @@ docker compose build backend
 
 ```bash
 docker compose down --volumes --remove-orphans
-./scripts/dev.sh
+docker compose up
 ```
 
 Эта команда удаляет данные только текущего compose-проекта. Для проверки используй label:
@@ -429,14 +459,15 @@ docker compose logs --tail=200 backend
 
 ### Worker ничего не обрабатывает
 
-Проверь, что:
+Смотри логи: `docker compose logs -f worker`. Проверь, что:
 
-- `./scripts/dev.sh` не завершился;
-- worker запущен локально;
+- контейнер `ai-ad-worker` запущен и не перезапускается по кругу;
 - run перешел в `queued`;
 - MinIO доступен на `9000`;
 - модели лежат в `models/detection/best.pt` и `models/classification/best.pt`;
 - в `.env` правильный `PIPELINE_DEVICE`.
+
+Отдельный случай: контейнер поднялся и пишет `worker started`, а обработка падает на первом же видео. CUDA трогается не при старте, а когда загружаются модели, поэтому worker без видеокарты выглядит здоровым ровно до первой съемки. Проверь тулкит: `docker run --rm --gpus all nvidia/cuda:12.6.0-base-ubuntu24.04 nvidia-smi`.
 
 ### Backend поднялся, но frontend не видит API
 

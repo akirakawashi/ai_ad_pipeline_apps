@@ -1,0 +1,9 @@
+node_modules
+dist
+dist-ssr
+.vite
+.ruff_cache
+.env
+.env.*
+*.local
+*.log

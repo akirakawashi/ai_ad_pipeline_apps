@@ -6,7 +6,6 @@ readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "alembic>=1.16.0",
-    "easyocr>=1.7.2",
     "fastapi>=0.115.0",
     "kaleido==0.2.1",
     "minio>=7.2.15",
@@ -32,6 +31,11 @@ dependencies = [
 ]
 
 [dependency-groups]
+# Группы — это то, что ставится в образы. Корневой `dependencies` остаётся
+# полным набором для локального `.venv`: в нём ещё и ruff с mypy, которых в
+# образах быть не должно. Образ API берёт только `backend`, образ воркера —
+# `backend` + `ml`: воркер ходит в ту же базу и в тот же MinIO, а пайплайн
+# только вызывает.
 backend = [
     "alembic>=1.16.0",
     "fastapi>=0.115.0",
@@ -47,6 +51,19 @@ backend = [
     "sqlmodel>=0.0.38",
     "uvicorn[standard]>=0.34.0",
     "xlrd>=2.0.2",
+]
+ml = [
+    # Статические картинки для report.html; plotly без kaleido их не рисует.
+    "kaleido==0.2.1",
+    "pandas>=3.0.3",
+    "pillow>=12.2.0",
+    "plotly>=6.8.0",
+    "pydantic>=2.0",
+    # Классификатор бренда. Тянет torch и torchvision.
+    "timm>=1.0.27",
+    # Детектор и трекинг. Тянет torch, opencv, numpy — отдельно их не
+    # перечисляем, версии всё равно диктует ultralytics.
+    "ultralytics>=8.4.63",
 ]
 dev = [
     "httpx>=0.28.0",

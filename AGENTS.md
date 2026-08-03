@@ -70,7 +70,6 @@ Three target brands: `mts`, `plus7`, `miranda`. Everything else collapses to `ot
 | `apps/backend/src/worker/` | Queue worker that runs the ML pipeline out-of-process. |
 | `apps/backend/alembic/` | Migrations. Exactly two since the 28.07.2026 squash: `0001_schema` (all ten tables) and `0002_seed` (two cities **with their road layers**, seven routes **without lines** — tests depend on these). `seed_data/geometry/<city>/export.geojson` holds the two road layers the seed reads; they are migration assets, not leftovers — delete them and a from-scratch database comes up with an empty map. Route lines are drawn in the admin panel, not seeded (31.07.2026, see §10); the seven `route_N.geojson` that used to live here are now reference fixtures in `tests/fixtures/routes/`. While there is no production database the chain is squashed rather than extended; the day real data exists, that stops and history is append-only. |
 | `apps/frontend/src/` | React 19 + Vite + Recharts. Hand-rolled router (`routing.ts`), no react-router. |
-| `scripts/` | `dev.sh` — brings up the whole stack. |
 | `tests/` | pytest. Needs a live Postgres; MinIO is faked. |
 | `docs/refactoring-backlog.md` | The only planning document left. `docs/plan.md` and its per-step files existed until 28.07.2026 and are gone: intent that has landed belongs in `pipeline-and-metrics.md`, not in a parallel history. Do not recreate them. |
 | `README.md` | Setup/ops guide. Predates the metric rewrite; treat metric statements in it as stale. |
@@ -79,16 +78,36 @@ Three target brands: `mts`, `plus7`, `miranda`. Everything else collapses to `ot
 
 ## 4. Runtime topology
 
+**`docker compose up` brings up the whole stack** — there is no second way and no helper script
+(`scripts/dev.sh` was deleted on 03.08.2026 for being exactly that).
+
 | Piece | How it runs | Where |
 |---|---|---|
 | Postgres | docker compose | `:5432` |
 | MinIO | docker compose | `:9000` API, `:9001` console |
+| `migrate` | docker compose, one-shot; backend and worker wait on `service_completed_successfully` | exits after `alembic upgrade head` |
 | Backend (FastAPI) | docker compose, `--reload` | `:8000`, prefix `/api/v1`, health at `/healthcheck` |
-| Worker | **local host process** (needs GPU), started by `scripts/dev.sh` | `.runtime/worker/<run_id>/` |
-| Frontend (Vite) | `pnpm dev` | `:5173` (in backend CORS allowlist) |
+| Worker | docker compose, **`gpus: all`** | `.runtime/worker/<run_id>/` inside the container, on the `worker_runtime` volume |
+| Frontend (Vite dev) | docker compose | `:5173` (in backend CORS allowlist) |
+
+Two images out of one `apps/backend/Dockerfile`: target `backend` installs only the `backend`
+dependency group, target `worker` installs `backend` + `ml` and the two system libraries `cv2` links
+against (`libgl1`, `libglib2.0-0`). The frontend has its own `apps/frontend/Dockerfile` whose build
+context is that directory — nothing of it lives in the repo root.
+
+**CUDA is not installed into the worker image and must not be.** Its userspace half arrives as the
+`nvidia-*` wheels that come with `torch`; the other half is the driver, which lives on the host and
+is injected by **`nvidia-container-toolkit`** — an OCI hook that mounts the driver libraries and the
+device node into the container (under WSL that is `/usr/lib/wsl/lib` and `/dev/dxg`, not
+`/dev/nvidia*`). Without the toolkit the container does not start at all: the daemon answers `no
+known GPU vendor found`. Installing the CUDA toolkit inside the image instead gets you `libcuda.so`
+from `stubs/` — it links fine and `torch.cuda.is_available()` returns `False`.
 
 Config: pydantic-settings, env from `apps/backend/.env` (gitignored). Pipeline knobs use the
 `PIPELINE_` prefix (`PIPELINE_FRAME_STRIDE`, default **1** for the worker; the CLI default is 10).
+Model weights and the videos of a run are **mounted, never copied into the image** — `models/` is
+350 MB and gitignored, and run scratch space is a named volume so gigabytes do not go through the
+container's overlayfs.
 
 ---
 
@@ -216,8 +235,10 @@ only feed the pipeline's own `report.html`.
 ## 8. Commands
 
 ```bash
-./scripts/dev.sh up          # postgres + minio + migrations + backend (docker) + worker (host)
-./scripts/dev.sh down|logs
+docker compose up            # the whole stack: postgres, minio, migrations, backend, worker, frontend
+docker compose down
+docker compose logs -f worker
+docker compose build worker  # first build pulls ~6 GB of torch/CUDA wheels; cached afterwards
 uv run pytest                # needs postgres up; creates/drops ad_pipeline_test
 uv run pytest tests/test_scoring.py     # scoring in isolation — but still needs postgres, see below
 uv run ruff check . && uv run mypy .
@@ -497,6 +518,12 @@ is collected, and calls `pytest.exit` when postgres is unreachable. There is no 
   source a second time. Nothing read it: no component touched `annotated_url`, and `api.ts` has no
   artifact functions at all, so it was not even downloadable. If you find yourself wanting to render
   boxes into a file, the answer is almost certainly `overlay.json` plus the player instead.
+* **A worker without a GPU starts happily and only fails on the first video.** `PIPELINE_DEVICE`
+  defaults to `"0"`, but nothing touches CUDA until a run is claimed and the models load — so the
+  container reports `worker started`, sits in the queue loop looking healthy, and the failure lands
+  on a real shooting as a failed run. If `docker compose up` succeeded but processing dies, check
+  the toolkit first (see §4), not the pipeline. The daemon refusing `no known GPU vendor found` at
+  startup is the *good* case: that one is loud.
 * **Uploading a city's road layer recomputes `bounds_*` in the same operation.** The catalogue parser
   uses that box to drop out-of-town points; a new layer with a stale box silently discards good rows.
 * **`ShootingMetricsDTO` is the unit of account at every level.** Assignment and route both read it;
