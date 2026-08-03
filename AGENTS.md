@@ -101,7 +101,9 @@ is injected by **`nvidia-container-toolkit`** — an OCI hook that mounts the dr
 device node into the container (under WSL that is `/usr/lib/wsl/lib` and `/dev/dxg`, not
 `/dev/nvidia*`). Without the toolkit the container does not start at all: the daemon answers `no
 known GPU vendor found`. Installing the CUDA toolkit inside the image instead gets you `libcuda.so`
-from `stubs/` — it links fine and `torch.cuda.is_available()` returns `False`.
+from `stubs/` — it links fine and `torch.cuda.is_available()` returns `False`. Operational detail —
+how to install the toolkit, what a kernel update does and does not require, which systemd units keep
+the CDI spec fresh — lives in `README.md` §«Видеокарта в контейнере» and is not repeated here.
 
 Config: pydantic-settings, env from `apps/backend/.env` (gitignored). Pipeline knobs use the
 `PIPELINE_` prefix (`PIPELINE_FRAME_STRIDE`, default **1** for the worker; the CLI default is 10).

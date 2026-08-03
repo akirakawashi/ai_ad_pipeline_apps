@@ -34,30 +34,99 @@ outputs/               локальные результаты standalone-зап
 
 Python `3.12`, `uv`, Node.js и `pnpm` нужны только для тестов и линтеров: сам стенд целиком живет в контейнерах.
 
-### Видеокарта в контейнере
+## Видеокарта в контейнере
 
-CUDA в образ ставить не нужно — ее пользовательская часть приезжает колесами `nvidia-*` вместе с `torch`. От хоста нужен драйвер, и пробрасывает его внутрь именно `nvidia-container-toolkit`. Проверить, что он работает:
+### Зачем нужен тулкит
 
-```bash
-docker run --rm --gpus all nvidia/cuda:12.6.0-base-ubuntu24.04 nvidia-smi
-```
+CUDA состоит из двух половин, и в контейнер ставится только одна.
 
-Если ответ `no known GPU vendor found` — тулкита нет. Под Debian/Ubuntu (в том числе внутри WSL):
+**Пользовательская часть** — `libcudart`, cuBLAS, cuDNN, NCCL. Обычные библиотеки, приезжают колесами `nvidia-*` вместе с `torch` при сборке образа. Ставить отдельно ничего не надо, они уже там.
+
+**Драйвер** — `libcuda.so.1` и модуль ядра. Ядро у контейнера общее с хостом, своего нет, поэтому драйвер туда не устанавливается в принципе. Его пробрасывает снаружи `nvidia-container-toolkit` — хук OCI, который при старте контейнера монтирует внутрь библиотеки драйвера и узел устройства.
+
+Отсюда две ошибки, которые выглядят по-разному:
+
+| Симптом | Что это значит |
+|---|---|
+| `no known GPU vendor found`, контейнер вообще не стартует | тулкита нет или демон не перечитал конфиг |
+| контейнер работает, `torch.cuda.is_available()` → `False` | устройство не проброшено, либо в образ поставили CUDA Toolkit через apt и подцепилась заглушка `libcuda.so` из `stubs/` |
+
+Вторая ошибка коварнее: собирается все прекрасно, а видеокарты нет. **Не ставьте CUDA Toolkit в образ** — это лечение не той половины.
+
+### Установка (Debian / Ubuntu, в том числе внутри WSL)
 
 ```bash
 curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey \
   | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+
 curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list \
   | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#' \
   | sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
-sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
+
+sudo apt-get update
+sudo apt-get install -y nvidia-container-toolkit
 sudo nvidia-ctk runtime configure --runtime=docker
-sudo service docker restart
+sudo systemctl restart docker
 ```
 
-Последняя команда перезапускает демон Docker, то есть заденет и контейнеры других проектов.
+Список пакетов у NVIDIA один на все deb-дистрибутивы, версию Ubuntu подставлять не нужно. Если в системе нет systemd — вместо последней строки `sudo service docker restart`.
 
-Без видеокарты обработка все равно возможна: поставь `PIPELINE_DEVICE=cpu` в `apps/backend/.env` и убери `gpus: all` у сервиса `worker`. Это медленно и годится только чтобы убедиться, что цепочка работает.
+Перезапуск демона поднимет заново все контейнеры с политикой `restart: unless-stopped` — в том числе чужих проектов. Посмотреть, кого это заденет, до перезапуска:
+
+```bash
+docker ps --format '{{.Names}}'
+```
+
+Что делают две последние команды:
+
+- `nvidia-ctk runtime configure` дописывает рантайм `nvidia` в `/etc/docker/daemon.json`;
+- перезапуск демона заставляет Docker перечитать этот файл.
+
+### Проверка
+
+Не тяните ради этого образ `nvidia/cuda` — своего достаточно:
+
+```bash
+docker run --rm --gpus all ai-ad-pipeline-worker:dev \
+  python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
+```
+
+Ожидаемый ответ — `True` и название карты.
+
+### Нужно ли переставлять после обновления ядра
+
+**Нет.** Тулкит целиком в пространстве пользователя: бинарник хука и спецификация CDI, модуля ядра у него нет. Обновление ядра ему безразлично.
+
+Обновление ядра может задеть **драйвер NVIDIA** — это другой пакет. На обычном Linux модуль `nvidia.ko` пересобирается под новое ядро; штатный пакет `nvidia-driver-*` делает это сам через DKMS. Под WSL модуля нет вообще: карта приходит через `/dev/dxg`, а `libcuda.so.1` в `/usr/lib/wsl/lib` подкладывает сам WSL из драйвера Windows при каждом старте.
+
+Освежать после обновления ядра надо **спецификацию CDI** — файл `/var/run/cdi/nvidia.yaml`, по которому Docker понимает, что за GPU в системе. Он лежит в tmpfs и перезагрузку не переживает. Но делать руками ничего не нужно: пакет ставит два юнита systemd, оба включены:
+
+```
+nvidia-cdi-refresh.service   выполняет nvidia-ctk cdi generate
+nvidia-cdi-refresh.path      следит за /lib/modules/<ядро>/modules.dep и /usr/bin/nvidia-ctk
+```
+
+`.path` срабатывает ровно на смену модулей ядра и на обновление самого тулкита, `.service` дополнительно поднимается при загрузке. Условие запуска написано с оглядкой на WSL: годится либо `nvidia.ko` в `modules.dep`, либо просто наличие `/dev/dxg`.
+
+Проверить, что автоматика на месте:
+
+```bash
+systemctl is-enabled nvidia-cdi-refresh.path nvidia-cdi-refresh.service
+ls -l /var/run/cdi/nvidia.yaml
+```
+
+### Когда все-таки придется вмешаться
+
+| Событие | Что делать |
+|---|---|
+| Переустановка или крупное обновление Docker, сбросившее `daemon.json` | `sudo nvidia-ctk runtime configure --runtime=docker` и перезапуск демона |
+| Обновление драйвера NVIDIA в Windows (WSL) | на стороне Linux ничего; полезно перезапустить WSL — `wsl --shutdown` из PowerShell |
+| `/var/run/cdi/nvidia.yaml` пропал, а юниты выключены | `sudo nvidia-ctk cdi generate --output=/var/run/cdi/nvidia.yaml` |
+| Обновление ядра | ничего |
+
+### Без видеокарты
+
+Обработка возможна, но медленная и годится только чтобы убедиться, что цепочка работает: поставьте `PIPELINE_DEVICE=cpu` в `apps/backend/.env` и уберите `gpus: all` у сервиса `worker` в `docker-compose.yml`.
 
 ## Переменные окружения
 
