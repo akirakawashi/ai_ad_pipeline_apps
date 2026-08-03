@@ -13,8 +13,9 @@ ml/pipeline/           локальный ML-пайплайн для видео
 pipeline_contracts/    общие enum и Pydantic-контракты backend/ML
 models/                веса моделей: detection и classification
 outputs/               локальные результаты standalone-запусков
-.runtime/worker/       временная папка worker-а
 ```
+
+Временной папки worker-а на хосте нет: он работает в контейнере и пишет в том `worker_runtime`.
 
 Важный момент: `pipeline_contracts` используют и backend, и ML-код. В `docker-compose.yml` эта папка примонтирована в контейнеры `backend` и `migrate`:
 
@@ -170,6 +171,15 @@ PYTHONPATH: /app/apps/backend/src:/app
 
 `MINIO_PUBLIC_ENDPOINT` специально остается `127.0.0.1`, потому что presigned URL возвращается браузеру.
 
+Worker получает то же самое плюс свои две переменные:
+
+```yaml
+PIPELINE_WORKER_TEMP_DIR: /app/.runtime/worker
+YOLO_CONFIG_DIR: /tmp
+```
+
+Первая перекрывает относительный путь из `.env` — он должен совпасть с точкой монтирования тома `worker_runtime`. Вторая нужна ultralytics: свой `settings.json` он кладет в конфиг пользователя, которого в контейнере нет. Подкаталог `Ultralytics` библиотека дописывает сама, поэтому значение — родитель, а не полный путь.
+
 ## Быстрый запуск всего стенда
 
 Весь стенд поднимается одной командой:
@@ -302,7 +312,7 @@ API работает через presigned upload.
 
 5. Backend проверяет объект в MinIO, регистрирует source artifact и переводит run в `queued`.
 
-6. Worker забирает задачу, скачивает исходное видео в `.runtime/worker/<run_id>/input`, запускает ML-пайплайн и пишет результаты в `.runtime/worker/<run_id>/output`.
+6. Worker забирает задачу, скачивает исходное видео в `/app/.runtime/worker/<run_id>/input` внутри контейнера, запускает ML-пайплайн и пишет результаты в `/app/.runtime/worker/<run_id>/output`. Это том `worker_runtime`, каталог прогона удаляется после работы — и после успеха, и после ошибки.
 
 7. Worker загружает артефакты в MinIO, регистрирует их в БД и переводит run в `completed`.
 
