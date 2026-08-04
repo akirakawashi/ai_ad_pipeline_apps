@@ -37,7 +37,7 @@ Three target brands: `mts`, `plus7`, `miranda`. Everything else collapses to `ot
 4. **Artifact/DTO shapes live in `pipeline_contracts/`.** This repository owns the backend's copy;
    the standalone ML repository has a matching copy in `../ai_ad_ml/pipeline_contracts/`. A contract
    change is one coordinated change in both repositories and must keep the processing wire contract
-   at version `1` until an explicit version migration is designed. `apps/backend/src/domain/entities/`
+   at version `1` until an explicit version migration is designed. `src/domain/entities/`
    is a thin re-export facade — do not add logic there.
 5. **Tunable numbers go into config dataclasses**, never into `if` branches:
    [`../ai_ad_ml/ml/pipeline/scripts/config.py`](../ai_ad_ml/ml/pipeline/scripts/config.py)
@@ -61,13 +61,13 @@ Three target brands: `mts`, `plus7`, `miranda`. Everything else collapses to `ot
 | `pipeline_contracts/` | Backend copy of the artifact contracts: CSV row models, overlay payload, enums (`PipelineRunStatus`, `PipelineRunStage`, `PipelineArtifactType`, `FinalStatus`, …), brand constants. Must match the ML copy. |
 | `../ai_ad_ml/ml/pipeline/` | Standalone ML pipeline: CLI, orchestration, scoring, reports and overlay generation. It does not import this repository. |
 | `../ai_ad_ml/processing_worker/` | Standalone worker. Claims jobs and reports progress/results through backend HTTP; reads/writes objects in MinIO; never connects to PostgreSQL. |
-| `apps/backend/src/domain/` | Pure logic, no I/O: `geozones.py` (`beta`, `overlaps`), `catalog.py` (point collapsing, revision diff, city bounds), `geometry.py` (geojson validation, bbox, route line assembly), `route_snapping.py` (road graph + map matching: a hand-drawn stroke onto real roads) + entity facades. |
-| `apps/backend/src/application/` | Services (`pipeline_run_service`, `catalog_service`, `metrics_rollup`, `user_service`), DTOs, repository interfaces. |
-| `apps/backend/src/infrastructure/` | SQLModel models, SQL repositories, MinIO storage, `catalog/parser.py` (xlsx/xls/csv). |
-| `apps/backend/src/presentation/http/` | FastAPI routers, request/response DTOs, DI, exception handlers, `security.py` (the admin password). |
-| `apps/backend/src/application/services/processing_job_service.py` | Backend side of the processing boundary: atomically claims queued work, accepts progress and validates/registers completed artifacts. |
-| `apps/backend/src/presentation/http/routers/internal/` | Token-protected processing API under `/internal/v1`; contract version is `1`. |
-| `apps/backend/alembic/` | Migrations. Exactly two since the 28.07.2026 squash: `0001_schema` (all ten tables) and `0002_seed` (two cities **with their road layers**, seven routes **without lines** — tests depend on these). `seed_data/geometry/<city>/export.geojson` holds the two road layers the seed reads; they are migration assets, not leftovers — delete them and a from-scratch database comes up with an empty map. Route lines are drawn in the admin panel, not seeded (31.07.2026, see §10); the seven `route_N.geojson` that used to live here are now reference fixtures in `tests/fixtures/routes/`. While there is no production database the chain is squashed rather than extended; the day real data exists, that stops and history is append-only. |
+| `src/domain/` | Pure logic, no I/O: `geozones.py` (`beta`, `overlaps`), `catalog.py` (point collapsing, revision diff, city bounds), `geometry.py` (geojson validation, bbox, route line assembly), `route_snapping.py` (road graph + map matching: a hand-drawn stroke onto real roads) + entity facades. |
+| `src/application/` | Services (`pipeline_run_service`, `catalog_service`, `metrics_rollup`, `user_service`), DTOs, repository interfaces. |
+| `src/infrastructure/` | SQLModel models, SQL repositories, MinIO storage, `catalog/parser.py` (xlsx/xls/csv). |
+| `src/presentation/http/` | FastAPI routers, request/response DTOs, DI, exception handlers, `security.py` (the admin password). |
+| `src/application/services/processing_job_service.py` | Backend side of the processing boundary: atomically claims queued work, accepts progress and validates/registers completed artifacts. |
+| `src/presentation/http/routers/internal/` | Token-protected processing API under `/internal/v1`; contract version is `1`. |
+| `alembic/` | Migrations. Exactly two since the 28.07.2026 squash: `0001_schema` (all ten tables) and `0002_seed` (two cities **with their road layers**, seven routes **without lines** — tests depend on these). `seed_data/geometry/<city>/export.geojson` holds the two road layers the seed reads; they are migration assets, not leftovers — delete them and a from-scratch database comes up with an empty map. Route lines are drawn in the admin panel, not seeded (31.07.2026, see §10); the seven `route_N.geojson` that used to live here are now reference fixtures in `tests/fixtures/routes/`. While there is no production database the chain is squashed rather than extended; the day real data exists, that stops and history is append-only. |
 | `../ai_ad_frontend/src/` | React 19 + Vite + Recharts in the companion repository. Hand-rolled router (`routing.ts`), no react-router. |
 | `tests/` | pytest. Needs a live Postgres; MinIO is faked. |
 | `docs/refactoring-backlog.md` | The only planning document left. `docs/plan.md` and its per-step files existed until 28.07.2026 and are gone: intent that has landed belongs in `pipeline-and-metrics.md`, not in a parallel history. Do not recreate them. |
@@ -84,12 +84,12 @@ boundary settles; their Docker images are prepared only at the final packaging s
 |---|---|---|
 | Postgres | docker compose | `:5432` |
 | MinIO | docker compose | `:9000` API, `:9001` console |
-| Migrations | native `uv run python -m alembic -c apps/backend/alembic.ini upgrade head` | connects to Compose Postgres |
+| Migrations | native `uv run python -m alembic -c alembic.ini upgrade head` | connects to Compose Postgres |
 | Backend (FastAPI) | native `uv run python -m uvicorn ... --reload` | `:8000`, public prefix `/api/v1`, internal prefix `/internal/v1`, health at `/healthcheck` |
 | Worker + ML | native `uv run python -m processing_worker.main` in `../ai_ad_ml` | temporary files under its `PROCESSING_TEMP_DIR`; GPU selected by `PIPELINE_DEVICE` |
 | Frontend (Vite dev) | `pnpm dev` in `../ai_ad_frontend` | `:5173` (in backend CORS allowlist) |
 
-Backend config comes from `apps/backend/.env` (gitignored), resolved independently of the current
+Backend config comes from the repository-root `.env` (gitignored), resolved independently of the current
 working directory. ML/worker config comes from `../ai_ad_ml/.env`. Both must carry the same
 `PROCESSING_SERVICE_TOKEN` (at least 16 characters). The worker's API client deliberately ignores
 host `HTTP_PROXY`/`HTTPS_PROXY`: backend is a local trusted service and inherited proxy settings can
@@ -196,7 +196,7 @@ On the backend `visibility_value` means **S·α·β**. They are different number
 | Retune area/position/contrast/confidence numbers | `ScoringConfig` in `../ai_ad_ml/ml/pipeline/scripts/config.py` only |
 | Change how a factor is computed | the one file in `../ai_ad_ml/ml/pipeline/scripts/scoring/`, plus its class in `../ai_ad_ml/tests/test_scoring.py` |
 | Add/remove a CSV column | update `pipeline_contracts/artifacts.py` in **both** repositories → the dataclass in `../ai_ad_ml/ml/pipeline/scripts/schemas.py` → every reader; run both repositories' contract/tests before handoff |
-| Change β semantics / zone model | `apps/backend/src/domain/geozones.py` + `_apply_beta` in `pipeline_run_service.py` + `RouteGeozone` model |
+| Change β semantics / zone model | `src/domain/geozones.py` + `_apply_beta` in `pipeline_run_service.py` + `RouteGeozone` model |
 | Change how zones are entered or edited | `../ai_ad_frontend/src/components/RouteGeozones.tsx` — one panel for both mounts (city page without video, shooting card with it); percent↔fraction lives in `toFraction`/`percentText` there |
 | Add an endpoint | router in `presentation/http/routers/v1/` → response DTO in `presentation/http/dto/response.py` → service → repository interface → SQL repository |
 | Add a DB table/column | `infrastructure/database/models.py`, then the schema change goes **into `0001_schema`**, not into a third migration — there is still no production database (see §3). Generate it only when asked; **the owner applies it**, and the owner must wipe the volume for an edited `0001_schema` to take effect. Verify with `alembic check` against a scratch database: `pytest` proves the code runs on the migrated schema but not that the migration matches the models |
@@ -226,8 +226,8 @@ On the backend `visibility_value` means **S·α·β**. They are different number
 ```bash
 docker compose up -d postgres minio
 docker compose down
-uv run python -m alembic -c apps/backend/alembic.ini upgrade head
-uv run python -m uvicorn main:app --app-dir apps/backend/src --reload
+uv run python -m alembic -c alembic.ini upgrade head
+uv run python -m uvicorn main:app --app-dir src --reload
 uv run pytest                # needs postgres up; creates/drops ad_pipeline_test
 uv run ruff check . && uv run mypy .
 cd ../ai_ad_frontend && pnpm dev

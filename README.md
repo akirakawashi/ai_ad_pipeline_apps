@@ -16,14 +16,14 @@ ML worker не подключается к PostgreSQL. Он забирает з�
 ## Структура
 
 ```text
-apps/backend/src/
+src/
 ├── domain/          чистая бизнес-логика
 ├── application/     сервисы, DTO и интерфейсы
 ├── infrastructure/  PostgreSQL, MinIO, парсеры
 ├── presentation/    публичный и внутренний HTTP API
 └── settings/        конфигурация backend
 
-apps/backend/alembic/  миграции PostgreSQL
+alembic/               миграции PostgreSQL
 pipeline_contracts/    контракты артефактов и общие enum backend/ML
 tests/                 backend unit/integration tests
 docker-compose.yml     только PostgreSQL и MinIO
@@ -38,11 +38,11 @@ docker-compose.yml     только PostgreSQL и MinIO
 ## Настройка
 
 ```bash
-cp apps/backend/.env.example apps/backend/.env
+cp .env.example .env
 uv sync
 ```
 
-Backend всегда читает `apps/backend/.env`, независимо от текущей директории.
+Backend всегда читает корневой `.env`, независимо от текущей директории.
 Для связи с `ai_ad_ml` значение `PROCESSING_SERVICE_TOKEN` в обоих репозиториях
 должно совпадать.
 
@@ -57,14 +57,14 @@ docker compose up -d postgres minio
 Применить миграции:
 
 ```bash
-uv run python -m alembic -c apps/backend/alembic.ini upgrade head
+uv run python -m alembic -c alembic.ini upgrade head
 ```
 
 Запустить backend без Docker:
 
 ```bash
 uv run python -m uvicorn main:app \
-  --app-dir apps/backend/src \
+  --app-dir src \
   --host 127.0.0.1 \
   --port 8000 \
   --reload
@@ -120,8 +120,8 @@ Frontend:        http://127.0.0.1:5173
 
 ```bash
 docker compose up -d postgres
-uv run ruff check pipeline_contracts apps/backend/src tests
-uv run mypy pipeline_contracts apps/backend/src tests
+uv run ruff check pipeline_contracts src tests
+uv run mypy pipeline_contracts src tests
 uv run pytest
 docker compose config --quiet
 ```

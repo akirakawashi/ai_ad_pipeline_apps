@@ -4,7 +4,7 @@ services:
     container_name: ai-ad-postgres
     restart: unless-stopped
     env_file:
-      - ./apps/backend/.env
+      - ./.env
     ports:
       - "5432:5432"
     volumes:
@@ -20,7 +20,7 @@ services:
     container_name: ai-ad-minio
     restart: unless-stopped
     env_file:
-      - ./apps/backend/.env
+      - ./.env
     environment:
       MINIO_BROWSER: "on"
       MINIO_API_CORS_ALLOW_ORIGIN: "*"

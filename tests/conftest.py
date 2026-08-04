@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 # Всё до импорта приложения: настройки читаются из окружения, а session.py
 # создаёт движок прямо на импорте модуля — подменить базу позже уже нельзя.
-load_dotenv(ROOT / "apps" / "backend" / ".env")
+load_dotenv(ROOT / ".env")
 TEST_DB = os.environ.get("POSTGRES_TEST_DB", "ad_pipeline_test")
 ADMIN_DB = "postgres"
 os.environ["POSTGRES_DB"] = TEST_DB
@@ -117,7 +117,7 @@ def database() -> Iterator[None]:
         conn.execute(f'DROP DATABASE IF EXISTS "{TEST_DB}" WITH (FORCE)')
         conn.execute(f'CREATE DATABASE "{TEST_DB}"')
 
-    config = Config(str(ROOT / "apps" / "backend" / "alembic.ini"))
+    config = Config(str(ROOT / "alembic.ini"))
     command.upgrade(config, "head")
 
     yield
