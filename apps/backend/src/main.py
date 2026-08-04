@@ -9,6 +9,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from infrastructure.storage.minio_storage import MinioStorage
 from presentation.http.exception_handlers import setup_exception_handlers
 from presentation.http.routers.healthcheck import healthcheck_router
+from presentation.http.routers.internal import internal_v1_router
 from presentation.http.routers.v1.router import api_v1_router
 from settings.factory import get_settings
 
@@ -27,6 +28,10 @@ def include_routers(application: FastAPI) -> None:
     application.include_router(
         api_v1_router,
         prefix=config.app.api_v1_prefix,
+    )
+    application.include_router(
+        internal_v1_router,
+        prefix="/internal/v1",
     )
 
 

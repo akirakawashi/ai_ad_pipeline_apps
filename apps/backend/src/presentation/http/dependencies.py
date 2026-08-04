@@ -9,6 +9,7 @@ from sqlmodel import Session
 from application.services.ad_catalog_service import AdCatalogService
 from application.services.catalog_service import CatalogService
 from application.services.pipeline_run_service import PipelineRunService
+from application.services.processing_job_service import ProcessingJobService
 from application.services.user_service import UserService
 from infrastructure.catalog.parser import ExcelCatalogParser
 from infrastructure.database.session import get_db_session
@@ -38,6 +39,16 @@ def get_run_service(
     storage: MinioStorage = Depends(get_object_storage),
 ) -> PipelineRunService:
     return PipelineRunService(
+        SqlPipelineRunRepository(session),
+        storage,
+    )
+
+
+def get_processing_job_service(
+    session: Session = Depends(get_session),
+    storage: MinioStorage = Depends(get_object_storage),
+) -> ProcessingJobService:
+    return ProcessingJobService(
         SqlPipelineRunRepository(session),
         storage,
     )

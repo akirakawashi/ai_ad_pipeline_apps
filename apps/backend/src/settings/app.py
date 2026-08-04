@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -9,11 +11,14 @@ from settings.object_storage import (
     ObjectStorageSettings,
     build_object_storage_settings,
 )
-from settings.pipeline import PipelineSettings
+
+BACKEND_ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
+        env_file=BACKEND_ENV_FILE,
+        env_file_encoding="utf-8",
         extra="ignore",
         frozen=True,
     )
@@ -79,10 +84,14 @@ class Settings(BaseSettings):
         default="admin",
         validation_alias="ADMIN_PASSWORD",
     )
+    processing_service_token: str = Field(
+        default="dev-processing-token",
+        validation_alias="PROCESSING_SERVICE_TOKEN",
+        min_length=16,
+    )
 
     app: AppSettings = Field(default_factory=AppSettings)
     cors: CorsSettings = Field(default_factory=CorsSettings)
-    pipeline: PipelineSettings = Field(default_factory=PipelineSettings)
 
     @property
     def database(self) -> DatabaseSettings:

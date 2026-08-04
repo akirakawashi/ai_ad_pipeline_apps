@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from pathlib import Path
 from typing import Protocol
 
 from application.common.dto import PipelineArtifactDTO, PipelineRunDTO
@@ -33,20 +32,6 @@ class RunObjectStorage(Protocol):
     def read_bytes(self, object_key: str) -> bytes: ...
 
     def read_text(self, object_key: str) -> str: ...
-
-
-class WorkerObjectStorage(Protocol):
-    def ensure_bucket(self) -> None: ...
-
-    def download_file(self, object_key: str, destination: Path) -> None: ...
-
-    def upload_file(
-        self,
-        source: Path,
-        object_key: str,
-        *,
-        content_type: str | None = None,
-    ) -> object: ...
 
 
 class PipelineRunRepository(Protocol):
@@ -96,7 +81,8 @@ class PipelineRunRepository(Protocol):
     ) -> PipelineRunDTO | None:
         """Съёмка для показа. None — нет её или её задание скрыто.
 
-        `include_hidden` — только для дозавершения начатой загрузки."""
+        `include_hidden` — только для дозавершения уже начатой загрузки или
+        обработки; скрытие задания не отменяет принятую работу."""
         ...
 
     def get_geozone_intervals(self, run_id: str) -> list[GeozoneInterval]:

@@ -8,7 +8,6 @@ from application.interfaces.pipeline import (
     ObjectStat,
     PipelineRunRepository,
     RunObjectStorage,
-    WorkerObjectStorage,
 )
 from application.interfaces.users import UserRepository
 
@@ -21,5 +20,4 @@ __all__ = [
     "PipelineRunRepository",
     "RunObjectStorage",
     "UserRepository",
-    "WorkerObjectStorage",
 ]

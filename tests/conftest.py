@@ -31,6 +31,8 @@ ADMIN_LOGIN = "admin"
 ADMIN_PASSWORD = "admin"
 os.environ["ADMIN_USERNAME"] = ADMIN_LOGIN
 os.environ["ADMIN_PASSWORD"] = ADMIN_PASSWORD
+PROCESSING_TOKEN = "test-processing-token"
+os.environ["PROCESSING_SERVICE_TOKEN"] = PROCESSING_TOKEN
 
 import psycopg  # noqa: E402
 import pytest  # noqa: E402

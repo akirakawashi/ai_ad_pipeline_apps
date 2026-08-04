@@ -46,6 +46,10 @@ from application.common.dto.pipeline import (
     RunTimelinePointDTO,
     UploadTargetDTO,
 )
+from application.common.dto.processing import (
+    ProcessingArtifactInputDTO,
+    ProcessingVideoMetadataDTO,
+)
 from application.common.dto.users import UserDTO
 
 __all__ = [
@@ -93,5 +97,7 @@ __all__ = [
     "RunTimelineDTO",
     "RunTimelinePointDTO",
     "UploadTargetDTO",
+    "ProcessingArtifactInputDTO",
+    "ProcessingVideoMetadataDTO",
     "UserDTO",
 ]

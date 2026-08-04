@@ -34,15 +34,17 @@ Three target brands: `mts`, `plus7`, `miranda`. Everything else collapses to `ot
    computed **on the backend at request time** from route geozones. Never write β or V into pipeline
    artifacts, never bake β into the CSV contract. Rationale: zones are drawn *after* processing and
    change at will — there is no moment at which β is final.
-4. **Artifact/DTO shapes live in `pipeline_contracts/`.** That package is the single source of truth
-   shared by the ML pipeline and the backend. `ml/pipeline/scripts/artifacts.py`,
-   `ml/pipeline/scripts/domain.py` and `apps/backend/src/domain/entities/` are thin re-export
-   facades — do not add logic there.
+4. **Artifact/DTO shapes live in `pipeline_contracts/`.** This repository owns the backend's copy;
+   the standalone ML repository has a matching copy in `../ai_ad_ml/pipeline_contracts/`. A contract
+   change is one coordinated change in both repositories and must keep the processing wire contract
+   at version `1` until an explicit version migration is designed. `apps/backend/src/domain/entities/`
+   is a thin re-export facade — do not add logic there.
 5. **Tunable numbers go into config dataclasses**, never into `if` branches:
-   [ml/pipeline/scripts/config.py](ml/pipeline/scripts/config.py) (`ScoringConfig` and friends).
+   [`../ai_ad_ml/ml/pipeline/scripts/config.py`](../ai_ad_ml/ml/pipeline/scripts/config.py)
+   (`ScoringConfig` and friends).
    Business tunes tables without touching code.
 6. **Do not run the full pipeline unless asked.** It needs a GPU, model weights
-   (`models/*/best.pt`, gitignored) and a real video. Prefer unit tests.
+   (`../ai_ad_ml/models/*/best.pt`, gitignored) and a real video. Prefer unit tests.
 7. **`docs/refactoring-backlog.md` is a backlog, not a task list.** Do not act on it unless the
    owner explicitly asks.
 8. **The ad catalogue must not touch the visibility metric.** `ad_structures` is a directory of
@@ -56,61 +58,43 @@ Three target brands: `mts`, `plus7`, `miranda`. Everything else collapses to `ot
 
 | Path | What lives there |
 |---|---|
-| `pipeline_contracts/` | **Shared contracts**: CSV row models, overlay payload, enums (`PipelineRunStatus`, `PipelineRunStage`, `PipelineArtifactType`, `FinalStatus`, …), brand constants. Imported by both ML and backend. |
-| `ml/pipeline/run_pipeline.py` | CLI entry point (argparse → `PipelineConfig` → `run_pipeline`). |
-| `ml/pipeline/scripts/runner.py` | Stage orchestration. The one file that shows the whole ML flow. |
-| `ml/pipeline/scripts/scoring/` | The metric: `area`, `position`, `contrast`, `intensity`, `attention`, `confidence`, `geometry`, `interpolation`. Feature extraction is separate from assembly. |
-| `ml/pipeline/scripts/` (rest) | `detection`, `crops`, `quality`, `classification`, `tracking`, `track_groups`, `aggregation`, `io`, `schemas`, `config`, `visualization` (**despite the name it draws nothing** — it works out which boxes are visible in which frame, with gap interpolation, and its only consumer is `viewer/payload.py`). |
-| `ml/pipeline/scripts/reporting/` | CSV + charts + `report.html` (standalone pipeline reports, **not** the product UI). |
-| `ml/pipeline/scripts/viewer/` | `overlay.json` + `viewer.html` (standalone player with cards). |
+| `pipeline_contracts/` | Backend copy of the artifact contracts: CSV row models, overlay payload, enums (`PipelineRunStatus`, `PipelineRunStage`, `PipelineArtifactType`, `FinalStatus`, …), brand constants. Must match the ML copy. |
+| `../ai_ad_ml/ml/pipeline/` | Standalone ML pipeline: CLI, orchestration, scoring, reports and overlay generation. It does not import this repository. |
+| `../ai_ad_ml/processing_worker/` | Standalone worker. Claims jobs and reports progress/results through backend HTTP; reads/writes objects in MinIO; never connects to PostgreSQL. |
 | `apps/backend/src/domain/` | Pure logic, no I/O: `geozones.py` (`beta`, `overlaps`), `catalog.py` (point collapsing, revision diff, city bounds), `geometry.py` (geojson validation, bbox, route line assembly), `route_snapping.py` (road graph + map matching: a hand-drawn stroke onto real roads) + entity facades. |
 | `apps/backend/src/application/` | Services (`pipeline_run_service`, `catalog_service`, `metrics_rollup`, `user_service`), DTOs, repository interfaces. |
 | `apps/backend/src/infrastructure/` | SQLModel models, SQL repositories, MinIO storage, `catalog/parser.py` (xlsx/xls/csv). |
 | `apps/backend/src/presentation/http/` | FastAPI routers, request/response DTOs, DI, exception handlers, `security.py` (the admin password). |
-| `apps/backend/src/worker/` | Queue worker that runs the ML pipeline out-of-process. |
+| `apps/backend/src/application/services/processing_job_service.py` | Backend side of the processing boundary: atomically claims queued work, accepts progress and validates/registers completed artifacts. |
+| `apps/backend/src/presentation/http/routers/internal/` | Token-protected processing API under `/internal/v1`; contract version is `1`. |
 | `apps/backend/alembic/` | Migrations. Exactly two since the 28.07.2026 squash: `0001_schema` (all ten tables) and `0002_seed` (two cities **with their road layers**, seven routes **without lines** — tests depend on these). `seed_data/geometry/<city>/export.geojson` holds the two road layers the seed reads; they are migration assets, not leftovers — delete them and a from-scratch database comes up with an empty map. Route lines are drawn in the admin panel, not seeded (31.07.2026, see §10); the seven `route_N.geojson` that used to live here are now reference fixtures in `tests/fixtures/routes/`. While there is no production database the chain is squashed rather than extended; the day real data exists, that stops and history is append-only. |
 | `../ai_ad_frontend/src/` | React 19 + Vite + Recharts in the companion repository. Hand-rolled router (`routing.ts`), no react-router. |
 | `tests/` | pytest. Needs a live Postgres; MinIO is faked. |
 | `docs/refactoring-backlog.md` | The only planning document left. `docs/plan.md` and its per-step files existed until 28.07.2026 and are gone: intent that has landed belongs in `pipeline-and-metrics.md`, not in a parallel history. Do not recreate them. |
-| `README.md` | Setup/ops guide. Predates the metric rewrite; treat metric statements in it as stale. |
+| `README.md` | Setup and local-run guide for the separated repositories. |
 
 ---
 
 ## 4. Runtime topology
 
-**`docker compose up` brings up the backend stack.** The frontend was moved to
-`../ai_ad_frontend` on 04.08.2026 and runs natively with `pnpm dev`; it is no longer a Compose
-service in this repository.
+Compose is deliberately infrastructure-only. Applications run natively while the three-repository
+boundary settles; their Docker images are prepared only at the final packaging stage.
 
 | Piece | How it runs | Where |
 |---|---|---|
 | Postgres | docker compose | `:5432` |
 | MinIO | docker compose | `:9000` API, `:9001` console |
-| `migrate` | docker compose, one-shot; backend and worker wait on `service_completed_successfully` | exits after `alembic upgrade head` |
-| Backend (FastAPI) | docker compose, `--reload` | `:8000`, prefix `/api/v1`, health at `/healthcheck` |
-| Worker | docker compose, **`gpus: all`** | `.runtime/worker/<run_id>/` inside the container, on the `worker_runtime` volume |
+| Migrations | native `uv run python -m alembic -c apps/backend/alembic.ini upgrade head` | connects to Compose Postgres |
+| Backend (FastAPI) | native `uv run python -m uvicorn ... --reload` | `:8000`, public prefix `/api/v1`, internal prefix `/internal/v1`, health at `/healthcheck` |
+| Worker + ML | native `uv run python -m processing_worker.main` in `../ai_ad_ml` | temporary files under its `PROCESSING_TEMP_DIR`; GPU selected by `PIPELINE_DEVICE` |
 | Frontend (Vite dev) | `pnpm dev` in `../ai_ad_frontend` | `:5173` (in backend CORS allowlist) |
 
-Two images out of one `apps/backend/Dockerfile`: target `backend` installs only the `backend`
-dependency group, target `worker` installs `backend` + `ml` and the two system libraries `cv2` links
-against (`libgl1`, `libglib2.0-0`). Frontend containerization is deferred until the native
-three-repository layout is complete.
-
-**CUDA is not installed into the worker image and must not be.** Its userspace half arrives as the
-`nvidia-*` wheels that come with `torch`; the other half is the driver, which lives on the host and
-is injected by **`nvidia-container-toolkit`** — an OCI hook that mounts the driver libraries and the
-device node into the container (under WSL that is `/usr/lib/wsl/lib` and `/dev/dxg`, not
-`/dev/nvidia*`). Without the toolkit the container does not start at all: the daemon answers `no
-known GPU vendor found`. Installing the CUDA toolkit inside the image instead gets you `libcuda.so`
-from `stubs/` — it links fine and `torch.cuda.is_available()` returns `False`. Operational detail —
-how to install the toolkit, what a kernel update does and does not require, which systemd units keep
-the CDI spec fresh — lives in `README.md` §«Видеокарта в контейнере» and is not repeated here.
-
-Config: pydantic-settings, env from `apps/backend/.env` (gitignored). Pipeline knobs use the
-`PIPELINE_` prefix (`PIPELINE_FRAME_STRIDE`, default **1** for the worker; the CLI default is 10).
-Model weights and the videos of a run are **mounted, never copied into the image** — `models/` is
-350 MB and gitignored, and run scratch space is a named volume so gigabytes do not go through the
-container's overlayfs.
+Backend config comes from `apps/backend/.env` (gitignored), resolved independently of the current
+working directory. ML/worker config comes from `../ai_ad_ml/.env`. Both must carry the same
+`PROCESSING_SERVICE_TOKEN` (at least 16 characters). The worker's API client deliberately ignores
+host `HTTP_PROXY`/`HTTPS_PROXY`: backend is a local trusted service and inherited proxy settings can
+turn a healthy localhost request into a proxy-generated 503. PostgreSQL credentials exist only in
+backend; the ML repository has no database dependency or setting.
 
 ---
 
@@ -140,9 +124,9 @@ Field placement:
 | `TrackRecord` / `tracks.csv` | `attention_seconds` (S), `confidence_coef` (α) |
 | Backend, computed live | `significance_coef` (β), `visibility_value` (V) |
 
-⚠ **Name collision to keep straight:** in `ml/` the label `visibility_value` means **S·α** (derived
-in [reporting/writer.py](ml/pipeline/scripts/reporting/writer.py) and
-[viewer/payload.py](ml/pipeline/scripts/viewer/payload.py) for standalone reports and overlay cards).
+⚠ **Name collision to keep straight:** in `../ai_ad_ml` the label `visibility_value` means **S·α**
+(derived in its `reporting/writer.py` and `viewer/payload.py` for standalone reports and overlay
+cards).
 On the backend `visibility_value` means **S·α·β**. They are different numbers with the same name.
 
 ---
@@ -160,15 +144,21 @@ On the backend `visibility_value` means **S·α·β**. They are different number
 2. Browser PUTs the file straight to MinIO: `runs/{run_id}/source/{safe_name}`.
 3. `POST /runs/{run_id}/upload-complete` → registers the `source_video` artifact, status `queued`.
    The one read that still answers for a hidden assignment: the file is already stored.
-4. Worker `claim_next` (`SELECT … FOR UPDATE SKIP LOCKED`) → status `processing`, downloads the
-   video, runs the pipeline, reporting progress into `pipeline_runs` + `pipeline_run_events`. The
-   second of those is **write-only** — see §10.
+4. ML worker calls `POST /internal/v1/processing/jobs/claim` with `X-Processing-Token` and contract
+   version `1`. The backend performs `SELECT … FOR UPDATE SKIP LOCKED`, commits status `processing`,
+   and returns the source object's bucket/key. The worker downloads it from MinIO and reports stages
+   with `POST .../{run_id}/progress`; only backend writes `pipeline_runs` and
+   `pipeline_run_events`. The second table is **write-only** — see §10.
 5. Pipeline stages: detection → tracking → classification → final aggregation → business rules →
    artifacts.
-6. Worker uploads everything under `runs/{run_id}/artifacts/…`. Crops are uploaded but **not**
-   registered as DB rows (`should_register_artifact`). `mark_completed` stores fps / frame_count /
-   frame_stride / width / height and **`duration_sec = frame_count / fps`** — β depends on this
-   value.
+6. Worker uploads everything under `runs/{run_id}/artifacts/…`, then posts the artifact manifest and
+   video metadata to `POST .../{run_id}/complete`. The backend rejects escaping/duplicate paths,
+   verifies every declared object in MinIO, derives artifact types itself, registers them and marks
+   the run completed in one transaction. Crops are uploaded but **not** put in the manifest
+   (`should_register_artifact`). Completion stores fps / frame_count / frame_stride / width / height
+   and **`duration_sec = frame_count / fps`** — β depends on this value. Failure is reported through
+   `POST .../{run_id}/fail`. There is no lease/heartbeat yet: a process death between claim and
+   failure reporting leaves a run in `processing`, as the old in-process worker did.
 7. Reads: `GET /runs/{id}/summary` and `/objects` parse **`tracks.csv`** from MinIO and apply β on
    the fly; `/timeline` parses `detections.csv`; `/overlay` returns `overlay.json`. `pipeline_runs`
    has exactly six read endpoints — `/{id}`, `/summary`, `/objects`, `/timeline`, `/overlay`,
@@ -207,9 +197,9 @@ only feed the pipeline's own `report.html`.
 
 | I need to… | Touch |
 |---|---|
-| Retune area/position/contrast/confidence numbers | `ScoringConfig` in [config.py](ml/pipeline/scripts/config.py) only |
-| Change how a factor is computed | the one file in `ml/pipeline/scripts/scoring/`, plus its class in [tests/test_scoring.py](tests/test_scoring.py) |
-| Add/remove a CSV column | `pipeline_contracts/artifacts.py` (field list is derived from the model) → the dataclass in `ml/pipeline/scripts/schemas.py` → whoever reads it |
+| Retune area/position/contrast/confidence numbers | `ScoringConfig` in `../ai_ad_ml/ml/pipeline/scripts/config.py` only |
+| Change how a factor is computed | the one file in `../ai_ad_ml/ml/pipeline/scripts/scoring/`, plus its class in `../ai_ad_ml/tests/test_scoring.py` |
+| Add/remove a CSV column | update `pipeline_contracts/artifacts.py` in **both** repositories → the dataclass in `../ai_ad_ml/ml/pipeline/scripts/schemas.py` → every reader; run both repositories' contract/tests before handoff |
 | Change β semantics / zone model | `apps/backend/src/domain/geozones.py` + `_apply_beta` in `pipeline_run_service.py` + `RouteGeozone` model |
 | Change how zones are entered or edited | `../ai_ad_frontend/src/components/RouteGeozones.tsx` — one panel for both mounts (city page without video, shooting card with it); percent↔fraction lives in `toFraction`/`percentText` there |
 | Add an endpoint | router in `presentation/http/routers/v1/` → response DTO in `presentation/http/dto/response.py` → service → repository interface → SQL repository |
@@ -231,23 +221,24 @@ only feed the pipeline's own `report.html`.
 | Add a section to the admin panel | a component under `components/`, mounted from `AdminPage.tsx`. City-scoped → a tab in `CITY_TABS`; not city-scoped → a page-level section in `AdminSection` (like `AdminUsers.tsx`). Keep the two switchers visually different — underlined text for sections, pill tabs inside a city — or they read as one level. Guard its writes with `require_admin` in the same change |
 | Change the people directory | `user_service.py` → `users.py` router → `AdminUsers.tsx` — creation, renaming and hiding all live there. `UserSelect.tsx` only selects; do not put a create form back into it (see §10). **A person is attached to a row in exactly two roles, and both are named `uploaded_by`**: `pipeline_runs.uploaded_by_users_id` (who brought the video) and `catalog_imports.uploaded_by_users_id` (who brought the catalogue pack). The third is `assignments.author_users_id` — the person who *set* the campaign, a different thing. **Who drove and filmed is not stored at all** — see §10 |
 | Change how the shooting date is entered | `useVideoUpload.ts` (`shotDate` per queued file, `shotStartedAt()` decides what is sent) → `DateField.tsx` + its mount in `UploadPage.tsx` → `createRun` in `api.ts` → `CreateRunRequest` / `UpdateShootingRequest` → `pipeline_run_service` → repository → the `PipelineRun` model and `0001_schema`. Use the shared `DateField`, never a native `<input type="date">`: the browser owns that popup and renders it outside the product theme. Date↔ISO conversion belongs in `utils/formatters.ts` and nowhere else — see the timezone trap in §10. Preserve the invariant at every layer: create requires `shot_started_at`, PATCH may omit it but may not send `null`, and the database column is `NOT NULL` |
-| Change what the overlay card shows | `viewer/payload.py` + `OverlayObjectPayload` in `pipeline_contracts/artifacts.py` + `VideoOverlayPlayer.tsx` |
+| Change what the overlay card shows | `../ai_ad_ml/ml/pipeline/scripts/viewer/payload.py` + `OverlayObjectPayload` in both copies of `pipeline_contracts/artifacts.py` + `../ai_ad_frontend/src/components/VideoOverlayPlayer.tsx` |
 
 ---
 
 ## 8. Commands
 
 ```bash
-docker compose up            # backend stack: postgres, minio, migrations, backend, worker
+docker compose up -d postgres minio
 docker compose down
-docker compose logs -f worker
-docker compose build worker  # first build pulls ~6 GB of torch/CUDA wheels; cached afterwards
+uv run python -m alembic -c apps/backend/alembic.ini upgrade head
+uv run python -m uvicorn main:app --app-dir apps/backend/src --reload
 uv run pytest                # needs postgres up; creates/drops ad_pipeline_test
-uv run pytest tests/test_scoring.py     # scoring in isolation — but still needs postgres, see below
 uv run ruff check . && uv run mypy .
 cd ../ai_ad_frontend && pnpm dev
 cd ../ai_ad_frontend && pnpm build && pnpm lint
-./run_video_pipeline.sh path/to/video.mp4     # standalone ML run (GPU + weights required)
+cd ../ai_ad_ml && uv run python -m processing_worker.main
+cd ../ai_ad_ml && uv run pytest && uv run ruff check . && uv run mypy .
+cd ../ai_ad_ml && ./run_video_pipeline.sh path/to/video.mp4  # standalone GPU run
 ```
 
 **Run `ruff`, `mypy` and `pytest` after every change, and `pnpm lint` after every frontend change.**
@@ -257,9 +248,9 @@ bugs, and the one consequence was that nobody looked at it. If a finding genuine
 expressed in types, silence it at the single line with `# type: ignore[code]` **and a comment saying
 why** — never by widening a signature or excluding a module.
 
-`tests/test_scoring.py` needs no database of its own, but you still cannot run it without one: the
-session-scoped autouse `database` fixture in `conftest.py` creates the test database before any test
-is collected, and calls `pytest.exit` when postgres is unreachable. There is no DB-free subset.
+Backend tests use a session-scoped autouse `database` fixture that creates the test database before
+collection and calls `pytest.exit` when Postgres is unreachable. ML/scoring tests live in
+`../ai_ad_ml/tests/` and do not need PostgreSQL.
 
 ---
 
@@ -376,8 +367,9 @@ is collected, and calls `pytest.exit` when postgres is unreachable. There is no 
   and the same screen brings them back.
 * Coefficient tables are **defaults, not calibrated numbers** — area, position, contrast and
   confidence were set so work could proceed. Calibration against a real distribution is still open.
-* `run_video_pipeline.sh` appends `--brand-overrides` when `ml/pipeline/brand_overrides.csv` exists,
-  but `run_pipeline.py` has no such argument. The file is absent today, so the script works by luck.
+* The standalone `../ai_ad_ml/run_video_pipeline.sh` intentionally exposes only arguments accepted
+  by `run_pipeline.py`; the former conditional `--brand-overrides` argument was removed during the
+  repository split because no such CLI option exists.
 * α is derived from `final_brand_conf` only; the "brand stability across the track" input is a stub
   parameter (`detections` is accepted and ignored in `scoring/confidence.py`).
 * An object that was never classified still gets α = 0.5 (the floor) and counts as `other`.
@@ -389,8 +381,8 @@ is collected, and calls `pytest.exit` when postgres is unreachable. There is no 
   nowhere to roll the shooting up — the video took storage and answered no question. The FK is
   `CASCADE`, not `SET NULL`: there is nothing to null out. **`PipelineRunDTO.assignment` and its
   frontend twin stay optional anyway** — there `None` means "the relation was not loaded", which is
-  how the worker (`with_refs=False`) and `GET /assignments/{id}/runs` both answer. Tightening that
-  field to non-optional breaks the worker.
+  how the internal processing claim and `GET /assignments/{id}/runs` both answer. Tightening that
+  field to non-optional breaks those deliberately lightweight reads.
 * **The upload page's target comes from the loaded assignment, not from the id in the URL.**
   `UploadPage` in pinned mode (`/upload?assignment=…`) reads `pinnedAssignment?.id`, never
   `assignmentId` — otherwise a tab opened before the assignment was hidden keeps a live "Начать
@@ -524,10 +516,9 @@ is collected, and calls `pytest.exit` when postgres is unreachable. There is no 
   boxes into a file, the answer is almost certainly `overlay.json` plus the player instead.
 * **A worker without a GPU starts happily and only fails on the first video.** `PIPELINE_DEVICE`
   defaults to `"0"`, but nothing touches CUDA until a run is claimed and the models load — so the
-  container reports `worker started`, sits in the queue loop looking healthy, and the failure lands
-  on a real shooting as a failed run. If `docker compose up` succeeded but processing dies, check
-  the toolkit first (see §4), not the pipeline. The daemon refusing `no known GPU vendor found` at
-  startup is the *good* case: that one is loud.
+  native queue process can look healthy before the first real shooting reports failure. Verify the
+  selected device and `torch.cuda.is_available()` before allowing it to claim work; use a supported
+  CPU setting explicitly only when that runtime is acceptable.
 * **Uploading a city's road layer recomputes `bounds_*` in the same operation.** The catalogue parser
   uses that box to drop out-of-town points; a new layer with a stale box silently discards good rows.
 * **`ShootingMetricsDTO` is the unit of account at every level.** Assignment and route both read it;
@@ -578,12 +569,13 @@ is collected, and calls `pytest.exit` when postgres is unreachable. There is no 
   zones simply shift, because β is a fraction of *this* video's duration, and the numbers go quietly
   wrong. Rejected deliberately (owner: every drive is uploaded whole); if the assumption ever breaks,
   filtering belongs in `metrics_rollup.py` and nowhere else.
-* **Hiding an assignment is a product read filter, never a write filter — the worker must not see
-  it.** `SqlPipelineRunRepository.get` returns `None` for a shooting of a hidden assignment, so one
+* **Hiding an assignment is a product read filter, never a processing write filter.**
+  `SqlPipelineRunRepository.get` returns `None` for a shooting of a hidden assignment, so one
   line covers the card, the summary, the objects, the timeline and the player at once; `list_runs`
   excludes them through the same subquery that already resolves route and city. Write paths
   (`_get_model` directly: `claim_next`, `mark_upload_complete`, `mark_completed`, `mark_failed`,
-  `add_artifact`) have no filter and must not grow one — a hidden assignment would otherwise mean a
+  `add_artifact`) have no filter and must not grow one — the internal processing service invokes
+  those paths on the ML worker's behalf. A hidden assignment would otherwise mean a
   queued video nobody claims and nobody hears about again. The one deliberate exception is
   `complete_upload`, which passes `include_hidden=True`: the file is already in MinIO, and refusing
   there would strand the row in `uploading` next to an orphaned object. Same reason
@@ -594,12 +586,14 @@ is collected, and calls `pytest.exit` when postgres is unreachable. There is no 
   `ix_pipeline_runs_status` next to `ix_pipeline_runs_queue (status, created_at)` — and
   `ix_catalog_imports_cities_id` next to `ix_catalog_imports_city_current (cities_id, is_current)` —
   answered nothing the composite did not, while being rewritten on every insert. Both were dropped on
-  30.07.2026 along with `pipeline_runs.worker_id` (written by `claim_next`, read by no query — the
-  worker still builds an id, but only for its log line). The models now carry a comment at each site
+  30.07.2026 along with `pipeline_runs.worker_id` (written by the old in-repository worker and read by
+  no query). The standalone worker does not send or persist a worker id. The models carry a comment
+  at each site
   saying why there is no `index=True`; do not "restore" one. **Before adding `index=True`, check
   `__table_args__` for a composite that already starts with that column.**
 * **`pipeline_run_events` is a write-only table, and the only thing guarding it is one test.** The
-  worker appends a row per stage; nothing in the product reads them. Progress on screen comes from
+  ML worker reports each stage over HTTP and backend appends the row; nothing in the product reads
+  them. Progress on screen comes from
   the run's own `stage` / `progress` / `status_message`, which always hold the latest state — a
   second source of the same thing is what the events read path was, and it served `GET
   /runs/{id}/status`, an endpoint byte-identical to `GET /runs/{id}` that `api.ts` never called.

@@ -1,12 +1,9 @@
 from __future__ import annotations
 
-import mimetypes
 from datetime import timedelta
-from pathlib import Path
 
 from minio import Minio
 from minio.datatypes import Object
-from minio.helpers import ObjectWriteResult
 
 from settings.object_storage import ObjectStorageSettings
 
@@ -69,33 +66,6 @@ class MinioStorage:
 
     def stat(self, object_key: str) -> Object:
         return self._internal.stat_object(self.bucket, object_key)
-
-    def download_file(self, object_key: str, destination: Path) -> None:
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        self._internal.fget_object(
-            self.bucket,
-            object_key,
-            str(destination),
-        )
-
-    def upload_file(
-        self,
-        source: Path,
-        object_key: str,
-        *,
-        content_type: str | None = None,
-    ) -> ObjectWriteResult:
-        resolved_content_type = (
-            content_type
-            or mimetypes.guess_type(source.name)[0]
-            or "application/octet-stream"
-        )
-        return self._internal.fput_object(
-            self.bucket,
-            object_key,
-            str(source),
-            content_type=resolved_content_type,
-        )
 
     def read_bytes(self, object_key: str) -> bytes:
         response = self._internal.get_object(self.bucket, object_key)

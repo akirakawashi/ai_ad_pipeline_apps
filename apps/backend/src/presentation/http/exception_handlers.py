@@ -19,6 +19,7 @@ from application.exceptions import (
     InvalidUserError,
     InvalidVideoError,
     PipelineRunNotFoundError,
+    ProcessingJobStateError,
     UserAlreadyExistsError,
 )
 
@@ -75,6 +76,16 @@ def setup_exception_handlers(app: FastAPI) -> None:
     ) -> JSONResponse:
         return JSONResponse(
             status_code=400,
+            content={"detail": str(exc)},
+        )
+
+    @app.exception_handler(ProcessingJobStateError)
+    async def processing_job_state_handler(
+        _: Request,
+        exc: ProcessingJobStateError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=409,
             content={"detail": str(exc)},
         )
 

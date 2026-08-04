@@ -9,6 +9,10 @@ class InvalidVideoError(ValueError):
     pass
 
 
+class ProcessingJobStateError(ValueError):
+    """Worker пытается изменить задачу, которая уже не обрабатывается."""
+
+
 class CatalogNotFoundError(LookupError):
     """Не найден город, маршрут, задание или человек в справочнике."""
 
