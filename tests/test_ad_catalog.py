@@ -377,6 +377,8 @@ class TestUpload:
         assert report["points_before"] == 0
         assert report["collapsed_rows"] == 1
         assert report["catalog_import"]["revision"] is None
+        assert "city_id" not in report["catalog_import"]
+        assert "files_rejected" not in report["catalog_import"]
         # Пока не применили — каталог пуст, точек не видно.
         assert structures(client)["total"] == 0
 

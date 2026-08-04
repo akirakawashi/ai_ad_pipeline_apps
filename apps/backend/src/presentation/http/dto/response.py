@@ -344,8 +344,6 @@ class RouteSummaryResponse(ApiModel):
 class PipelineRunResponse(ApiModel):
     run_id: str = Field(validation_alias=AliasChoices("run_id", "pipeline_runs_id"))
     source_name: str
-    source_content_type: str | None
-    source_size_bytes: int
     status: PipelineRunStatus
     stage: PipelineRunStage
     progress: int
@@ -354,7 +352,6 @@ class PipelineRunResponse(ApiModel):
     error_message: str | None
     fps: float | None
     frame_count: int | None
-    frame_stride: int | None
     duration_sec: float | None
     width: int | None
     height: int | None
@@ -406,7 +403,6 @@ class RunTimelinePointResponse(RunTimelinePointDTO):
 
 class RunTimelineResponse(ApiModel):
     run_id: str
-    bucket_seconds: int
     points: list[RunTimelinePointResponse]
 
 

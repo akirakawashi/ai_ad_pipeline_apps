@@ -79,7 +79,6 @@ def _route_to_dto(
 def _geozone_to_dto(geozone: RouteGeozone) -> GeozoneDTO:
     return GeozoneDTO(
         id=geozone.route_geozones_id,
-        route_id=geozone.routes_id,
         name=geozone.name,
         description=geozone.description,
         start_fraction=geozone.start_fraction,

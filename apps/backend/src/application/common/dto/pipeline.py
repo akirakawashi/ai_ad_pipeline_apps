@@ -3,13 +3,11 @@ from __future__ import annotations
 from datetime import datetime
 
 from pipeline_contracts.artifacts import (
-    BrandTrackSummaryRow,
     OverlayDisplayPayload,
     OverlayFramePayload,
     OverlayObjectPayload,
     OverlayPayload,
     OverlayVideoPayload,
-    TrackCsvRow,
 )
 from pydantic import Field
 
@@ -114,8 +112,11 @@ class PlaybackDTO(ApplicationDTO):
     source_url: str | None
 
 
-class BrandSummaryDTO(BrandTrackSummaryRow):
-    pass
+class BrandSummaryDTO(ApplicationDTO):
+    brand: str
+    object_count: int
+    sum_visibility_value: float
+    mean_final_brand_conf: float
 
 
 class RunSummaryTotalsDTO(ApplicationDTO):
@@ -129,11 +130,15 @@ class RunSummaryDTO(ApplicationDTO):
     brands: list[BrandSummaryDTO]
 
 
-class RunObjectDTO(TrackCsvRow):
-    # β и итог V = S·α·β считает бэкенд из геозон — в CSV-контракте их больше
-    # нет. Объект отдаётся уже посчитанным (see PipelineRunService._apply_beta).
-    significance_coef: float = 0.0
-    visibility_value: float = 0.0
+class RunObjectDTO(ApplicationDTO):
+    """Публичная карточка объекта, а не копия внутренней строки tracks.csv."""
+
+    object_id: int
+    track_id: int
+    business_brand: str
+    final_brand_conf: float
+    visibility_value: float
+    best_timestamp_sec: float
     crop_url: str | None = None
 
 
@@ -145,13 +150,11 @@ class RunObjectsDTO(ApplicationDTO):
 class RunTimelinePointDTO(ApplicationDTO):
     bucket_start_sec: float
     business_brand: str | None
-    detection_count: int
     intensity_sum: float
 
 
 class RunTimelineDTO(ApplicationDTO):
     run_id: str
-    bucket_seconds: int
     points: list[RunTimelinePointDTO]
 
 

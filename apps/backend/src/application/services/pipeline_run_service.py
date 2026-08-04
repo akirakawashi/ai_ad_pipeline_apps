@@ -148,10 +148,7 @@ class PipelineRunService:
         # брошенный объект в MinIO. Довести начатое до конца дешевле; видно
         # съёмку всё равно не будет, пока задание не вернут.
         run = self._require_run(run_id, with_artifacts=False, include_hidden=True)
-        if run.status not in {
-            PipelineRunStatus.UPLOADING,
-            PipelineRunStatus.UPLOAD_FAILED,
-        }:
+        if run.status != PipelineRunStatus.UPLOADING:
             raise InvalidVideoError(
                 "Загрузка уже завершена или обработка уже началась."
             )
@@ -314,13 +311,8 @@ class PipelineRunService:
         object_level = (
             dataframe.groupby(["object_id", "business_brand"], dropna=False)
             .agg(
-                track_fragment_count=("track_id", "count"),
                 sum_visibility_value=("visibility_value", "sum"),
-                sum_attention_seconds=("attention_seconds", "sum"),
                 mean_final_brand_conf=("final_brand_conf", "mean"),
-                max_final_brand_conf=("final_brand_conf", "max"),
-                first_timestamp_sec=("first_timestamp_sec", "min"),
-                last_timestamp_sec=("last_timestamp_sec", "max"),
             )
             .reset_index()
         )
@@ -328,13 +320,8 @@ class PipelineRunService:
             object_level.groupby("business_brand", dropna=False)
             .agg(
                 object_count=("object_id", "count"),
-                track_fragment_count=("track_fragment_count", "sum"),
                 sum_visibility_value=("sum_visibility_value", "sum"),
-                sum_attention_seconds=("sum_attention_seconds", "sum"),
                 mean_final_brand_conf=("mean_final_brand_conf", "mean"),
-                max_final_brand_conf=("max_final_brand_conf", "max"),
-                first_timestamp_sec=("first_timestamp_sec", "min"),
-                last_timestamp_sec=("last_timestamp_sec", "max"),
             )
             .reset_index()
             .rename(columns={"business_brand": "brand"})
@@ -393,7 +380,6 @@ class PipelineRunService:
         if artifact is None:
             return RunTimelineDTO(
                 run_id=run_id,
-                bucket_seconds=bucket_seconds,
                 points=[],
             )
         dataframe = self._read_csv(artifact)
@@ -418,7 +404,6 @@ class PipelineRunService:
                         dropna=False,
                     )
                     .agg(
-                        detection_count=("det_index", "count"),
                         intensity_sum=("intensity", "sum"),
                     )
                     .reset_index()
@@ -426,7 +411,6 @@ class PipelineRunService:
                 points = self._dataframe_models(grouped, RunTimelinePointDTO)
         return RunTimelineDTO(
             run_id=run_id,
-            bucket_seconds=bucket_seconds,
             points=points,
         )
 

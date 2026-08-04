@@ -44,7 +44,6 @@ def _bounds(city: City) -> CityBounds | None:
 def _import_to_dto(model: CatalogImport) -> CatalogImportDTO:
     return CatalogImportDTO(
         id=model.catalog_imports_id,
-        city_id=model.cities_id,
         revision=model.revision,
         status=CatalogImportStatus(model.status),
         is_current=model.is_current,
@@ -52,7 +51,6 @@ def _import_to_dto(model: CatalogImport) -> CatalogImportDTO:
         rows_read=model.rows_read,
         rows_rejected=model.rows_rejected,
         points_total=model.points_total,
-        files_rejected=model.files_rejected,
         uploaded_by=user_ref(model.uploaded_by),
         applied_at=model.applied_at,
         created_at=model.created_at,

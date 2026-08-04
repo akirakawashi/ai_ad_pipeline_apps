@@ -121,44 +121,8 @@ class TrackCsvRow(ArtifactModel):
         return row
 
 
-class BrandDetectionSummaryRow(ArtifactModel):
-    brand: str
-    detection_count: int
-    mean_brand_conf: float
-    max_brand_conf: float
-    first_timestamp_sec: float
-    last_timestamp_sec: float
-    sum_intensity: float
-
-
-class FrameSummaryRow(ArtifactModel):
-    frame_index: int
-    timestamp_sec: float
-    detections_total: int
-    mts_count: int
-    plus7_count: int
-    miranda_count: int
-    other_count: int
-    sum_intensity: float
-
-
-class BrandTrackSummaryRow(ArtifactModel):
-    brand: str | None = None
-    object_count: int = 0
-    track_fragment_count: int | None = None
-    sum_visibility_value: float | None = None
-    sum_attention_seconds: float | None = None
-    mean_final_brand_conf: float | None = None
-    max_final_brand_conf: float | None = None
-    first_timestamp_sec: float | None = None
-    last_timestamp_sec: float | None = None
-
-
 DETECTION_CSV_FIELDS = list(DetectionCsvRow.model_fields)
 TRACK_CSV_FIELDS = list(TrackCsvRow.model_fields)
-BRAND_DETECTION_SUMMARY_FIELDS = list(BrandDetectionSummaryRow.model_fields)
-FRAME_SUMMARY_FIELDS = list(FrameSummaryRow.model_fields)
-BRAND_TRACK_SUMMARY_FIELDS = list(BrandTrackSummaryRow.model_fields)
 
 
 class OverlayVideoPayload(ArtifactModel):
@@ -166,13 +130,10 @@ class OverlayVideoPayload(ArtifactModel):
     width: int
     height: int
     fps: float
-    frame_count: int
-    frame_stride: int
 
 
 class OverlayDisplayPayload(ArtifactModel):
     max_cards_per_frame: int
-    fields: list[str]
 
 
 class OverlayObjectPayload(ArtifactModel):
@@ -192,7 +153,6 @@ class OverlayObjectPayload(ArtifactModel):
 
 class OverlayFramePayload(ArtifactModel):
     frame_index: int
-    timestamp_sec: float
     objects: list[OverlayObjectPayload]
 
 

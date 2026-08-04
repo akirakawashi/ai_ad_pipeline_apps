@@ -44,7 +44,6 @@ class GeozoneDTO(ApplicationDTO):
     """
 
     id: str
-    route_id: str
     name: str
     description: str = ""
     start_fraction: float
@@ -86,7 +85,6 @@ class GeometryDTO(ApplicationDTO):
 
 class AssignmentStatusCountsDTO(ApplicationDTO):
     uploading: int = 0
-    upload_failed: int = 0
     queued: int = 0
     processing: int = 0
     completed: int = 0
@@ -260,7 +258,6 @@ class CatalogImportDTO(ApplicationDTO):
     """Ревизия каталога города. `revision` пуст, пока пак не применён."""
 
     id: str
-    city_id: str
     revision: int | None = None
     status: CatalogImportStatus
     is_current: bool = False
@@ -268,7 +265,6 @@ class CatalogImportDTO(ApplicationDTO):
     rows_read: int = 0
     rows_rejected: int = 0
     points_total: int = 0
-    files_rejected: int = 0
     uploaded_by: UserDTO | None = None
     applied_at: datetime | None = None
     created_at: datetime | None = None

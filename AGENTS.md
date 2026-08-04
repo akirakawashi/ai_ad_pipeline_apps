@@ -187,10 +187,6 @@ On the backend `visibility_value` means **S·α·β**. They are different number
 10. Frontend renders charts from `/summary`, `/objects`, `/timeline`, and the player from
    `/overlay` + `/playback`.
 
-`brand_summary_by_tracks.csv`, `brand_summary_by_detections.csv`, `frame_summary.csv` are written and
-registered but **nothing downstream reads them** — the backend recomputes from `tracks.csv`. They
-only feed the pipeline's own `report.html`.
-
 ---
 
 ## 7. Change cookbook
@@ -259,8 +255,9 @@ collection and calls `pytest.exit` when Postgres is unreachable. ML/scoring test
 * **Layering:** presentation → application (services/DTOs) → domain (pure) → infrastructure.
   Services never import FastAPI; domain imports nothing project-specific.
 * **DTOs:** application DTOs in `application/common/dto/`, HTTP response models in
-  `presentation/http/dto/response.py`. Some application DTOs subclass contract models directly
-  (`RunObjectDTO(TrackCsvRow)`), which is intentional — the CSV *is* the contract.
+  `presentation/http/dto/response.py`. Artifact readers validate the full shared CSV contract, but
+  browser DTOs are deliberately narrow: `RunObjectDTO` exposes only the seven fields the result UI
+  consumes instead of leaking the full `TrackCsvRow` over HTTP.
 * **Admin password:** one login/password pair from settings (`ADMIN_USERNAME` / `ADMIN_PASSWORD`,
   default `admin`/`admin`), checked by `presentation/http/security.py` over HTTP Basic. It is **not**
   authorization and there are no roles — it fences the admin panel off from colleagues who have no
@@ -370,8 +367,7 @@ collection and calls `pytest.exit` when Postgres is unreachable. ML/scoring test
 * The standalone `../ai_ad_ml/run_video_pipeline.sh` intentionally exposes only arguments accepted
   by `run_pipeline.py`; the former conditional `--brand-overrides` argument was removed during the
   repository split because no such CLI option exists.
-* α is derived from `final_brand_conf` only; the "brand stability across the track" input is a stub
-  parameter (`detections` is accepted and ignored in `scoring/confidence.py`).
+* α is derived from `final_brand_conf` only; detection history is not an input to this coefficient.
 * An object that was never classified still gets α = 0.5 (the floor) and counts as `other`.
 * β needs `duration_sec`; it exists only after `mark_completed`. The only remaining way to get a
   neutral β is an unmarked route — every shooting has a route now, so it always has zones, sometimes

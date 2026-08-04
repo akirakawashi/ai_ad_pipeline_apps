@@ -6,7 +6,6 @@ from pathlib import Path
 
 class PipelineRunStatus(StrEnum):
     UPLOADING = "uploading"
-    UPLOAD_FAILED = "upload_failed"
     QUEUED = "queued"
     PROCESSING = "processing"
     COMPLETED = "completed"
@@ -33,12 +32,8 @@ class PipelineArtifactType(StrEnum):
     OVERLAY = "overlay"
     DETECTIONS = "detections"
     TRACKS = "tracks"
-    BRAND_SUMMARY = "brand_summary"
-    DETECTION_SUMMARY = "detection_summary"
-    FRAME_SUMMARY = "frame_summary"
     REPORT = "report"
     VIEWER = "viewer"
-    CROP = "crop"
     ARTIFACT = "artifact"
 
 
@@ -47,17 +42,12 @@ PIPELINE_ARTIFACT_TYPES_BY_FILE_NAME: dict[str, PipelineArtifactType] = {
     "overlay.json": PipelineArtifactType.OVERLAY,
     "detections.csv": PipelineArtifactType.DETECTIONS,
     "tracks.csv": PipelineArtifactType.TRACKS,
-    "brand_summary_by_tracks.csv": PipelineArtifactType.BRAND_SUMMARY,
-    "brand_summary_by_detections.csv": PipelineArtifactType.DETECTION_SUMMARY,
-    "frame_summary.csv": PipelineArtifactType.FRAME_SUMMARY,
     "report.html": PipelineArtifactType.REPORT,
     "viewer.html": PipelineArtifactType.VIEWER,
 }
 
 
 def artifact_type_for_path(relative_path: Path) -> PipelineArtifactType:
-    if relative_path.parts[:1] == ("crops",):
-        return PipelineArtifactType.CROP
     return PIPELINE_ARTIFACT_TYPES_BY_FILE_NAME.get(
         relative_path.name,
         PipelineArtifactType.ARTIFACT,
