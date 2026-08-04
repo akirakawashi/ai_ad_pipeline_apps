@@ -48,9 +48,11 @@ def get_processing_job_service(
     session: Session = Depends(get_session),
     storage: MinioStorage = Depends(get_object_storage),
 ) -> ProcessingJobService:
+    repository = SqlPipelineRunRepository(session)
     return ProcessingJobService(
-        SqlPipelineRunRepository(session),
+        repository,
         storage,
+        PipelineRunService(repository, storage),
     )
 
 

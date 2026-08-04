@@ -1,4 +1,4 @@
-"""Схема целиком: все десять таблиц в текущем виде.
+"""Схема целиком: все одиннадцать таблиц в текущем виде.
 
 Это схлопнутая история. До 28.07.2026 схема набиралась восемью миграциями —
 init, два сида городов, сид маршрутов, геозоны, каталог, описание геозоны,
@@ -187,6 +187,23 @@ def upgrade() -> None:
     op.create_index(op.f('ix_pipeline_runs_created_at'), 'pipeline_runs', ['created_at'], unique=False)
     op.create_index(op.f('ix_pipeline_runs_uploaded_by_users_id'), 'pipeline_runs', ['uploaded_by_users_id'], unique=False)
     op.create_index('ix_pipeline_runs_queue', 'pipeline_runs', ['status', 'created_at'], unique=False)
+    op.create_table('dwh_video_metrics',
+    sa.Column('dwh_video_metrics_id', sa.BigInteger(), autoincrement=True, nullable=False),
+    sa.Column('pipeline_runs_id', sa.String(length=36), nullable=False),
+    sa.Column('revision', sa.Integer(), nullable=False),
+    sa.Column('cities_id', sa.String(length=36), nullable=False),
+    sa.Column('city_name', sa.String(length=255), nullable=False),
+    sa.Column('routes_id', sa.String(length=36), nullable=False),
+    sa.Column('route_name', sa.String(length=255), nullable=False),
+    sa.Column('assignments_id', sa.String(length=36), nullable=False),
+    sa.Column('assignment_name', sa.String(length=255), nullable=False),
+    sa.Column('brand', sa.String(length=32), nullable=True),
+    sa.Column('sum_visibility_value', sa.Float(), nullable=True),
+    sa.Column('is_active', sa.Boolean(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+    sa.PrimaryKeyConstraint('dwh_video_metrics_id')
+    )
+    op.create_index('ix_dwh_video_metrics_run_revision', 'dwh_video_metrics', ['pipeline_runs_id', 'revision'], unique=False)
     op.create_table('pipeline_artifacts',
     sa.Column('pipeline_artifacts_id', sa.String(length=36), nullable=False),
     sa.Column('pipeline_runs_id', sa.String(length=36), nullable=False),
@@ -225,6 +242,8 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_pipeline_artifacts_pipeline_runs_id'), table_name='pipeline_artifacts')
     op.drop_index(op.f('ix_pipeline_artifacts_artifact_type'), table_name='pipeline_artifacts')
     op.drop_table('pipeline_artifacts')
+    op.drop_index('ix_dwh_video_metrics_run_revision', table_name='dwh_video_metrics')
+    op.drop_table('dwh_video_metrics')
     op.drop_index('ix_pipeline_runs_queue', table_name='pipeline_runs')
     op.drop_index(op.f('ix_pipeline_runs_uploaded_by_users_id'), table_name='pipeline_runs')
     op.drop_index(op.f('ix_pipeline_runs_created_at'), table_name='pipeline_runs')

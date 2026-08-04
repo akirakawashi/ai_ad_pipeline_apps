@@ -67,7 +67,7 @@ Three target brands: `mts`, `plus7`, `miranda`. Everything else collapses to `ot
 | `src/presentation/http/` | FastAPI routers, request/response DTOs, DI, exception handlers, `security.py` (the admin password). |
 | `src/application/services/processing_job_service.py` | Backend side of the processing boundary: atomically claims queued work, accepts progress and validates/registers completed artifacts. |
 | `src/presentation/http/routers/internal/` | Token-protected processing API under `/internal/v1`; contract version is `1`. |
-| `alembic/` | Migrations. Exactly two since the 28.07.2026 squash: `0001_schema` (all ten tables) and `0002_seed` (two cities **with their road layers**, seven routes **without lines** — tests depend on these). `seed_data/geometry/<city>/export.geojson` holds the two road layers the seed reads; they are migration assets, not leftovers — delete them and a from-scratch database comes up with an empty map. Route lines are drawn in the admin panel, not seeded (31.07.2026, see §10); the seven `route_N.geojson` that used to live here are now reference fixtures in `tests/fixtures/routes/`. While there is no production database the chain is squashed rather than extended; the day real data exists, that stops and history is append-only. |
+| `alembic/` | Migrations. Exactly two since the 28.07.2026 squash: `0001_schema` (all eleven tables, including the append-only `dwh_video_metrics`) and `0002_seed` (two cities **with their road layers**, seven routes **without lines** — tests depend on these). `seed_data/geometry/<city>/export.geojson` holds the two road layers the seed reads; they are migration assets, not leftovers — delete them and a from-scratch database comes up with an empty map. Route lines are drawn in the admin panel, not seeded (31.07.2026, see §10); the seven `route_N.geojson` that used to live here are now reference fixtures in `tests/fixtures/routes/`. While there is no production database the chain is squashed rather than extended; the day real data exists, that stops and history is append-only. |
 | `../ai_ad_frontend/src/` | React 19 + Vite + Recharts in the companion repository. Hand-rolled router (`routing.ts`), no react-router. |
 | `tests/` | pytest. Needs a live Postgres; MinIO is faked. |
 | `docs/refactoring-backlog.md` | The only planning document left. `docs/plan.md` and its per-step files existed until 28.07.2026 and are gone: intent that has landed belongs in `pipeline-and-metrics.md`, not in a parallel history. Do not recreate them. |
@@ -156,7 +156,11 @@ On the backend `visibility_value` means **S·α·β**. They are different number
    verifies every declared object in MinIO, derives artifact types itself, registers them and marks
    the run completed in one transaction. Crops are uploaded but **not** put in the manifest
    (`should_register_artifact`). Completion stores fps / frame_count / frame_stride / width / height
-   and **`duration_sec = frame_count / fps`** — β depends on this value. Failure is reported through
+   and **`duration_sec = frame_count / fps`** — β depends on this value. After duration is stored,
+   the backend reuses the same live summary calculation as the product API and appends one
+   `dwh_video_metrics` row per brand (`sum_visibility_value = Σ(S·α·β)`) with revision `1`; a result
+   without brands gets one row with both `brand` and the value NULL. Artifact registration, the
+   `completed` status and DWH publication commit as one transaction. Failure is reported through
    `POST .../{run_id}/fail`. There is no lease/heartbeat yet: a process death between claim and
    failure reporting leaves a run in `processing`, as the old in-process worker did.
 7. Reads: `GET /runs/{id}/summary` and `/objects` parse **`tracks.csv`** from MinIO and apply β on
@@ -533,6 +537,15 @@ collection and calls `pytest.exit` when Postgres is unreachable. ML/scoring test
   the total rollup `visibility_per_shooting` — was removed on 04.08.2026. The frontend may sum brand
   values transiently only to turn each one into a share; the sum must not become a tile, DTO field or
   stored fact again.
+* **The DWH fact is produced by the backend summary calculation, never by worker or SQL.** β needs
+  `duration_sec`, so `ProcessingJobService.complete` first calls `mark_completed`, then
+  `PipelineRunService.append_dwh_revision`, and commits artifacts, status and facts together. The
+  writer locks the run, takes `max(revision) + 1` and only inserts: old rows are immutable. One row is
+  one brand in one shooting revision; no-brand is represented by one NULL/NULL row so a completed
+  shooting does not disappear from the extract. IDs have no FKs intentionally and are accompanied
+  by city/route/assignment names: this is an outbound history table and its rows must stay readable
+  without operational JOINs. Today only successful processing invokes the writer; the trigger that
+  appends another revision after a geozone recalculation is still a separate next step.
 * **Hiding without a way back is a one-way door — the bug that cost every city at once.** Before
   28.07.2026 `DELETE /cities/{slug}` set `is_active = false`, the list filtered it out, the slug
   stayed taken and no endpoint could flip it back: the owner "deleted" three cities and could

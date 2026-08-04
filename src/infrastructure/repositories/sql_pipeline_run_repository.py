@@ -7,6 +7,7 @@ from sqlalchemy.orm import noload, selectinload
 from sqlmodel import Session, select
 
 from application.common.dto import (
+    DwhVideoMetricInputDTO,
     PipelineArtifactDTO,
     PipelineRunDTO,
 )
@@ -15,6 +16,7 @@ from domain.geozones import GeozoneInterval
 from infrastructure.database.models import (
     Assignment,
     City,
+    DwhVideoMetric,
     PipelineArtifact,
     PipelineRun,
     PipelineRunEvent,
@@ -439,6 +441,54 @@ class SqlPipelineRunRepository:
             stage=PipelineRunStage.COMPLETED,
             progress=100,
             message=run.status_message,
+        )
+        self._session.flush()
+
+    def append_dwh_metrics(
+        self,
+        metrics: list[DwhVideoMetricInputDTO],
+    ) -> None:
+        """Добавляет одну ревизию итогов, не переписывая прошлые строки."""
+        if not metrics:
+            return
+
+        run_id = metrics[0].run_id
+        if any(metric.run_id != run_id for metric in metrics):
+            raise ValueError("Одна DWH-ревизия не может содержать разные съёмки.")
+
+        # Блокировка одной съёмки сериализует будущие параллельные пересчёты:
+        # две транзакции не смогут одновременно выбрать один номер ревизии.
+        run = self._session.exec(
+            select(PipelineRun)
+            .where(PipelineRun.pipeline_runs_id == run_id)
+            .with_for_update()
+        ).first()
+        if run is None:
+            raise ValueError("Нельзя опубликовать результат несуществующей съёмки.")
+
+        latest_revision = self._session.exec(
+            select(func.max(DwhVideoMetric.revision)).where(
+                DwhVideoMetric.pipeline_runs_id == run_id
+            )
+        ).one()
+        revision = int(latest_revision or 0) + 1
+        self._session.add_all(
+            [
+                DwhVideoMetric(
+                    pipeline_runs_id=metric.run_id,
+                    revision=revision,
+                    cities_id=metric.city_id,
+                    city_name=metric.city_name,
+                    routes_id=metric.route_id,
+                    route_name=metric.route_name,
+                    assignments_id=metric.assignment_id,
+                    assignment_name=metric.assignment_name,
+                    brand=metric.brand,
+                    sum_visibility_value=metric.sum_visibility_value,
+                    is_active=metric.is_active,
+                )
+                for metric in metrics
+            ]
         )
         self._session.flush()
 

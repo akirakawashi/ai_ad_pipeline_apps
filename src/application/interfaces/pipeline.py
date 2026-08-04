@@ -3,7 +3,11 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Protocol
 
-from application.common.dto import PipelineArtifactDTO, PipelineRunDTO
+from application.common.dto import (
+    DwhVideoMetricInputDTO,
+    PipelineArtifactDTO,
+    PipelineRunDTO,
+)
 from domain.entities import PipelineArtifactType, PipelineRunStage, PipelineRunStatus
 from domain.geozones import GeozoneInterval
 
@@ -127,6 +131,11 @@ class PipelineRunRepository(Protocol):
         frame_stride: int,
         width: int,
         height: int,
+    ) -> None: ...
+
+    def append_dwh_metrics(
+        self,
+        metrics: list[DwhVideoMetricInputDTO],
     ) -> None: ...
 
     def mark_failed(

@@ -51,6 +51,7 @@ from presentation.http.dependencies import get_object_storage  # noqa: E402
 MUTABLE_TABLES = (
     "pipeline_run_events",
     "pipeline_artifacts",
+    "dwh_video_metrics",
     "pipeline_runs",
     "route_geozones",
     "ad_structures",

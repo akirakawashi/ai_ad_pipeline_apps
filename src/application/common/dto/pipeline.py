@@ -119,6 +119,21 @@ class BrandSummaryDTO(ApplicationDTO):
     mean_final_brand_conf: float
 
 
+class DwhVideoMetricInputDTO(ApplicationDTO):
+    """Готовый брендовый итог съёмки перед append-only публикацией в DWH."""
+
+    run_id: str
+    city_id: str
+    city_name: str
+    route_id: str
+    route_name: str
+    assignment_id: str
+    assignment_name: str
+    brand: str | None
+    sum_visibility_value: float | None
+    is_active: bool = True
+
+
 class RunSummaryTotalsDTO(ApplicationDTO):
     total_objects: int
 

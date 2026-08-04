@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from application.common.dto import (
     BrandSummaryDTO,
     CreateRunDTO,
+    DwhVideoMetricInputDTO,
     OverlayPayloadDTO,
     PaginatedRunsDTO,
     PipelineArtifactDTO,
@@ -33,6 +34,7 @@ from application.exceptions import (
     InvalidVideoError,
     AssignmentFullError,
     PipelineRunNotFoundError,
+    ProcessingJobStateError,
 )
 from application.interfaces import PipelineRunRepository, RunObjectStorage
 from domain.entities import PipelineArtifactType, PipelineRunStatus
@@ -242,7 +244,65 @@ class PipelineRunService:
         Бэкенд больше не читает готовый visibility_value из артефакта (там β = 1),
         а считает V = S·α·β сам из зон маршрута, актуальных на момент запроса.
         """
-        run = self._require_run(run_id)
+        return self._build_summary(run_id, include_hidden=False)
+
+    def append_dwh_revision(self, run_id: str) -> None:
+        """Публикует готовые брендовые итоги съёмки новой ревизией.
+
+        Пустой результат тоже даёт одну строку: DWH должен увидеть завершённое
+        видео, даже когда система не нашла на нём ни одного бренда. Скрытое
+        задание не блокирует дозавершение уже принятой обработки.
+        """
+        summary = self._build_summary(run_id, include_hidden=True)
+        if summary.run.status != PipelineRunStatus.COMPLETED:
+            raise ProcessingJobStateError(
+                "В DWH можно публиковать только завершённую обработку."
+            )
+        assignment = summary.run.assignment
+        if assignment is None:
+            raise ProcessingJobStateError(
+                "Для публикации результата не удалось загрузить задание съёмки."
+            )
+
+        common = {
+            "run_id": run_id,
+            "city_id": assignment.city.id,
+            "city_name": assignment.city.name,
+            "route_id": assignment.route.id,
+            "route_name": assignment.route.name,
+            "assignment_id": assignment.assignment_id,
+            "assignment_name": assignment.title,
+        }
+        metrics = [
+            DwhVideoMetricInputDTO(
+                **common,
+                brand=brand.brand,
+                sum_visibility_value=brand.sum_visibility_value,
+            )
+            for brand in summary.brands
+        ]
+        if not metrics:
+            metrics.append(
+                DwhVideoMetricInputDTO(
+                    **common,
+                    brand=None,
+                    sum_visibility_value=None,
+                )
+            )
+        self._repository.append_dwh_metrics(metrics)
+
+    def _build_summary(
+        self,
+        run_id: str,
+        *,
+        include_hidden: bool,
+    ) -> RunSummaryDTO:
+        run = self._repository.get(
+            run_id,
+            include_hidden=include_hidden,
+        )
+        if run is None:
+            raise PipelineRunNotFoundError("Обработка не найдена.")
         artifact = self._find_artifact(run.artifacts, PipelineArtifactType.TRACKS)
         brands: list[BrandSummaryDTO] = []
         total_objects = 0

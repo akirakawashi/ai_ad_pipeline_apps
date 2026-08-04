@@ -9,6 +9,7 @@ from application.common.dto import (
 )
 from application.exceptions import PipelineRunNotFoundError, ProcessingJobStateError
 from application.interfaces import PipelineRunRepository, RunObjectStorage
+from application.services.pipeline_run_service import PipelineRunService
 from domain.entities import (
     PipelineRunStage,
     PipelineRunStatus,
@@ -30,9 +31,11 @@ class ProcessingJobService:
         self,
         repository: PipelineRunRepository,
         storage: RunObjectStorage,
+        run_service: PipelineRunService,
     ) -> None:
         self._repository = repository
         self._storage = storage
+        self._run_service = run_service
 
     def claim_next(self) -> PipelineRunDTO | None:
         run = self._repository.claim_next()
@@ -102,6 +105,10 @@ class ProcessingJobService:
                 width=metadata.width,
                 height=metadata.height,
             )
+            # duration_sec уже сохранена, поэтому β можно вычислить корректно.
+            # DWH-строки входят в ту же транзакцию, что статус completed:
+            # половинчатого завершения без опубликованного итога не бывает.
+            self._run_service.append_dwh_revision(run_id)
             self._repository.commit()
         except Exception:
             self._repository.rollback()
