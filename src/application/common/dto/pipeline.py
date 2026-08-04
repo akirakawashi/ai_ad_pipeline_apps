@@ -121,7 +121,6 @@ class BrandSummaryDTO(ApplicationDTO):
 
 class RunSummaryTotalsDTO(ApplicationDTO):
     total_objects: int
-    visibility_index: float
 
 
 class RunSummaryDTO(ApplicationDTO):

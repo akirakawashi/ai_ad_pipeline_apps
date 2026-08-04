@@ -204,7 +204,7 @@ On the backend `visibility_value` means **S·α·β**. They are different number
 | Change how an assignment is created, edited or hidden | `components/AdminAssignments.tsx` (the only mount of `AssignmentForm.tsx` — route picker, create, edit, hide/show) → `createAssignment` / `updateAssignment` / `getRouteAssignments` in `api.ts` → `assignments.py` + `cities.py` routers (both writes behind `require_admin`) → `catalog_service` → `sql_catalog_repository`. `RoutePage.tsx` and `AssignmentPage.tsx` only display; do not put a form back into either |
 | Change what a hidden assignment hides | `is_active` threads through **nine** reads. Seven in `sql_catalog_repository.py`: `list_assignments`, `get_assignment`, `_assignment_counts_by_route`, `_video_counts_by_route`, the two city-level counters in `list_cities`, and `list_route_runs` (this is the metric). Three in `sql_pipeline_run_repository.py`: `list_runs`, `get`, and `lock_assignment` — the last one guards the upload and **must stay in that file**, next to its only caller; see the twin trap in §10. Miss one and you get half-hidden: a card gone from the list but its video still counted |
 | Change the route's date period | `list_route_runs` in `sql_catalog_repository.py` (the `[shot_from, shot_to)` window) → `get_route_summary` in `catalog_service.py` → `cities.py` router → `getRouteSummary` in `api.ts` → `PeriodPicker` in `RouteSummaryPanel.tsx`, with the window itself in the URL (`routePath`). Date↔instant conversion lives in `utils/formatters.ts`. **The filter stays on the server** — see §10 |
-| Change which centre estimate the UI shows, or add a third one | `MetricStatDTO` → `_stat()` in `metrics_rollup.py` → `MetricStat` in `types.ts` → `statValue`/`formatStat` in `utils/formatters.ts` → `AggregateToggle.tsx`, which is mounted only by `MetricsPanel.tsx` (the summary tiles and the toggle are one card, and the caption «Оценка за съёмку» names the **toggle**, not the tiles — two of the four tiles are totals the estimate does not touch). The choice itself never reaches the backend, and it is held by the **page** (`RoutePage` / `AssignmentPage`), not by the panel — the panel unmounts on a tab switch and the selection has to survive that |
+| Change which centre estimate the UI shows, or add a third one | `MetricStatDTO` → `_stat()` in `metrics_rollup.py` → `MetricStat` in `types.ts` → `statValue`/`formatStat` in `utils/formatters.ts` → `AggregateToggle.tsx`, which is mounted only by `MetricsPanel.tsx` (the summary tiles and the toggle are one card; among the tiles it changes only «объектов за видео», while brand visibility changes in the charts below). The choice itself never reaches the backend, and it is held by the **page** (`RoutePage` / `AssignmentPage`), not by the panel — the panel unmounts on a tab switch and the selection has to survive that |
 | Change what the route/assignment page shows, or add a tab | `PageView` in `routing.ts` (`?view=analytics`, absent means work) → `routePath` / `assignmentPath` → `VIEW_TABS` in `RoutePage.tsx` / `AssignmentPage.tsx`. **The rollup request is gated on the tab** — that is what makes it lazy; do not hoist it out of that condition. `App.tsx` deliberately keeps the tab out of the page `key` so switching does not remount and refetch |
 | Add a city/route field, change geometry handling | `domain/geometry.py` (validation only) → `models.py` → `sql_catalog_repository` → `catalog_service` → `cities.py` router → `AdminPage.tsx`. Geometry must stay out of list responses |
 | Change how a route's line is drawn or snapped | `domain/route_snapping.py` — graph building, candidate search, Viterbi, stitching, and `SnappingConfig`. Quality is measured, not eyeballed: [tests/test_route_snapping.py](tests/test_route_snapping.py) traces all seven real routes. Read the two traps in §10 before touching the graph or the tests |
@@ -526,6 +526,13 @@ collection and calls `pytest.exit` when Postgres is unreachable. ML/scoring test
   `getRouteAssignments`, `getAssignment`, `getAssignmentRuns`), so opening a route to find one video
   no longer pays for the rollup of every shooting on it. The assignment header's «отснято» is summed
   from the runs in the browser for exactly this reason; it used to come from the rollup.
+* **Visibility has no cross-brand total in the API.** The final business measure is
+  `brands[].sum_visibility_value` for one brand in one shooting; assignment and route keep the same
+  split in `brands[].visibility_per_shooting`. Summing unlike brands into
+  `totals.visibility_index` created a number with no business meaning, so that field — together with
+  the total rollup `visibility_per_shooting` — was removed on 04.08.2026. The frontend may sum brand
+  values transiently only to turn each one into a share; the sum must not become a tile, DTO field or
+  stored fact again.
 * **Hiding without a way back is a one-way door — the bug that cost every city at once.** Before
   28.07.2026 `DELETE /cities/{slug}` set `is_active = false`, the list filtered it out, the slug
   stayed taken and no endpoint could flip it back: the owner "deleted" three cities and could
@@ -539,10 +546,11 @@ collection and calls `pytest.exit` when Postgres is unreachable. ML/scoring test
   for inactive rows unless `include_inactive` is set, so a bookmarked `/archive/kerch` gives 404.
   The two admin write paths (`update_route`, `draw_route_geometry`) pass `include_inactive=True` on
   purpose — they answer about the very row they just hid, and a 404 there would read as a failure.
-* **Both centre estimates ship in every rollup response; the choice is presentation-only.**
+* **Both centre estimates ship in every brand rollup; the choice is presentation-only.**
   `MetricStat` carries `mean`, `median` and `std` together — switching is a re-render, never a
-  request, and the backend never learns which one is on screen. Consequence for the future DWH step:
-  a snapshot must store **both**, or the toggle stops working for past periods.
+  request, and the backend never learns which one is on screen. A future per-video DWH fact stores
+  the final value for each brand; DWH can derive either centre from those rows instead of persisting
+  an aggregate of aggregates.
 * **Under median the brand shares do not add up to 100 %.** Median is not linear — the median of a
   sum is not the sum of medians. This is a property of the estimate, not a bug; the pie chart's copy
   says so out loud under median. It is also why `visibility_share` no longer exists in the API: the

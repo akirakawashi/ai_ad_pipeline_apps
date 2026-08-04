@@ -246,7 +246,6 @@ class PipelineRunService:
         artifact = self._find_artifact(run.artifacts, PipelineArtifactType.TRACKS)
         brands: list[BrandSummaryDTO] = []
         total_objects = 0
-        total_visibility = 0.0
         if artifact is not None:
             dataframe = self._read_csv(artifact)
             if not dataframe.empty:
@@ -254,14 +253,11 @@ class PipelineRunService:
             if not dataframe.empty:
                 intervals = self._repository.get_geozone_intervals(run_id)
                 dataframe = self._apply_beta(dataframe, intervals, run.duration_sec)
-                brands, total_objects, total_visibility = self._summarize_brands(
-                    dataframe
-                )
+                brands, total_objects = self._summarize_brands(dataframe)
         return RunSummaryDTO(
             run=run,
             totals=RunSummaryTotalsDTO(
                 total_objects=total_objects,
-                visibility_index=total_visibility,
             ),
             brands=brands,
         )
@@ -302,7 +298,7 @@ class PipelineRunService:
     def _summarize_brands(
         self,
         dataframe: pd.DataFrame,
-    ) -> tuple[list[BrandSummaryDTO], int, float]:
+    ) -> tuple[list[BrandSummaryDTO], int]:
         """Свёртка видимых треков в бренды в два уровня, как в пайплайне.
 
         Сначала по объекту (фрагменты одного object_id складываются), потом по
@@ -328,8 +324,7 @@ class PipelineRunService:
         )
         brands = self._dataframe_models(brand_level, BrandSummaryDTO)
         total_objects = int(len(object_level))
-        total_visibility = float(object_level["sum_visibility_value"].sum())
-        return brands, total_objects, total_visibility
+        return brands, total_objects
 
     def get_objects(
         self,

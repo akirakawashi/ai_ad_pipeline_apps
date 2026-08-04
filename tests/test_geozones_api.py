@@ -120,9 +120,13 @@ def _seed_completed_run(routes_id: str) -> None:
         session.commit()
 
 
-def _visibility_index(client, run_id: str) -> float:
+def _brand_visibility(client, run_id: str, brand: str = "mts") -> float:
     body = client.get(f"/api/v1/runs/{run_id}/summary").json()["data"]
-    return body["totals"]["visibility_index"]
+    return next(
+        item["sum_visibility_value"]
+        for item in body["brands"]
+        if item["brand"] == brand
+    )
 
 
 # --- CRUD и валидация ------------------------------------------------------
@@ -275,7 +279,8 @@ def test_summary_applies_beta_and_recalculates(client, storage, geozone_schema, 
 
     # V = 2.0·0.5·1.5 + 1.0·0.8·1.0 = 1.5 + 0.8 = 2.3
     summary = client.get(f"/api/v1/runs/{RUN_ID}/summary").json()["data"]
-    assert summary["totals"]["visibility_index"] == pytest.approx(2.3)
+    assert summary["totals"] == {"total_objects": 2}
+    assert summary["brands"][0]["sum_visibility_value"] == pytest.approx(2.3)
     assert set(summary["brands"][0]) == {
         "brand",
         "object_count",
@@ -304,7 +309,7 @@ def test_summary_applies_beta_and_recalculates(client, storage, geozone_schema, 
 
     # Сменили коэффициент — сводка свежая без перепрогона видео.
     client.patch(f"/api/v1/geozones/{geozone_id}", json={"coefficient": 2.0})
-    assert _visibility_index(client, RUN_ID) == pytest.approx(2.8)  # 2.0 + 0.8
+    assert _brand_visibility(client, RUN_ID) == pytest.approx(2.8)  # 2.0 + 0.8
 
 
 def test_unmarked_route_uses_neutral_beta(client, storage, geozone_schema, city_route):
@@ -320,4 +325,4 @@ def test_unmarked_route_uses_neutral_beta(client, storage, geozone_schema, city_
     _seed_completed_run(routes_id)
 
     # V = 2.0·0.5·1.0 = 1.0: множить не на что, размеченных участков нет.
-    assert _visibility_index(client, RUN_ID) == pytest.approx(1.0)
+    assert _brand_visibility(client, RUN_ID) == pytest.approx(1.0)

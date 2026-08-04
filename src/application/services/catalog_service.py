@@ -609,7 +609,6 @@ class CatalogService:
             shot_started_at=run.shot_started_at,
             duration_sec=run.duration_sec or 0.0,
             objects_count=summary.totals.total_objects,
-            visibility_index=summary.totals.visibility_index,
             brands=[
                 ShootingBrandDTO(
                     brand=brand.brand,

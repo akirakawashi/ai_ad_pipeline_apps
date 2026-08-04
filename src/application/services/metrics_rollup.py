@@ -52,7 +52,6 @@ def rollup_totals(
         shootings_completed=len(shootings),
         duration_sec=sum(item.duration_sec for item in shootings),
         objects_per_shooting=_stat([float(item.objects_count) for item in shootings]),
-        visibility_per_shooting=_stat([item.visibility_index for item in shootings]),
     )
 
 

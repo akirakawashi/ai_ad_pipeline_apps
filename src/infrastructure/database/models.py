@@ -883,6 +883,84 @@ class PipelineRun(SQLModel, table=True):
     )
 
 
+class DwhVideoMetric(SQLModel, table=True):
+    """Append-only итог одного бренда в одной ревизии видео для DWH.
+
+    Здесь нет объектов и промежуточных S / α / β: backend сначала полностью
+    считает `sum_visibility_value = Σ(S·α·β)` внутри бренда, затем публикует
+    готовую строку. Все бренды одного пересчёта получают одинаковую `revision`;
+    прежние ревизии не обновляются.
+
+    Идентификаторы намеренно не являются внешними ключами. Это история для
+    внешнего хранилища: она должна пережить возможное удаление операционных
+    строк, а имена рядом оставляют запись понятной без JOIN к справочникам.
+    """
+
+    __tablename__ = "dwh_video_metrics"
+
+    dwh_video_metrics_id: int | None = Field(
+        default=None,
+        sa_column=Column(
+            BigInteger,
+            primary_key=True,
+            autoincrement=True,
+            nullable=False,
+        ),
+    )
+    pipeline_runs_id: str = Field(
+        sa_column=Column(String(36), nullable=False),
+    )
+    revision: int = Field(
+        sa_column=Column(Integer, nullable=False),
+    )
+    cities_id: str = Field(
+        sa_column=Column(String(36), nullable=False),
+    )
+    city_name: str = Field(
+        sa_column=Column(String(255), nullable=False),
+    )
+    routes_id: str = Field(
+        sa_column=Column(String(36), nullable=False),
+    )
+    route_name: str = Field(
+        sa_column=Column(String(255), nullable=False),
+    )
+    assignments_id: str = Field(
+        sa_column=Column(String(36), nullable=False),
+    )
+    assignment_name: str = Field(
+        sa_column=Column(String(255), nullable=False),
+    )
+    brand: str | None = Field(
+        default=None,
+        sa_column=Column(String(32), nullable=True),
+    )
+    sum_visibility_value: float | None = Field(
+        default=None,
+        sa_column=Column(Float, nullable=True),
+    )
+    is_active: bool = Field(
+        default=True,
+        sa_column=Column(Boolean, default=True, nullable=False),
+    )
+    created_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(
+            DateTime(timezone=True),
+            server_default=func.now(),
+            nullable=False,
+        ),
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_dwh_video_metrics_run_revision",
+            "pipeline_runs_id",
+            "revision",
+        ),
+    )
+
+
 class PipelineArtifact(SQLModel, table=True):
     __tablename__ = "pipeline_artifacts"
 

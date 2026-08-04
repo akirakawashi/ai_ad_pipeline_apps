@@ -153,7 +153,6 @@ class ShootingMetricsDTO(ApplicationDTO):
     shot_started_at: datetime
     duration_sec: float = 0.0
     objects_count: int = 0
-    visibility_index: float = 0.0
     brands: list[ShootingBrandDTO] = Field(default_factory=list)
 
 
@@ -201,7 +200,6 @@ class RollupTotalsDTO(ApplicationDTO):
     # Единственная величина, которую суммируем: это «сколько наснимали».
     duration_sec: float = 0.0
     objects_per_shooting: MetricStatDTO = Field(default_factory=MetricStatDTO)
-    visibility_per_shooting: MetricStatDTO = Field(default_factory=MetricStatDTO)
 
 
 class AssignmentSummaryDTO(ApplicationDTO):
