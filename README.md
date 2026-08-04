@@ -2,18 +2,20 @@
 
 Сервис для анализа видео с наружной рекламой. Пользователь загружает ролик, backend кладет исходник в MinIO, worker забирает задачу из PostgreSQL, запускает ML-пайплайн и сохраняет результаты обратно в MinIO. Frontend читает summary, objects, timeline, overlay и playback через HTTP API.
 
-Проект сейчас удобнее запускать в dev-режиме: PostgreSQL, MinIO и backend живут в Docker, worker запускается локально из `.venv`. Так проще работать с моделями, GPU и файлами в репозитории.
+Backend-стек сейчас поднимается через Docker Compose. Frontend вынесен в соседний
+репозиторий `ai_ad_frontend` и запускается нативно через `pnpm`.
 
 ## Что внутри
 
 ```text
 apps/backend/          FastAPI, Alembic, SQLModel, MinIO storage, worker
-apps/frontend/         React + Vite интерфейс
 ml/pipeline/           локальный ML-пайплайн для видео
 pipeline_contracts/    общие enum и Pydantic-контракты backend/ML
 models/                веса моделей: detection и classification
 outputs/               локальные результаты standalone-запусков
 ```
+
+React + Vite интерфейс находится в соседнем репозитории `../ai_ad_frontend`.
 
 Временной папки worker-а на хосте нет: он работает в контейнере и пишет в том `worker_runtime`.
 
@@ -33,7 +35,8 @@ outputs/               локальные результаты standalone-зап
   - `models/detection/best.pt`
   - `models/classification/best.pt`
 
-Python `3.12`, `uv`, Node.js и `pnpm` нужны только для тестов и линтеров: сам стенд целиком живет в контейнерах.
+Python `3.12` и `uv` нужны для локальных проверок backend. Node.js и `pnpm`
+нужны для нативного запуска и проверок отдельного `ai_ad_frontend`.
 
 ## Видеокарта в контейнере
 
@@ -180,9 +183,9 @@ YOLO_CONFIG_DIR: /tmp
 
 Первая перекрывает относительный путь из `.env` — он должен совпасть с точкой монтирования тома `worker_runtime`. Вторая нужна ultralytics: свой `settings.json` он кладет в конфиг пользователя, которого в контейнере нет. Подкаталог `Ultralytics` библиотека дописывает сама, поэтому значение — родитель, а не полный путь.
 
-## Быстрый запуск всего стенда
+## Быстрый запуск backend-стека
 
-Весь стенд поднимается одной командой:
+Backend, worker, PostgreSQL, MinIO и миграции поднимаются одной командой:
 
 ```bash
 docker compose up
@@ -193,8 +196,7 @@ docker compose up
 - поднимает `postgres` и `minio` и ждет их готовности;
 - прогоняет Alembic-миграции одноразовым сервисом `migrate`;
 - запускает backend на `http://127.0.0.1:8000`;
-- запускает worker с доступом к видеокарте;
-- запускает frontend на `http://127.0.0.1:5173`.
+- запускает worker с доступом к видеокарте.
 
 Backend и worker ждут именно успешного завершения `migrate`, поэтому отдельно применять миграции не нужно.
 
@@ -217,7 +219,6 @@ docker compose logs -f worker
 ```bash
 docker compose build backend
 docker compose build worker
-docker compose build frontend
 ```
 
 Локальное Python-окружение нужно только для тестов и линтеров, стенду оно не требуется:
@@ -242,7 +243,6 @@ docker volume ls --filter label=com.docker.compose.project=ai_ad_pipeline_apps
 Ожидаемые volumes:
 
 ```text
-ai_ad_pipeline_apps_frontend_node_modules
 ai_ad_pipeline_apps_minio_data
 ai_ad_pipeline_apps_postgres_data
 ai_ad_pipeline_apps_worker_runtime
@@ -261,31 +261,25 @@ Frontend dev:    http://127.0.0.1:5173
 
 ## Frontend
 
-Frontend лежит отдельно в `apps/frontend` и поднимается вместе со всем остальным — это сервис `frontend` в compose, Vite в режиме разработки на `5173`. Собранная статика намеренно не используется: адрес API подставляется в сборку, и прод-образ пришлось бы пересобирать при каждой его смене.
-
-Адрес API задается переменной сервиса в `docker-compose.yml`:
+Frontend находится в соседнем репозитории `../ai_ad_frontend` и запускается без
+Docker. Адрес API задаётся в его локальном `.env`:
 
 ```env
 VITE_API_BASE_URL=http://127.0.0.1:8000/api/v1
 ```
 
-Зависимости стоят в образе, поверх исходников смонтирован том `frontend_node_modules`. Том наполняется из образа один раз, при создании, поэтому после правки `package.json` пересборки образа мало — том надо снести:
-
 ```bash
-docker compose build frontend
-docker compose down frontend
-docker volume rm ai_ad_pipeline_apps_frontend_node_modules
-docker compose up -d frontend
+cd ../ai_ad_frontend
+pnpm install
+pnpm dev
 ```
 
-Если пропустить снос тома, в контейнере останутся старые зависимости, а образ будет свежий — расхождение тихое.
-
-Запускать `pnpm` локально нужно только для линтера и проверки сборки:
+Проверки frontend:
 
 ```bash
-cd apps/frontend
-pnpm install
-pnpm lint && pnpm build
+cd ../ai_ad_frontend
+pnpm lint
+pnpm build
 ```
 
 ## Как проходит обработка видео
@@ -481,7 +475,7 @@ uv run mypy pipeline_contracts apps/backend/src ml/pipeline/scripts ml/pipeline/
 Frontend:
 
 ```bash
-cd apps/frontend
+cd ../ai_ad_frontend
 pnpm lint
 pnpm build
 ```
@@ -550,7 +544,7 @@ docker compose logs --tail=200 backend
 
 ### Backend поднялся, но frontend не видит API
 
-Проверь `apps/frontend/.env`:
+Проверь `.env` в соседнем репозитории `ai_ad_frontend`:
 
 ```env
 VITE_API_BASE_URL=http://127.0.0.1:8000/api/v1

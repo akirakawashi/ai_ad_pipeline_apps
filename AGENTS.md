@@ -69,7 +69,7 @@ Three target brands: `mts`, `plus7`, `miranda`. Everything else collapses to `ot
 | `apps/backend/src/presentation/http/` | FastAPI routers, request/response DTOs, DI, exception handlers, `security.py` (the admin password). |
 | `apps/backend/src/worker/` | Queue worker that runs the ML pipeline out-of-process. |
 | `apps/backend/alembic/` | Migrations. Exactly two since the 28.07.2026 squash: `0001_schema` (all ten tables) and `0002_seed` (two cities **with their road layers**, seven routes **without lines** — tests depend on these). `seed_data/geometry/<city>/export.geojson` holds the two road layers the seed reads; they are migration assets, not leftovers — delete them and a from-scratch database comes up with an empty map. Route lines are drawn in the admin panel, not seeded (31.07.2026, see §10); the seven `route_N.geojson` that used to live here are now reference fixtures in `tests/fixtures/routes/`. While there is no production database the chain is squashed rather than extended; the day real data exists, that stops and history is append-only. |
-| `apps/frontend/src/` | React 19 + Vite + Recharts. Hand-rolled router (`routing.ts`), no react-router. |
+| `../ai_ad_frontend/src/` | React 19 + Vite + Recharts in the companion repository. Hand-rolled router (`routing.ts`), no react-router. |
 | `tests/` | pytest. Needs a live Postgres; MinIO is faked. |
 | `docs/refactoring-backlog.md` | The only planning document left. `docs/plan.md` and its per-step files existed until 28.07.2026 and are gone: intent that has landed belongs in `pipeline-and-metrics.md`, not in a parallel history. Do not recreate them. |
 | `README.md` | Setup/ops guide. Predates the metric rewrite; treat metric statements in it as stale. |
@@ -78,8 +78,9 @@ Three target brands: `mts`, `plus7`, `miranda`. Everything else collapses to `ot
 
 ## 4. Runtime topology
 
-**`docker compose up` brings up the whole stack** — there is no second way and no helper script
-(`scripts/dev.sh` was deleted on 03.08.2026 for being exactly that).
+**`docker compose up` brings up the backend stack.** The frontend was moved to
+`../ai_ad_frontend` on 04.08.2026 and runs natively with `pnpm dev`; it is no longer a Compose
+service in this repository.
 
 | Piece | How it runs | Where |
 |---|---|---|
@@ -88,12 +89,12 @@ Three target brands: `mts`, `plus7`, `miranda`. Everything else collapses to `ot
 | `migrate` | docker compose, one-shot; backend and worker wait on `service_completed_successfully` | exits after `alembic upgrade head` |
 | Backend (FastAPI) | docker compose, `--reload` | `:8000`, prefix `/api/v1`, health at `/healthcheck` |
 | Worker | docker compose, **`gpus: all`** | `.runtime/worker/<run_id>/` inside the container, on the `worker_runtime` volume |
-| Frontend (Vite dev) | docker compose | `:5173` (in backend CORS allowlist) |
+| Frontend (Vite dev) | `pnpm dev` in `../ai_ad_frontend` | `:5173` (in backend CORS allowlist) |
 
 Two images out of one `apps/backend/Dockerfile`: target `backend` installs only the `backend`
 dependency group, target `worker` installs `backend` + `ml` and the two system libraries `cv2` links
-against (`libgl1`, `libglib2.0-0`). The frontend has its own `apps/frontend/Dockerfile` whose build
-context is that directory — nothing of it lives in the repo root.
+against (`libgl1`, `libglib2.0-0`). Frontend containerization is deferred until the native
+three-repository layout is complete.
 
 **CUDA is not installed into the worker image and must not be.** Its userspace half arrives as the
 `nvidia-*` wheels that come with `torch`; the other half is the driver, which lives on the host and
@@ -210,7 +211,7 @@ only feed the pipeline's own `report.html`.
 | Change how a factor is computed | the one file in `ml/pipeline/scripts/scoring/`, plus its class in [tests/test_scoring.py](tests/test_scoring.py) |
 | Add/remove a CSV column | `pipeline_contracts/artifacts.py` (field list is derived from the model) → the dataclass in `ml/pipeline/scripts/schemas.py` → whoever reads it |
 | Change β semantics / zone model | `apps/backend/src/domain/geozones.py` + `_apply_beta` in `pipeline_run_service.py` + `RouteGeozone` model |
-| Change how zones are entered or edited | `apps/frontend/src/components/RouteGeozones.tsx` — one panel for both mounts (city page without video, shooting card with it); percent↔fraction lives in `toFraction`/`percentText` there |
+| Change how zones are entered or edited | `../ai_ad_frontend/src/components/RouteGeozones.tsx` — one panel for both mounts (city page without video, shooting card with it); percent↔fraction lives in `toFraction`/`percentText` there |
 | Add an endpoint | router in `presentation/http/routers/v1/` → response DTO in `presentation/http/dto/response.py` → service → repository interface → SQL repository |
 | Add a DB table/column | `infrastructure/database/models.py`, then the schema change goes **into `0001_schema`**, not into a third migration — there is still no production database (see §3). Generate it only when asked; **the owner applies it**, and the owner must wipe the volume for an edited `0001_schema` to take effect. Verify with `alembic check` against a scratch database: `pytest` proves the code runs on the migrated schema but not that the migration matches the models |
 | Change how an assignment **or a route** aggregates shootings | `application/services/metrics_rollup.py` — the only place that decides how shootings collapse (today: mean + median + std), shared by both levels. Which shootings reach it is decided earlier, in `list_route_runs`; do not move that decision here or the other way round |
@@ -237,14 +238,15 @@ only feed the pipeline's own `report.html`.
 ## 8. Commands
 
 ```bash
-docker compose up            # the whole stack: postgres, minio, migrations, backend, worker, frontend
+docker compose up            # backend stack: postgres, minio, migrations, backend, worker
 docker compose down
 docker compose logs -f worker
 docker compose build worker  # first build pulls ~6 GB of torch/CUDA wheels; cached afterwards
 uv run pytest                # needs postgres up; creates/drops ad_pipeline_test
 uv run pytest tests/test_scoring.py     # scoring in isolation — but still needs postgres, see below
 uv run ruff check . && uv run mypy .
-cd apps/frontend && pnpm dev && pnpm build && pnpm lint
+cd ../ai_ad_frontend && pnpm dev
+cd ../ai_ad_frontend && pnpm build && pnpm lint
 ./run_video_pipeline.sh path/to/video.mp4     # standalone ML run (GPU + weights required)
 ```
 

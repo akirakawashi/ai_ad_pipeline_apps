@@ -161,33 +161,7 @@ services:
         condition: service_completed_successfully
     restart: unless-stopped
 
-  # Vite в режиме разработки, а не собранная статика: адрес API подставляется
-  # в сборку, и прод-образ пришлось бы пересобирать при каждой его смене.
-  # Порт 5173 уже прописан в CORS бэкенда (settings/http.py).
-  frontend:
-    image: ai-ad-pipeline-frontend:dev
-    container_name: ai-ad-frontend
-    build:
-      context: ./apps/frontend
-      target: dev
-    environment:
-      VITE_API_BASE_URL: http://127.0.0.1:8000/api/v1
-    volumes:
-      - ./apps/frontend:/app
-      # Том поверх исходников: в образе зависимости уже стоят, а с хоста сюда
-      # ничего попасть не должно. Наполняется из образа один раз, при создании,
-      # поэтому после правки package.json мало пересобрать образ — том нужно
-      # снести: docker volume rm ai_ad_pipeline_apps_frontend_node_modules
-      - frontend_node_modules:/app/node_modules
-    ports:
-      - "5173:5173"
-    depends_on:
-      backend:
-        condition: service_healthy
-    restart: unless-stopped
-
 volumes:
   postgres_data:
   minio_data:
   worker_runtime:
-  frontend_node_modules:
