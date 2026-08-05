@@ -77,24 +77,28 @@ Three target brands: `mts`, `plus7`, `miranda`. Everything else collapses to `ot
 
 ## 4. Runtime topology
 
-Compose is deliberately infrastructure-only. Applications run natively while the three-repository
-boundary settles; their Docker images are prepared only at the final packaging stage.
+The three repositories are packaged independently. Each owns its `Dockerfile` and
+`docker-compose.yml`; no Compose file reaches into a neighbouring source tree. Start backend first,
+then frontend and ML from their repositories. Native commands remain the faster development path.
 
 | Piece | How it runs | Where |
 |---|---|---|
-| Postgres | docker compose | `:5432` |
-| MinIO | docker compose | `:9000` API, `:9001` console |
-| Migrations | native `uv run python -m alembic -c alembic.ini upgrade head` | connects to Compose Postgres |
-| Backend (FastAPI) | native `uv run python -m uvicorn ... --reload` | `:8000`, public prefix `/api/v1`, internal prefix `/internal/v1`, health at `/healthcheck` |
-| Worker + ML | native `uv run python -m processing_worker.main` in `../ai_ad_ml` | temporary files under its `PROCESSING_TEMP_DIR`; GPU selected by `PIPELINE_DEVICE` |
-| Frontend (Vite dev) | `pnpm dev` in `../ai_ad_frontend` | `:5173` (in backend CORS allowlist) |
+| Postgres | backend Compose | `:5432`, persistent named volume |
+| MinIO | backend Compose | `:9000` API, `:9001` console, persistent named volume |
+| Migrations | backend Compose one-shot `migrate` service | backend waits for successful completion |
+| Backend (FastAPI) | backend Compose or native uvicorn | `:8000`, public prefix `/api/v1`, internal prefix `/internal/v1`, health at `/healthcheck` |
+| Worker + ML | ML Compose with `gpus: all` or native Python | temporary files under `PIPELINE_WORKER_TEMP_DIR`; GPU selected by `PIPELINE_DEVICE` |
+| Frontend | frontend Compose (local Vite preview) or native Vite | `127.0.0.1:5173` (in backend CORS allowlist) |
 
 Backend config comes from the repository-root `.env` (gitignored), resolved independently of the current
 working directory. ML/worker config comes from `../ai_ad_ml/.env`. Both must carry the same
 `PROCESSING_SERVICE_TOKEN` (at least 16 characters). The worker's API client deliberately ignores
 host `HTTP_PROXY`/`HTTPS_PROXY`: backend is a local trusted service and inherited proxy settings can
 turn a healthy localhost request into a proxy-generated 503. PostgreSQL credentials exist only in
-backend; the ML repository has no database dependency or setting.
+backend; the ML repository has no database dependency or setting. In containers, backend uses the
+Compose service names `postgres` and `minio`; the ML Compose reaches the published backend/MinIO
+ports through `host.docker.internal`, including the Linux `host-gateway` mapping. Frontend's
+`VITE_API_BASE_URL` is a build argument because Vite embeds it into the generated static bundle.
 
 ---
 
@@ -228,14 +232,16 @@ On the backend `visibility_value` means **S·α·β**. They are different number
 ## 8. Commands
 
 ```bash
-docker compose up -d postgres minio
-docker compose down
+docker compose up -d --build       # backend + migrations + Postgres + MinIO
+docker compose down                # run separately in every repository
 uv run python -m alembic -c alembic.ini upgrade head
 uv run python -m uvicorn main:app --app-dir src --reload
 uv run pytest                # needs postgres up; creates/drops ad_pipeline_test
 uv run ruff check . && uv run mypy .
+cd ../ai_ad_frontend && docker compose up -d --build
 cd ../ai_ad_frontend && pnpm dev
 cd ../ai_ad_frontend && pnpm build && pnpm lint
+cd ../ai_ad_ml && docker compose up -d --build
 cd ../ai_ad_ml && uv run python -m processing_worker.main
 cd ../ai_ad_ml && uv run pytest && uv run ruff check . && uv run mypy .
 cd ../ai_ad_ml && ./run_video_pipeline.sh path/to/video.mp4  # standalone GPU run

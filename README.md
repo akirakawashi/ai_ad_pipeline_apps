@@ -26,14 +26,14 @@ src/
 alembic/               миграции PostgreSQL
 pipeline_contracts/    контракты артефактов и общие enum backend/ML
 tests/                 backend unit/integration tests
-docker-compose.yml     только PostgreSQL и MinIO
+Dockerfile             образ FastAPI и одноразовых миграций
+docker-compose.yml     backend, миграции, PostgreSQL и MinIO
 ```
 
 ## Требования
 
-- Python 3.12;
-- `uv`;
-- Docker Compose только для PostgreSQL и MinIO.
+- Docker с Compose — для контейнерного запуска;
+- Python 3.12 и `uv` — для запуска и разработки без Docker.
 
 ## Настройка
 
@@ -46,21 +46,60 @@ Backend всегда читает корневой `.env`, независимо 
 Для связи с `ai_ad_ml` значение `PROCESSING_SERVICE_TOKEN` в обоих репозиториях
 должно совпадать.
 
-## Локальный запуск
+## Запуск в Docker
 
-Поднять инфраструктуру:
+Compose собирает backend, поднимает PostgreSQL и MinIO, применяет миграции
+одноразовым сервисом `migrate` и только после этого запускает API:
+
+```bash
+docker compose up -d --build
+```
+
+Проверить состояние и логи:
+
+```bash
+docker compose ps
+docker compose logs -f backend
+```
+
+Локальный `.env` передаётся контейнерам, но внутренние адреса PostgreSQL и
+MinIO Compose заменяет на имена сервисов. `MINIO_PUBLIC_ENDPOINT` остаётся
+адресом, доступным браузеру; по умолчанию это `http://127.0.0.1:9000`.
+
+Frontend и ML worker имеют собственные compose-файлы и запускаются из соседних
+репозиториев после backend:
+
+```bash
+cd ../ai_ad_frontend
+docker compose up -d --build
+
+cd ../ai_ad_ml
+docker compose up -d --build
+```
+
+Для ML-контейнера нужны NVIDIA Container Toolkit, доступная GPU и локальные
+веса в `../ai_ad_ml/models/`. Значения `PROCESSING_SERVICE_TOKEN` и реквизиты
+MinIO в `.env` backend и ML должны совпадать.
+
+Остановка каждого сервиса выполняется в его репозитории:
+
+```bash
+docker compose down
+```
+
+Тома PostgreSQL и MinIO при обычном `down` сохраняются.
+
+## Запуск без Docker
+
+Для разработки приложение по-прежнему можно запускать нативно. Сначала
+поднимите только инфраструктуру и примените миграции:
 
 ```bash
 docker compose up -d postgres minio
-```
-
-Применить миграции:
-
-```bash
 uv run python -m alembic -c alembic.ini upgrade head
 ```
 
-Запустить backend без Docker:
+Затем запустите backend:
 
 ```bash
 uv run python -m uvicorn main:app \
@@ -70,7 +109,7 @@ uv run python -m uvicorn main:app \
   --reload
 ```
 
-Затем отдельно запускаются:
+Frontend и worker запускаются отдельно:
 
 ```bash
 cd ../ai_ad_ml
