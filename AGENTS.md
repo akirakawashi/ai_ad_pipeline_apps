@@ -61,10 +61,10 @@ Three target brands: `mts`, `plus7`, `miranda`. Everything else collapses to `ot
 | `pipeline_contracts/` | Backend copy of the artifact contracts: CSV row models, overlay payload, enums (`PipelineRunStatus`, `PipelineRunStage`, `PipelineArtifactType`, `FinalStatus`, …), brand constants. Must match the ML copy. |
 | `../ai_ad_ml/ml/pipeline/` | Standalone ML pipeline: CLI, orchestration, scoring, reports and overlay generation. It does not import this repository. |
 | `../ai_ad_ml/processing_worker/` | Standalone worker. Claims jobs and reports progress/results through backend HTTP; reads/writes objects in MinIO; never connects to PostgreSQL. |
-| `src/domain/` | Pure logic, no I/O: `geozones.py` (`beta`, `overlaps`), `catalog.py` (point collapsing, revision diff, city bounds), `geometry.py` (geojson validation, bbox, route line assembly), `route_snapping.py` (road graph + map matching: a hand-drawn stroke onto real roads) + entity facades. |
+| `src/domain/` | Pure logic, no I/O: `auth.py` (`Permission`, claim parsing, group→permission whitelist), `geozones.py` (`beta`, `overlaps`), `catalog.py` (point collapsing, revision diff, city bounds), `geometry.py` (geojson validation, bbox, route line assembly), `route_snapping.py` (road graph + map matching: a hand-drawn stroke onto real roads) + entity facades. |
 | `src/application/` | Services (`pipeline_run_service`, `catalog_service`, `metrics_rollup`, `user_service`), DTOs, repository interfaces. |
-| `src/infrastructure/` | SQLModel models, SQL repositories, MinIO storage, `catalog/parser.py` (xlsx/xls/csv). |
-| `src/presentation/http/` | FastAPI routers, request/response DTOs, DI, exception handlers, `security.py` (the admin password). |
+| `src/infrastructure/` | SQLModel models, SQL repositories, MinIO storage, `catalog/parser.py` (xlsx/xls/csv), `auth/keycloak.py` (code exchange + JWKS signature verification). |
+| `src/presentation/http/` | FastAPI routers, request/response DTOs, DI, exception handlers, `auth.py` (session cookie, `current_user`, `require_admin`, `allow_hidden`). |
 | `src/application/services/processing_job_service.py` | Backend side of the processing boundary: atomically claims queued work, accepts progress and validates/registers completed artifacts. |
 | `src/presentation/http/routers/internal/` | Token-protected processing API under `/internal/v1`; contract version is `1`. |
 | `alembic/` | Migrations. Exactly two since the 28.07.2026 squash: `0001_schema` (all eleven tables, including the append-only `dwh_video_metrics`) and `0002_seed` (two cities **with their road layers**, seven routes **without lines** — tests depend on these). `seed_data/geometry/<city>/export.geojson` holds the two road layers the seed reads; they are migration assets, not leftovers — delete them and a from-scratch database comes up with an empty map. Route lines are drawn in the admin panel, not seeded (31.07.2026, see §10); the seven `route_N.geojson` that used to live here are now reference fixtures in `tests/fixtures/routes/`. While there is no production database the chain is squashed rather than extended; the day real data exists, that stops and history is append-only. |
@@ -206,7 +206,7 @@ On the backend `visibility_value` means **S·α·β**. They are different number
 | Add/remove a CSV column | update `pipeline_contracts/artifacts.py` in **both** repositories → the dataclass in `../ai_ad_ml/ml/pipeline/scripts/schemas.py` → every reader; run both repositories' contract/tests before handoff |
 | Change β semantics / zone model | `src/domain/geozones.py` + `_apply_beta` in `pipeline_run_service.py` + `RouteGeozone` model |
 | Change how zones are entered or edited | `../ai_ad_frontend/src/components/RouteGeozones.tsx` — one panel for both mounts (city page without video, shooting card with it); percent↔fraction lives in `toFraction`/`percentText` there |
-| Add an endpoint | router in `presentation/http/routers/v1/` → response DTO in `presentation/http/dto/response.py` → service → repository interface → SQL repository |
+| Add an endpoint | router in `presentation/http/routers/v1/` → response DTO in `presentation/http/dto/response.py` → service → repository interface → SQL repository. It is behind the session automatically (the v1 router applies `current_user` to everything); add `Depends(require_admin)` if it administers rather than operates |
 | Add a DB table/column | `infrastructure/database/models.py`, then the schema change goes **into `0001_schema`**, not into a third migration — there is still no production database (see §3). Generate it only when asked; **the owner applies it**, and the owner must wipe the volume for an edited `0001_schema` to take effect. Verify with `alembic check` against a scratch database: `pytest` proves the code runs on the migrated schema but not that the migration matches the models |
 | Change how an assignment **or a route** aggregates shootings | `application/services/metrics_rollup.py` — the only place that decides how shootings collapse (today: mean + median + std), shared by both levels. Which shootings reach it is decided earlier, in `list_route_runs`; do not move that decision here or the other way round |
 | Change how an assignment is created, edited or hidden | `components/AdminAssignments.tsx` (the only mount of `AssignmentForm.tsx` — route picker, create, edit, hide/show) → `createAssignment` / `updateAssignment` / `getRouteAssignments` in `api.ts` → `assignments.py` + `cities.py` routers (both writes behind `require_admin`) → `catalog_service` → `sql_catalog_repository`. `RoutePage.tsx` and `AssignmentPage.tsx` only display; do not put a form back into either |
@@ -217,6 +217,8 @@ On the backend `visibility_value` means **S·α·β**. They are different number
 | Add a city/route field, change geometry handling | `domain/geometry.py` (validation only) → `models.py` → `sql_catalog_repository` → `catalog_service` → `cities.py` router → `AdminPage.tsx`. Geometry must stay out of list responses |
 | Change how a route's line is drawn or snapped | `domain/route_snapping.py` — graph building, candidate search, Viterbi, stitching, and `SnappingConfig`. Quality is measured, not eyeballed: [tests/test_route_snapping.py](tests/test_route_snapping.py) traces all seven real routes. Read the two traps in §10 before touching the graph or the tests |
 | Change the drawing surface (zoom, pan, the stroke itself) | `RouteMap.tsx` (`zoomable` / `drawing` / `onSegmentDrawn` props; the live stroke and the rubber band are written straight to the DOM by `showLiveStroke` / `showRubber`, deliberately bypassing React) → `RouteDrawing.tsx` (the draft, the keys and the confirm call) → `AdminPage.tsx` mounts it on the «Маршруты» tab. **The map emits *pieces*, it does not own the line** — a drag gives a trail, a click gives one point, and `RouteDrawing` accumulates them; see the draft trap in §10. **The wheel handler is a native listener with `passive: false`, not `onWheel`** — React registers `wheel` passively on the root, so `preventDefault()` inside `onWheel` is silently ignored and the page keeps scrolling while the map zooms under the cursor. Moving it back to `onWheel` looks tidier and breaks exactly that |
+| Change who may sign in, or what a group grants | `AUTH_ADMIN_GROUPS` in `.env` first — group names are configuration, not code. Only if a **new kind** of right is needed: `Permission` in `domain/auth.py` → `permissions_for` → the `require_*` dependency in `presentation/http/auth.py` → the guarded routers. Never read `groups_raw` to decide access |
+| Change the login/logout flow itself | `presentation/http/routers/v1/auth.py` (redirects, `state`, cookie) → `application/services/auth_service.py` (JIT upsert, session) → `infrastructure/auth/keycloak.py` (code exchange, JWKS). Frontend side: `components/LoginGate.tsx` and the gate in `App.tsx` |
 | Change who can see hidden cities/routes/assignments | `include_inactive` threads through `list_cities` / `get_city` / `list_assignments` / `get_assignment` (repository → service → router → `api.ts`). Only the admin panel passes `true` |
 | Change catalogue parsing (new column, new format) | `infrastructure/catalog/parser.py` only; the row/point types live in `domain/catalog.py` |
 | Retune catalogue distance thresholds | `MERGE_DISTANCE_M` / `DIFF_DISTANCE_M` / `CITY_BOUNDS_MARGIN_M` in `domain/catalog.py` |
@@ -268,25 +270,65 @@ collection and calls `pytest.exit` when Postgres is unreachable. ML/scoring test
   `presentation/http/dto/response.py`. Artifact readers validate the full shared CSV contract, but
   browser DTOs are deliberately narrow: `RunObjectDTO` exposes only the seven fields the result UI
   consumes instead of leaking the full `TrackCsvRow` over HTTP.
-* **Admin password:** one login/password pair from settings (`ADMIN_USERNAME` / `ADMIN_PASSWORD`,
-  default `admin`/`admin`), checked by `presentation/http/security.py` over HTTP Basic. It is **not**
-  authorization and there are no roles — it fences the admin panel off from colleagues who have no
-  business there, inside a corporate network. The login form in the UI is convenience only; the
-  guarantee is that the endpoints answer 401 on their own. **The password may be in any language** —
-  see the UTF-8 trap in §10. What it guards:
-  * `require_admin` — every write on cities and routes, **both** writes on assignments
-    (`POST /cities/{c}/routes/{r}/assignments`, `PATCH /assignments/{id}`), all four
-    catalogue-revision writes (upload / apply / restore / delete), and **both** writes on people
-    (`POST /users`, `PATCH /users/{id}`);
-  * `allow_hidden` — `include_inactive` on `GET /cities`, `GET /cities/{slug}`, `GET /users`,
-    `GET /cities/{c}/routes/{r}/assignments` and `GET /assignments/{id}`.
-  * **The line is the cost of a mistake, not the difficulty.** Administration is what changes the
-    frame everyone works inside. An assignment is such a frame — it is the campaign whose shootings
-    a route's metrics are computed from — so creating and editing one moved behind the password on
-    29.07.2026. Operational work — shootings, video upload, geozones — stays open, or the product
-    becomes unusable: the driver picks a ready assignment, never invents one. What stays open on the
-    directory side is reads only: the catalogue list (a product screen), `GET /users` (every upload
-    form's dropdown) and the assignment list (the upload form reads it too).
+* **Authentication: corporate Keycloak (OIDC), whole app behind it.** People sign in with their
+  Active Directory account at `IC-GROUP` on `ssoc.ic-group.ru`; the app never sees a password and has
+  no login form of its own. Every `/api/v1` endpoint requires a session — the router applies
+  `current_user` to all of them and exempts exactly one thing, `/auth/*`, so a new endpoint is closed
+  by default. `/healthcheck` stays open (monitoring cannot log in) and `/internal/v1` keeps its own
+  shared token (machine-to-machine, no human involved).
+  * **BFF, not a bearer token in the browser.** `/auth/login` redirects to Keycloak, `/auth/callback`
+    exchanges the code for a token **server-side**, verifies its signature against JWKS, and stores a
+    row in `user_sessions`. The browser gets only an opaque `HttpOnly` cookie. Three reasons, each
+    sufficient on its own: a corporate token carrying dozens of AD groups overflows the 4 KB cookie
+    limit and header limits; the token lives 8 hours and cannot be revoked, so a server-side row is
+    the only place to evict someone; `sessionStorage` is readable by any script on the page.
+  * **The token itself is never stored.** It is needed once, at callback, to learn who arrived and in
+    which groups. Nothing else acts on the person's behalf.
+  * **Session lifetime comes from the token's `exp`, never its own number** — 8 hours, no refresh, so
+    one working day per login. Expiry is a plain 401 and a trip back to Keycloak.
+  * **Logout clears our session only** — no backchannel logout. Keycloak's SSO session is separate,
+    and killing it would both break the expected "come back without retyping the password" behaviour
+    and sign the person out of neighbouring apps in the same realm.
+  * **Authorization is a whitelist, `AUTH_ADMIN_GROUPS`, matched exactly.** The token carries the
+    whole org chart — departments, mailing lists, file-share access — and none of it means anything
+    to this app. Group names are compared as exact strings: Keycloak emits full paths
+    (`/Departments/Marketing`) and Russian AD names contain spaces and Cyrillic, so `startswith` or
+    case-insensitive matching would hand rights to whoever owns a similarly named group. The list
+    lives in configuration, not the database, because otherwise the first admin has nowhere to come
+    from: the directory is empty until someone logs in.
+  * **`permissions` on the `users` row is a mirror, not the source of truth** — a snapshot recomputed
+    from the token's groups at every login, so the admin panel can show who is who. Access is decided
+    from the current token's groups. `groups_raw` is diagnostics for "why is Petrov not an admin" and
+    must never decide access.
+  * What `require_admin` guards is unchanged from the password era, deliberately: every write on
+    cities and routes, **both** writes on assignments, all four catalogue-revision writes, and
+    **both** writes on people. **The line is the cost of a mistake, not the difficulty.**
+    Administration changes the frame everyone works inside; operational work — shootings, video
+    upload, geozones — stays open to any signed-in user, or the product becomes unusable: the driver
+    picks a ready assignment, never invents one.
+  * `allow_hidden` — `include_inactive` is silently downgraded for non-admins rather than refused.
+    Hidden records are clutter, not secrets, and a refusal would hint there is something worth
+    seeing.
+  * **401 vs 403 is load-bearing.** 401 means "sign in" and the frontend redirects to Keycloak; 403
+    means "you are signed in but may not" and redirecting would be an infinite carousel. Neither
+    answer names a group — the org chart must not leak through an error message to someone already
+    denied.
+  * **One switch picks the mode: `AUTH_USE_KEYCLOAK`.** `true` — the domain login described above.
+    `false` — a login/password form served by `/auth/dev-login` with two fixed accounts,
+    `admin`/`admin` (with rights) and `user`/`user` (without). No combinations: Keycloak here is
+    production-only — there is no local copy and no container for it — so until IC-GROUP issues a
+    client, `false` is the only way to work, and the real flow can first be exercised on a deployed
+    service. `validate_auth_setup` refuses to boot when `true` is set without a complete
+    issuer/client_id/secret triple; `false` needs no configuration at all, which is the point.
+    The unused half is closed at both ends: `/auth/login` answers 503 in password mode and
+    `/auth/dev-login` answers 404 (not 403) in Keycloak mode. `GET /auth/mode` is the one endpoint
+    open without a session — the frontend asks it to decide whether to draw a button or a form, so a
+    single build serves both modes.
+  * **Directory rows are created on first login (JIT).** The link is `keycloak_subject` (`sub`),
+    never the login or the full name: `sub` is permanent, a domain login changes with a surname.
+    `full_name` therefore lost its `UNIQUE` — real namesakes exist and the constraint would deny the
+    second one a login. Rows created by hand before SSO keep a NULL `keycloak_subject`: they still
+    own their history, but nobody can sign in as them.
 * **API envelope:** every success response is `{"data": …}` (`OkResponse[T]`). Errors are
   `{"detail": "<Russian sentence>"}` produced by handlers in `presentation/http/exception_handlers.py`.
   Domain errors are typed exceptions in `application/exceptions.py`, never raw `HTTPException`.

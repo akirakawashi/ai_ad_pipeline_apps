@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Path
 
 from application.services.catalog_service import CatalogService
 from presentation.http.dependencies import get_catalog_service
-from presentation.http.security import allow_hidden, require_admin
+from presentation.http.auth import allow_hidden, require_admin
 from presentation.http.dto.response import (
     AssignmentResponse,
     AssignmentSummaryResponse,

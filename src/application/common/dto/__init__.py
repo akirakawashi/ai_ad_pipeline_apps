@@ -22,6 +22,7 @@ from application.common.dto.catalog import (
     RouteDTO,
     AssignmentDTO,
 )
+from application.common.dto.auth import AuthenticatedUserDTO
 from application.common.dto.base import ApplicationDTO
 from application.common.dto.pipeline import (
     BrandSummaryDTO,
@@ -56,6 +57,7 @@ from application.common.dto.users import UserDTO
 __all__ = [
     "AdStructureDTO",
     "ApplicationDTO",
+    "AuthenticatedUserDTO",
     "CatalogImportDTO",
     "CatalogImportReportDTO",
     "MetricStatDTO",

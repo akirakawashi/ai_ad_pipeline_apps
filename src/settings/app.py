@@ -5,6 +5,7 @@ from pathlib import Path
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from settings.auth import AuthSettings, build_auth_settings
 from settings.database import DatabaseSettings, build_database_settings
 from settings.http import AppSettings, CorsSettings
 from settings.object_storage import (
@@ -72,26 +73,65 @@ class Settings(BaseSettings):
         gt=0,
     )
 
-    # Пароль админ-панели. Полноценной авторизации в системе нет, и это не она:
-    # одна пара логин/пароль на всех, кто правит города и маршруты. Задача —
-    # отгородить админ-панель от сотрудников, которым туда просто не надо, внутри
-    # корпоративной сети. От того, кто целенаправленно лезет, это не защита.
-    admin_username: str = Field(
-        default="admin",
-        validation_alias="ADMIN_USERNAME",
-    )
-    admin_password: str = Field(
-        default="admin",
-        validation_alias="ADMIN_PASSWORD",
-    )
     processing_service_token: str = Field(
         default="dev-processing-token",
         validation_alias="PROCESSING_SERVICE_TOKEN",
         min_length=16,
     )
 
+    # Реквизиты корпоративного Keycloak. Пусто по умолчанию: он у нас только
+    # продовый, адрес и секрет появляются при развёртывании. Нужны, когда
+    # AUTH_USE_KEYCLOAK=true; при false не читаются вовсе.
+    auth_oidc_issuer: str = Field(
+        default="",
+        validation_alias="AUTH_OIDC_ISSUER",
+    )
+    auth_oidc_client_id: str = Field(
+        default="",
+        validation_alias="AUTH_OIDC_CLIENT_ID",
+    )
+    auth_oidc_client_secret: str = Field(
+        default="",
+        validation_alias="AUTH_OIDC_CLIENT_SECRET",
+    )
+    auth_redirect_uri: str = Field(
+        default="http://localhost:8000/api/v1/auth/callback",
+        validation_alias="AUTH_REDIRECT_URI",
+    )
+    auth_frontend_url: str = Field(
+        default="http://localhost:5173",
+        validation_alias="AUTH_FRONTEND_URL",
+    )
+    auth_admin_groups: str = Field(
+        default="/AI-AD-Admins",
+        validation_alias="AUTH_ADMIN_GROUPS",
+    )
+    auth_claims_dump_path: str = Field(
+        default="",
+        validation_alias="AUTH_CLAIMS_DUMP_PATH",
+    )
+    # Переключатель способа входа: true — Keycloak, false — admin/admin.
+    # При true реквизиты выше обязаны быть заполнены, иначе запуск падает.
+    auth_use_keycloak: bool = Field(
+        default=False,
+        validation_alias="AUTH_USE_KEYCLOAK",
+    )
+
     app: AppSettings = Field(default_factory=AppSettings)
     cors: CorsSettings = Field(default_factory=CorsSettings)
+
+    @property
+    def auth(self) -> AuthSettings:
+        return build_auth_settings(
+            oidc_issuer=self.auth_oidc_issuer,
+            oidc_client_id=self.auth_oidc_client_id,
+            oidc_client_secret=self.auth_oidc_client_secret,
+            redirect_uri=self.auth_redirect_uri,
+            frontend_url=self.auth_frontend_url,
+            admin_groups=self.auth_admin_groups,
+            claims_dump_path=self.auth_claims_dump_path or None,
+            use_keycloak=self.auth_use_keycloak,
+        )
 
     @property
     def database(self) -> DatabaseSettings:

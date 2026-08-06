@@ -24,13 +24,15 @@ TEST_DB = os.environ.get("POSTGRES_TEST_DB", "ad_pipeline_test")
 ADMIN_DB = "postgres"
 os.environ["POSTGRES_DB"] = TEST_DB
 
-# Пароль справочников фиксируем здесь, а не берём из .env: иначе смена пароля
-# у владельца молча роняла бы половину набора. Настройки кэшируются на первом
-# обращении, поэтому переменные ставим до импорта приложения.
-ADMIN_LOGIN = "admin"
-ADMIN_PASSWORD = "admin"
-os.environ["ADMIN_USERNAME"] = ADMIN_LOGIN
-os.environ["ADMIN_PASSWORD"] = ADMIN_PASSWORD
+# Группа, дающая права админа. Фиксируем здесь, а не берём из .env: иначе смена
+# состава групп у владельца молча роняла бы половину набора. Настройки кэшируются
+# на первом обращении, поэтому переменные ставим до импорта приложения.
+ADMIN_GROUP = "/AI-AD-Admins"
+os.environ["AUTH_ADMIN_GROUPS"] = ADMIN_GROUP
+# Настоящего Keycloak в тестах нет и быть не может — он только продовый.
+# Личность подменяется на границе `current_user`, но приложение должно
+# импортироваться, а с AUTH_USE_KEYCLOAK=true это требовало бы реквизитов.
+os.environ["AUTH_USE_KEYCLOAK"] = "false"
 PROCESSING_TOKEN = "test-processing-token"
 os.environ["PROCESSING_SERVICE_TOKEN"] = PROCESSING_TOKEN
 
@@ -42,8 +44,11 @@ from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import inspect  # noqa: E402
 from sqlmodel import Session, text  # noqa: E402
 
+from application.common.dto import AuthenticatedUserDTO  # noqa: E402
+from domain.auth import Permission  # noqa: E402
 from infrastructure.database.session import engine  # noqa: E402
 from main import app  # noqa: E402
+from presentation.http.auth import current_user, optional_user  # noqa: E402
 from presentation.http.dependencies import get_object_storage  # noqa: E402
 
 # Города и маршруты приходят из сид-миграций и переживают тесты: сущности
@@ -161,24 +166,57 @@ def storage() -> FakeObjectStorage:
     return FakeObjectStorage()
 
 
+def admin_user() -> AuthenticatedUserDTO:
+    """Вошедший админ, каким его собрал бы вход из групп токена."""
+    return AuthenticatedUserDTO(
+        id="00000000-0000-0000-0000-0000000000ad",
+        full_name="Тестовый Админ",
+        username="test.admin",
+        email="test.admin@example.test",
+        permissions=[str(Permission.ADMIN)],
+    )
+
+
+def plain_user() -> AuthenticatedUserDTO:
+    """Вошедший сотрудник без прав администратора."""
+    return AuthenticatedUserDTO(
+        id="00000000-0000-0000-0000-0000000000aa",
+        full_name="Тестовый Сотрудник",
+        username="test.user",
+        email="test.user@example.test",
+        permissions=[],
+    )
+
+
 @pytest.fixture
 def client(storage: FakeObjectStorage) -> Iterator[TestClient]:
     """Клиент без запуска lifespan: подключение к MinIO тестам не нужно.
 
-    Ходит с паролем справочников: правка городов и маршрутов закрыта, а
-    проверяют её сценарии из test_admin_auth.py — остальным тестам интересна
-    бизнес-логика, а не пароль. Кто должен видеть 401, берёт `anonymous_client`.
+    Ходит как вошедший админ. Личность подменяется на границе `current_user`, а
+    не настоящей сессией: Keycloak в компании только продовый, и завести его для
+    тестов негде. Что именно закрыто правами, проверяет `test_access_control.py`
+    — остальным тестам интересна бизнес-логика.
     """
     app.dependency_overrides[get_object_storage] = lambda: storage
-    test_client = TestClient(app)
-    test_client.auth = (ADMIN_LOGIN, ADMIN_PASSWORD)
-    yield test_client
+    app.dependency_overrides[current_user] = admin_user
+    app.dependency_overrides[optional_user] = admin_user
+    yield TestClient(app)
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def user_client(storage: FakeObjectStorage) -> Iterator[TestClient]:
+    """Вошедший, но не админ — им проверяется 403 против 401."""
+    app.dependency_overrides[get_object_storage] = lambda: storage
+    app.dependency_overrides[current_user] = plain_user
+    app.dependency_overrides[optional_user] = plain_user
+    yield TestClient(app)
     app.dependency_overrides.clear()
 
 
 @pytest.fixture
 def anonymous_client(storage: FakeObjectStorage) -> Iterator[TestClient]:
-    """Тот же клиент, но без пароля — им проверяется, что закрыто именно то."""
+    """Тот же клиент, но без сессии — им проверяется, что закрыто именно то."""
     app.dependency_overrides[get_object_storage] = lambda: storage
     yield TestClient(app)
     app.dependency_overrides.clear()

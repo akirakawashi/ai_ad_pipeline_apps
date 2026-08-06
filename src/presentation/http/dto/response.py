@@ -61,6 +61,33 @@ class UserResponse(UserDTO):
     pass
 
 
+class AuthModeResponse(ApiModel):
+    """Каким способом входят: `true` — Keycloak, `false` — логин и пароль.
+
+    Один флаг и ничего больше. Адрес Keycloak и client_id фронту не нужны — к
+    Keycloak его уводит бэкенд, — а отдавать наружу лишнее об устройстве входа
+    незачем.
+    """
+
+    keycloak: bool
+
+
+class CurrentUserResponse(ApiModel):
+    """Кто вошёл, для шапки интерфейса и для решения «рисовать ли админку».
+
+    Намеренно узкий срез. `groups_raw` наружу не отдаётся: в нём вся оргструктура
+    компании — отделы, рассылки, доступы к шарам, — а интерфейсу нужно знать
+    только права. Сырые группы видны в админ-панели, где они нужны для разбора
+    «почему у человека нет доступа», и больше нигде.
+    """
+
+    id: str
+    full_name: str
+    username: str | None = None
+    email: str | None = None
+    permissions: list[str] = Field(default_factory=list)
+
+
 class CreateUserRequest(ApiModel):
     full_name: str = Field(min_length=1, max_length=255)
 

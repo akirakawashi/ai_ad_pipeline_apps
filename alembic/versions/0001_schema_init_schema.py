@@ -1,4 +1,4 @@
-"""Схема целиком: все одиннадцать таблиц в текущем виде.
+"""Схема целиком: все двенадцать таблиц в текущем виде.
 
 Это схлопнутая история. До 28.07.2026 схема набиралась восемью миграциями —
 init, два сида городов, сид маршрутов, геозоны, каталог, описание геозоны,
@@ -54,12 +54,33 @@ def upgrade() -> None:
     op.create_table('users',
     sa.Column('users_id', sa.String(length=36), nullable=False),
     sa.Column('full_name', sa.String(length=255), nullable=False),
+    sa.Column('keycloak_subject', sa.String(length=64), nullable=True),
+    sa.Column('username', sa.String(length=255), nullable=True),
+    sa.Column('email', sa.String(length=255), nullable=True),
+    sa.Column('groups_raw', postgresql.JSONB(none_as_null=True, astext_type=sa.Text()), nullable=True),
+    sa.Column('permissions', postgresql.JSONB(none_as_null=True, astext_type=sa.Text()), nullable=False),
+    sa.Column('last_login_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('is_active', sa.Boolean(), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.PrimaryKeyConstraint('users_id')
     )
-    op.create_index(op.f('ix_users_full_name'), 'users', ['full_name'], unique=True)
+    # Индекс по ФИО больше не уникален: имя приходит из AD, а полные тёзки в
+    # компании — обычное дело, и уникальность отказала бы второму из них во
+    # входе. Уникальность переехала на `keycloak_subject`.
+    op.create_index(op.f('ix_users_full_name'), 'users', ['full_name'], unique=False)
+    op.create_index(op.f('ix_users_keycloak_subject'), 'users', ['keycloak_subject'], unique=True)
+    op.create_table('user_sessions',
+    sa.Column('user_sessions_id', sa.String(length=36), nullable=False),
+    sa.Column('token_hash', sa.String(length=64), nullable=False),
+    sa.Column('users_id', sa.String(length=36), nullable=False),
+    sa.Column('expires_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+    sa.ForeignKeyConstraint(['users_id'], ['users.users_id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('user_sessions_id')
+    )
+    op.create_index(op.f('ix_user_sessions_token_hash'), 'user_sessions', ['token_hash'], unique=True)
+    op.create_index(op.f('ix_user_sessions_users_id'), 'user_sessions', ['users_id'], unique=False)
     op.create_table('catalog_imports',
     sa.Column('catalog_imports_id', sa.String(length=36), nullable=False),
     sa.Column('cities_id', sa.String(length=36), nullable=False),
@@ -265,6 +286,10 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_catalog_imports_created_at'), table_name='catalog_imports')
     op.drop_index('ix_catalog_imports_city_current', table_name='catalog_imports')
     op.drop_table('catalog_imports')
+    op.drop_index(op.f('ix_user_sessions_users_id'), table_name='user_sessions')
+    op.drop_index(op.f('ix_user_sessions_token_hash'), table_name='user_sessions')
+    op.drop_table('user_sessions')
+    op.drop_index(op.f('ix_users_keycloak_subject'), table_name='users')
     op.drop_index(op.f('ix_users_full_name'), table_name='users')
     op.drop_table('users')
     op.drop_index(op.f('ix_cities_slug'), table_name='cities')

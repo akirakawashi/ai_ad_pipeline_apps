@@ -11,9 +11,15 @@ from presentation.http.exception_handlers import setup_exception_handlers
 from presentation.http.routers.healthcheck import healthcheck_router
 from presentation.http.routers.internal import internal_v1_router
 from presentation.http.routers.v1.router import api_v1_router
+from settings.auth import validate_auth_setup
 from settings.factory import get_settings
 
 config = get_settings()
+
+# Проверка до создания приложения: выбранный способ входа должен быть работоспособен.
+# Обнаружиться это обязано при запуске, а не когда человек нажмёт «Войти» и
+# уедет в никуда.
+validate_auth_setup(config.auth)
 
 
 @asynccontextmanager

@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Path
 
 from application.services.user_service import UserService
 from presentation.http.dependencies import get_user_service
-from presentation.http.security import allow_hidden, require_admin
+from presentation.http.auth import allow_hidden, require_admin
 from presentation.http.dto.response import (
     CreateUserRequest,
     OkResponse,

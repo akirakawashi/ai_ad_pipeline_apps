@@ -7,7 +7,11 @@ from sqlalchemy.exc import IntegrityError
 
 from application.exceptions import (
     AssignmentFullError,
+    AuthenticationError,
     CatalogImportStateError,
+    InactiveUserError,
+    PermissionDeniedError,
+    SessionExpiredError,
     CatalogNotFoundError,
     DuplicateSlugError,
     GeozoneOverlapError,
@@ -29,6 +33,62 @@ UNIQUE_VIOLATION = "23505"
 
 
 def setup_exception_handlers(app: FastAPI) -> None:
+    @app.exception_handler(SessionExpiredError)
+    async def session_expired_handler(
+        _: Request,
+        __: SessionExpiredError,
+    ) -> JSONResponse:
+        """401 — сессии нет или её срок вышел; фронт показывает кнопку «Войти».
+
+        `WWW-Authenticate` намеренно не отдаём: заголовок заставил бы браузер
+        открыть своё окно ввода пароля, а паролей приложение не спрашивает — вход
+        живёт на стороне Keycloak.
+        """
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Нужно войти под доменной учётной записью."},
+        )
+
+    @app.exception_handler(PermissionDeniedError)
+    async def permission_denied_handler(
+        _: Request,
+        __: PermissionDeniedError,
+    ) -> JSONResponse:
+        """403, а не 401: человек вошёл, повторный вход ничего не изменит.
+
+        Названия групп в ответ не попадают — оргструктура компании не должна
+        утекать через сообщение об ошибке тому, кому доступ и так закрыт.
+        """
+        return JSONResponse(
+            status_code=403,
+            content={"detail": "Недостаточно прав для этого действия."},
+        )
+
+    @app.exception_handler(InactiveUserError)
+    async def inactive_user_handler(
+        _: Request,
+        __: InactiveUserError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=403,
+            content={"detail": "Учётная запись скрыта в справочнике."},
+        )
+
+    @app.exception_handler(AuthenticationError)
+    async def authentication_handler(
+        _: Request,
+        __: AuthenticationError,
+    ) -> JSONResponse:
+        """502: отказал не запрос, а Keycloak — недоступен либо отверг токен.
+
+        Причина наружу не идёт: в ней бывает и адрес внутреннего сервиса, и
+        подробности проверки подписи.
+        """
+        return JSONResponse(
+            status_code=502,
+            content={"detail": "Не удалось подтвердить вход через Keycloak."},
+        )
+
     @app.exception_handler(PipelineRunNotFoundError)
     async def run_not_found_handler(
         _: Request,

@@ -7,15 +7,18 @@ from fastapi import Depends
 from sqlmodel import Session
 
 from application.services.ad_catalog_service import AdCatalogService
+from application.services.auth_service import AuthService
 from application.services.catalog_service import CatalogService
 from application.services.pipeline_run_service import PipelineRunService
 from application.services.processing_job_service import ProcessingJobService
 from application.services.user_service import UserService
+from infrastructure.auth.keycloak import KeycloakIdentityProvider
 from infrastructure.catalog.parser import ExcelCatalogParser
 from infrastructure.database.session import get_db_session
 from infrastructure.repositories.sql_ad_catalog_repository import (
     SqlAdCatalogRepository,
 )
+from infrastructure.repositories.sql_auth_repository import SqlAuthRepository
 from infrastructure.repositories.sql_catalog_repository import SqlCatalogRepository
 from infrastructure.repositories.sql_pipeline_run_repository import (
     SqlPipelineRunRepository,
@@ -77,3 +80,20 @@ def get_user_service(
     session: Session = Depends(get_session),
 ) -> UserService:
     return UserService(SqlUserRepository(session))
+
+
+@lru_cache
+def get_identity_provider() -> KeycloakIdentityProvider:
+    """Один на процесс: внутри кэш ключей JWKS, и ради него всё и кэшируется.
+
+    Ключи realm меняются примерно никогда, а новый экземпляр на каждый запрос
+    означал бы поход в Keycloak за JWKS на каждый вход.
+    """
+    return KeycloakIdentityProvider(get_settings().auth)
+
+
+def get_auth_service(
+    session: Session = Depends(get_session),
+    provider: KeycloakIdentityProvider = Depends(get_identity_provider),
+) -> AuthService:
+    return AuthService(SqlAuthRepository(session), provider, get_settings().auth)

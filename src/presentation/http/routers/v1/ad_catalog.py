@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, File, Form, Path, Query, UploadFile
 
 from application.services.ad_catalog_service import AdCatalogService, UploadedFile
 from presentation.http.dependencies import get_ad_catalog_service
-from presentation.http.security import require_admin
+from presentation.http.auth import require_admin
 from presentation.http.dto.response import (
     AdStructureResponse,
     CatalogImportReportResponse,
