@@ -45,8 +45,10 @@ Three target brands: `mts`, `plus7`, `miranda`. Everything else collapses to `ot
    Business tunes tables without touching code.
 6. **Do not run the full pipeline unless asked.** It needs a GPU, model weights
    (`../ai_ad_ml/models/*/best.pt`, gitignored) and a real video. Prefer unit tests.
-7. **`docs/refactoring-backlog.md` is a backlog, not a task list.** Do not act on it unless the
-   owner explicitly asks.
+7. **There is no planning document, and none is to be created.** `docs/plan.md` and
+   `docs/refactoring-backlog.md` both existed and are both gone: intent that has landed belongs in
+   `pipeline-and-metrics.md`, and intent that has not is the owner's to raise. Do not recreate
+   either, and do not open a backlog file of your own.
 8. **The ad catalogue must not touch the visibility metric.** `ad_structures` is a directory of
    billboards standing in a city; the pipeline's `object_id` is a per-video cluster of detections.
    Different things — see the naming trap in §10. Wiring catalogue coefficients into β is a separate,
@@ -70,7 +72,7 @@ Three target brands: `mts`, `plus7`, `miranda`. Everything else collapses to `ot
 | `alembic/` | Migrations. Exactly two since the 28.07.2026 squash: `0001_schema` (all eleven tables, including the append-only `dwh_video_metrics`) and `0002_seed` (two cities **with their road layers**, seven routes **without lines** — tests depend on these). `seed_data/geometry/<city>/export.geojson` holds the two road layers the seed reads; they are migration assets, not leftovers — delete them and a from-scratch database comes up with an empty map. Route lines are drawn in the admin panel, not seeded (31.07.2026, see §10); the seven `route_N.geojson` that used to live here are now reference fixtures in `tests/fixtures/routes/`. While there is no production database the chain is squashed rather than extended; the day real data exists, that stops and history is append-only. |
 | `../ai_ad_frontend/src/` | React 19 + Vite + Recharts in the companion repository. Hand-rolled router (`routing.ts`), no react-router. |
 | `tests/` | pytest. Needs a live Postgres; MinIO is faked. |
-| `docs/refactoring-backlog.md` | The only planning document left. `docs/plan.md` and its per-step files existed until 28.07.2026 and are gone: intent that has landed belongs in `pipeline-and-metrics.md`, not in a parallel history. Do not recreate them. |
+| `docs/` | One file: `pipeline-and-metrics.md`. `docs/plan.md` with its per-step files (28.07.2026) and `docs/refactoring-backlog.md` (06.08.2026) both lived here and are gone — intent that has landed belongs in `pipeline-and-metrics.md`, not in a parallel history. Do not recreate them. |
 | `README.md` | Setup and local-run guide for the separated repositories. |
 
 ---
@@ -318,8 +320,9 @@ collection and calls `pytest.exit` when Postgres is unreachable. ML/scoring test
     `admin`/`admin` (with rights) and `user`/`user` (without). No combinations: Keycloak here is
     production-only — there is no local copy and no container for it — so until IC-GROUP issues a
     client, `false` is the only way to work, and the real flow can first be exercised on a deployed
-    service. `validate_auth_setup` refuses to boot when `true` is set without a complete
-    issuer/client_id/secret triple; `false` needs no configuration at all, which is the point.
+    service. `warn_if_unusable` reports — but does not enforce — a `true` without a complete
+    issuer/client_id/secret triple: the service starts, logs the reason and says so on the login
+    screen (see the trap in §10). `false` needs no configuration at all, which is the point.
     The unused half is closed at both ends: `/auth/login` answers 503 in password mode and
     `/auth/dev-login` answers 404 (not 403) in Keycloak mode. `GET /auth/mode` is the one endpoint
     open without a session — the frontend asks it to decide whether to draw a button or a form, so a
