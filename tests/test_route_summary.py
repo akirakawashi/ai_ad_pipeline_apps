@@ -97,6 +97,14 @@ def _seed_shooting(
         session.commit()
 
 
+def _brand_visibility(data: dict, brand: str = "mts") -> dict:
+    return next(
+        item["visibility_per_shooting"]
+        for item in data["brands"]
+        if item["brand"] == brand
+    )
+
+
 @pytest.fixture
 def summary_url(city_route) -> str:
     city_slug, route_slug = city_route
@@ -137,10 +145,12 @@ def two_assignments(client, storage, assignments_url) -> tuple[str, str]:
 
 
 def test_mean_is_flat_over_shootings(client, summary_url, two_assignments):
-    totals = payload(client.get(summary_url))["totals"]
+    data = payload(client.get(summary_url))
+    totals = data["totals"]
     assert totals["shootings_completed"] == 4
     # (100 + 100 + 100 + 20) / 4 = 80. Среднее из средних дало бы 60.
-    assert totals["visibility_per_shooting"]["mean"] == pytest.approx(80.0)
+    assert _brand_visibility(data)["mean"] == pytest.approx(80.0)
+    assert "visibility_per_shooting" not in totals
     assert totals["objects_per_shooting"]["mean"] == pytest.approx(1.0)
     # Единственная суммируемая величина — «сколько наснимали».
     assert totals["duration_sec"] == pytest.approx(160.0)
@@ -152,7 +162,7 @@ def test_median_ships_alongside_mean(client, summary_url, two_assignments):
     Те же четыре съёмки: 100, 100, 100 и 20. Среднее тянется к выбившемуся
     проезду, медиана его не замечает; ради этой разницы выбор и сделали.
     """
-    stat = payload(client.get(summary_url))["totals"]["visibility_per_shooting"]
+    stat = _brand_visibility(payload(client.get(summary_url)))
     assert stat["mean"] == pytest.approx(80.0)
     assert stat["median"] == pytest.approx(100.0)
     # Разброс общий для обеих оценок: он про сами съёмки, а не про способ свёртки.
@@ -228,10 +238,11 @@ def test_counts_unfinished_but_leaves_them_out_of_metrics(
         brands_visibility={"mts": 999.0},
         status=PipelineRunStatus.QUEUED,
     )
-    totals = payload(client.get(summary_url))["totals"]
+    data = payload(client.get(summary_url))
+    totals = data["totals"]
     assert totals["shootings_total"] == 2
     assert totals["shootings_completed"] == 1
-    assert totals["visibility_per_shooting"]["mean"] == pytest.approx(50.0)
+    assert _brand_visibility(data)["mean"] == pytest.approx(50.0)
 
 
 def test_shootings_without_assignment_are_invisible(client, storage, summary_url):
@@ -289,9 +300,9 @@ def test_geozone_changes_route_numbers(
         shot_started_at="2026-05-01T09:00:00+00:00",
         brands_visibility={"mts": 100.0},
     )
-    assert payload(client.get(summary_url))["totals"]["visibility_per_shooting"][
-        "mean"
-    ] == pytest.approx(100.0)
+    assert _brand_visibility(payload(client.get(summary_url)))["mean"] == pytest.approx(
+        100.0
+    )
 
     client.post(
         f"/api/v1/cities/{city_slug}/routes/{route_slug}/geozones",
@@ -302,9 +313,9 @@ def test_geozone_changes_route_numbers(
             "coefficient": 1.5,
         },
     )
-    assert payload(client.get(summary_url))["totals"]["visibility_per_shooting"][
-        "mean"
-    ] == pytest.approx(150.0)
+    assert _brand_visibility(payload(client.get(summary_url)))["mean"] == pytest.approx(
+        150.0
+    )
 
 
 def test_unknown_route_is_404(client, city_route):
@@ -337,7 +348,7 @@ class TestPeriod:
         )
 
         assert data["totals"]["shootings_completed"] == 3
-        assert data["totals"]["visibility_per_shooting"]["mean"] == pytest.approx(100.0)
+        assert _brand_visibility(data)["mean"] == pytest.approx(100.0)
 
     def test_end_is_exclusive(self, client, summary_url, two_assignments):
         """Конец окна не включается: 1 июня как граница июньскую съёмку отсекает.
@@ -382,7 +393,7 @@ class TestPeriod:
         )
 
         assert data["totals"]["shootings_completed"] == 1
-        assert data["totals"]["visibility_per_shooting"]["mean"] == pytest.approx(20.0)
+        assert _brand_visibility(data)["mean"] == pytest.approx(20.0)
 
     def test_assignments_total_follows_the_window(
         self, client, summary_url, two_assignments
@@ -467,9 +478,10 @@ class TestHiddenAssignment:
         _, small = two_assignments
         self.hide(client, small)
 
-        totals = payload(client.get(summary_url))["totals"]
+        data = payload(client.get(summary_url))
+        totals = data["totals"]
         assert totals["shootings_completed"] == 3
-        assert totals["visibility_per_shooting"]["mean"] == pytest.approx(100.0)
+        assert _brand_visibility(data)["mean"] == pytest.approx(100.0)
         # Суммируемая величина тоже: 3 × 40 секунд вместо 4 × 40.
         assert totals["duration_sec"] == pytest.approx(120.0)
 
@@ -493,9 +505,10 @@ class TestHiddenAssignment:
         self.hide(client, small)
         client.patch(f"/api/v1/assignments/{small}", json={"is_active": True})
 
-        totals = payload(client.get(summary_url))["totals"]
+        data = payload(client.get(summary_url))
+        totals = data["totals"]
         assert totals["shootings_completed"] == 4
-        assert totals["visibility_per_shooting"]["mean"] == pytest.approx(80.0)
+        assert _brand_visibility(data)["mean"] == pytest.approx(80.0)
 
     def test_hiding_everything_is_not_an_error(
         self, client, summary_url, two_assignments

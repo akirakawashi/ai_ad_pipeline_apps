@@ -8,8 +8,6 @@ wheels/
 *.egg-info
 .ipynb_checkpoints/
 *.png
-!apps/frontend/src/assets/aisigroup-logo.png
-!apps/frontend/src/assets/aisigroup-mark.png
 *.jpg
 *.jpeg
 *.txt
@@ -37,3 +35,7 @@ ml/data/pipeline/input/
 
 .env
 .runtime/
+
+# Разведочный дамп claim'ов токена (AUTH_CLAIMS_DUMP_PATH). Внутри ФИО, доменные
+# логины и оргструктура компании — персданные, которым в репозитории не место.
+auth-claims*.jsonl

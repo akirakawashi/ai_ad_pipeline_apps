@@ -34,17 +34,21 @@ Three target brands: `mts`, `plus7`, `miranda`. Everything else collapses to `ot
    computed **on the backend at request time** from route geozones. Never write β or V into pipeline
    artifacts, never bake β into the CSV contract. Rationale: zones are drawn *after* processing and
    change at will — there is no moment at which β is final.
-4. **Artifact/DTO shapes live in `pipeline_contracts/`.** That package is the single source of truth
-   shared by the ML pipeline and the backend. `ml/pipeline/scripts/artifacts.py`,
-   `ml/pipeline/scripts/domain.py` and `apps/backend/src/domain/entities/` are thin re-export
-   facades — do not add logic there.
+4. **Artifact/DTO shapes live in `pipeline_contracts/`.** This repository owns the backend's copy;
+   the standalone ML repository has a matching copy in `../ai_ad_ml/pipeline_contracts/`. A contract
+   change is one coordinated change in both repositories and must keep the processing wire contract
+   at version `1` until an explicit version migration is designed. `src/domain/entities/`
+   is a thin re-export facade — do not add logic there.
 5. **Tunable numbers go into config dataclasses**, never into `if` branches:
-   [ml/pipeline/scripts/config.py](ml/pipeline/scripts/config.py) (`ScoringConfig` and friends).
+   [`../ai_ad_ml/ml/pipeline/scripts/config.py`](../ai_ad_ml/ml/pipeline/scripts/config.py)
+   (`ScoringConfig` and friends).
    Business tunes tables without touching code.
 6. **Do not run the full pipeline unless asked.** It needs a GPU, model weights
-   (`models/*/best.pt`, gitignored) and a real video. Prefer unit tests.
-7. **`docs/refactoring-backlog.md` is a backlog, not a task list.** Do not act on it unless the
-   owner explicitly asks.
+   (`../ai_ad_ml/models/*/best.pt`, gitignored) and a real video. Prefer unit tests.
+7. **There is no planning document, and none is to be created.** `docs/plan.md` and
+   `docs/refactoring-backlog.md` both existed and are both gone: intent that has landed belongs in
+   `pipeline-and-metrics.md`, and intent that has not is the owner's to raise. Do not recreate
+   either, and do not open a backlog file of your own.
 8. **The ad catalogue must not touch the visibility metric.** `ad_structures` is a directory of
    billboards standing in a city; the pipeline's `object_id` is a per-video cluster of detections.
    Different things — see the naming trap in §10. Wiring catalogue coefficients into β is a separate,
@@ -56,39 +60,47 @@ Three target brands: `mts`, `plus7`, `miranda`. Everything else collapses to `ot
 
 | Path | What lives there |
 |---|---|
-| `pipeline_contracts/` | **Shared contracts**: CSV row models, overlay payload, enums (`PipelineRunStatus`, `PipelineRunStage`, `PipelineArtifactType`, `FinalStatus`, …), brand constants. Imported by both ML and backend. |
-| `ml/pipeline/run_pipeline.py` | CLI entry point (argparse → `PipelineConfig` → `run_pipeline`). |
-| `ml/pipeline/scripts/runner.py` | Stage orchestration. The one file that shows the whole ML flow. |
-| `ml/pipeline/scripts/scoring/` | The metric: `area`, `position`, `contrast`, `intensity`, `attention`, `confidence`, `geometry`, `interpolation`. Feature extraction is separate from assembly. |
-| `ml/pipeline/scripts/` (rest) | `detection`, `crops`, `quality`, `classification`, `tracking`, `track_groups`, `aggregation`, `io`, `schemas`, `config`, `visualization` (**despite the name it draws nothing** — it works out which boxes are visible in which frame, with gap interpolation, and its only consumer is `viewer/payload.py`). |
-| `ml/pipeline/scripts/reporting/` | CSV + charts + `report.html` (standalone pipeline reports, **not** the product UI). |
-| `ml/pipeline/scripts/viewer/` | `overlay.json` + `viewer.html` (standalone player with cards). |
-| `apps/backend/src/domain/` | Pure logic, no I/O: `geozones.py` (`beta`, `overlaps`), `catalog.py` (point collapsing, revision diff, city bounds), `geometry.py` (geojson validation, bbox, route line assembly), `route_snapping.py` (road graph + map matching: a hand-drawn stroke onto real roads) + entity facades. |
-| `apps/backend/src/application/` | Services (`pipeline_run_service`, `catalog_service`, `metrics_rollup`, `user_service`), DTOs, repository interfaces. |
-| `apps/backend/src/infrastructure/` | SQLModel models, SQL repositories, MinIO storage, `catalog/parser.py` (xlsx/xls/csv). |
-| `apps/backend/src/presentation/http/` | FastAPI routers, request/response DTOs, DI, exception handlers, `security.py` (the admin password). |
-| `apps/backend/src/worker/` | Queue worker that runs the ML pipeline out-of-process. |
-| `apps/backend/alembic/` | Migrations. Exactly two since the 28.07.2026 squash: `0001_schema` (all ten tables) and `0002_seed` (two cities **with their road layers**, seven routes **without lines** — tests depend on these). `seed_data/geometry/<city>/export.geojson` holds the two road layers the seed reads; they are migration assets, not leftovers — delete them and a from-scratch database comes up with an empty map. Route lines are drawn in the admin panel, not seeded (31.07.2026, see §10); the seven `route_N.geojson` that used to live here are now reference fixtures in `tests/fixtures/routes/`. While there is no production database the chain is squashed rather than extended; the day real data exists, that stops and history is append-only. |
-| `apps/frontend/src/` | React 19 + Vite + Recharts. Hand-rolled router (`routing.ts`), no react-router. |
-| `scripts/` | `dev.sh` — brings up the whole stack. |
+| `pipeline_contracts/` | Backend copy of the artifact contracts: CSV row models, overlay payload, enums (`PipelineRunStatus`, `PipelineRunStage`, `PipelineArtifactType`, `FinalStatus`, …), brand constants. Must match the ML copy. |
+| `../ai_ad_ml/ml/pipeline/` | Standalone ML pipeline: CLI, orchestration, scoring, reports and overlay generation. It does not import this repository. |
+| `../ai_ad_ml/processing_worker/` | Standalone worker. Claims jobs and reports progress/results through backend HTTP; reads/writes objects in MinIO; never connects to PostgreSQL. |
+| `src/domain/` | Pure logic, no I/O: `auth.py` (`Permission`, claim parsing, group→permission whitelist), `geozones.py` (`beta`, `overlaps`), `catalog.py` (point collapsing, revision diff, city bounds), `geometry.py` (geojson validation, bbox, route line assembly), `route_snapping.py` (road graph + map matching: a hand-drawn stroke onto real roads) + entity facades. |
+| `src/application/` | Services (`pipeline_run_service`, `catalog_service`, `metrics_rollup`, `user_service`), DTOs, repository interfaces. |
+| `src/infrastructure/` | SQLModel models, SQL repositories, MinIO storage, `catalog/parser.py` (xlsx/xls/csv), `auth/keycloak.py` (code exchange + JWKS signature verification). |
+| `src/presentation/http/` | FastAPI routers, request/response DTOs, DI, exception handlers, `auth.py` (session cookie, `current_user`, `require_admin`, `allow_hidden`). |
+| `src/application/services/processing_job_service.py` | Backend side of the processing boundary: atomically claims queued work, accepts progress and validates/registers completed artifacts. |
+| `src/presentation/http/routers/internal/` | Token-protected processing API under `/internal/v1`; contract version is `1`. |
+| `alembic/` | Migrations. Exactly two since the 28.07.2026 squash: `0001_schema` (all eleven tables, including the append-only `dwh_video_metrics`) and `0002_seed` (two cities **with their road layers**, seven routes **without lines** — tests depend on these). `seed_data/geometry/<city>/export.geojson` holds the two road layers the seed reads; they are migration assets, not leftovers — delete them and a from-scratch database comes up with an empty map. Route lines are drawn in the admin panel, not seeded (31.07.2026, see §10); the seven `route_N.geojson` that used to live here are now reference fixtures in `tests/fixtures/routes/`. While there is no production database the chain is squashed rather than extended; the day real data exists, that stops and history is append-only. |
+| `../ai_ad_frontend/src/` | React 19 + Vite + Recharts in the companion repository. Hand-rolled router (`routing.ts`), no react-router. |
 | `tests/` | pytest. Needs a live Postgres; MinIO is faked. |
-| `docs/refactoring-backlog.md` | The only planning document left. `docs/plan.md` and its per-step files existed until 28.07.2026 and are gone: intent that has landed belongs in `pipeline-and-metrics.md`, not in a parallel history. Do not recreate them. |
-| `README.md` | Setup/ops guide. Predates the metric rewrite; treat metric statements in it as stale. |
+| `docs/` | One file: `pipeline-and-metrics.md`. `docs/plan.md` with its per-step files (28.07.2026) and `docs/refactoring-backlog.md` (06.08.2026) both lived here and are gone — intent that has landed belongs in `pipeline-and-metrics.md`, not in a parallel history. Do not recreate them. |
+| `README.md` | Setup and local-run guide for the separated repositories. |
 
 ---
 
 ## 4. Runtime topology
 
+The three repositories are packaged independently. Each owns its `Dockerfile` and
+`docker-compose.yml`; no Compose file reaches into a neighbouring source tree. Start backend first,
+then frontend and ML from their repositories. Native commands remain the faster development path.
+
 | Piece | How it runs | Where |
 |---|---|---|
-| Postgres | docker compose | `:5432` |
-| MinIO | docker compose | `:9000` API, `:9001` console |
-| Backend (FastAPI) | docker compose, `--reload` | `:8000`, prefix `/api/v1`, health at `/healthcheck` |
-| Worker | **local host process** (needs GPU), started by `scripts/dev.sh` | `.runtime/worker/<run_id>/` |
-| Frontend (Vite) | `pnpm dev` | `:5173` (in backend CORS allowlist) |
+| Postgres | backend Compose | `:5432`, persistent named volume |
+| MinIO | backend Compose | `:9000` API, `:9001` console, persistent named volume |
+| Migrations | backend Compose one-shot `migrate` service | backend waits for successful completion |
+| Backend (FastAPI) | backend Compose or native uvicorn | `:8000`, public prefix `/api/v1`, internal prefix `/internal/v1`, health at `/healthcheck` |
+| Worker + ML | ML Compose with `gpus: all` or native Python | temporary files under `PIPELINE_WORKER_TEMP_DIR`; GPU selected by `PIPELINE_DEVICE` |
+| Frontend | frontend Compose (local Vite preview) or native Vite | `127.0.0.1:5173` (in backend CORS allowlist) |
 
-Config: pydantic-settings, env from `apps/backend/.env` (gitignored). Pipeline knobs use the
-`PIPELINE_` prefix (`PIPELINE_FRAME_STRIDE`, default **1** for the worker; the CLI default is 10).
+Backend config comes from the repository-root `.env` (gitignored), resolved independently of the current
+working directory. ML/worker config comes from `../ai_ad_ml/.env`. Both must carry the same
+`PROCESSING_SERVICE_TOKEN` (at least 16 characters). The worker's API client deliberately ignores
+host `HTTP_PROXY`/`HTTPS_PROXY`: backend is a local trusted service and inherited proxy settings can
+turn a healthy localhost request into a proxy-generated 503. PostgreSQL credentials exist only in
+backend; the ML repository has no database dependency or setting. In containers, backend uses the
+Compose service names `postgres` and `minio`; the ML Compose reaches the published backend/MinIO
+ports through `host.docker.internal`, including the Linux `host-gateway` mapping. Frontend's
+`VITE_API_BASE_URL` is a build argument because Vite embeds it into the generated static bundle.
 
 ---
 
@@ -118,9 +130,9 @@ Field placement:
 | `TrackRecord` / `tracks.csv` | `attention_seconds` (S), `confidence_coef` (α) |
 | Backend, computed live | `significance_coef` (β), `visibility_value` (V) |
 
-⚠ **Name collision to keep straight:** in `ml/` the label `visibility_value` means **S·α** (derived
-in [reporting/writer.py](ml/pipeline/scripts/reporting/writer.py) and
-[viewer/payload.py](ml/pipeline/scripts/viewer/payload.py) for standalone reports and overlay cards).
+⚠ **Name collision to keep straight:** in `../ai_ad_ml` the label `visibility_value` means **S·α**
+(derived in its `reporting/writer.py` and `viewer/payload.py` for standalone reports and overlay
+cards).
 On the backend `visibility_value` means **S·α·β**. They are different numbers with the same name.
 
 ---
@@ -138,15 +150,25 @@ On the backend `visibility_value` means **S·α·β**. They are different number
 2. Browser PUTs the file straight to MinIO: `runs/{run_id}/source/{safe_name}`.
 3. `POST /runs/{run_id}/upload-complete` → registers the `source_video` artifact, status `queued`.
    The one read that still answers for a hidden assignment: the file is already stored.
-4. Worker `claim_next` (`SELECT … FOR UPDATE SKIP LOCKED`) → status `processing`, downloads the
-   video, runs the pipeline, reporting progress into `pipeline_runs` + `pipeline_run_events`. The
-   second of those is **write-only** — see §10.
+4. ML worker calls `POST /internal/v1/processing/jobs/claim` with `X-Processing-Token` and contract
+   version `1`. The backend performs `SELECT … FOR UPDATE SKIP LOCKED`, commits status `processing`,
+   and returns the source object's bucket/key. The worker downloads it from MinIO and reports stages
+   with `POST .../{run_id}/progress`; only backend writes `pipeline_runs` and
+   `pipeline_run_events`. The second table is **write-only** — see §10.
 5. Pipeline stages: detection → tracking → classification → final aggregation → business rules →
    artifacts.
-6. Worker uploads everything under `runs/{run_id}/artifacts/…`. Crops are uploaded but **not**
-   registered as DB rows (`should_register_artifact`). `mark_completed` stores fps / frame_count /
-   frame_stride / width / height and **`duration_sec = frame_count / fps`** — β depends on this
-   value.
+6. Worker uploads everything under `runs/{run_id}/artifacts/…`, then posts the artifact manifest and
+   video metadata to `POST .../{run_id}/complete`. The backend rejects escaping/duplicate paths,
+   verifies every declared object in MinIO, derives artifact types itself, registers them and marks
+   the run completed in one transaction. Crops are uploaded but **not** put in the manifest
+   (`should_register_artifact`). Completion stores fps / frame_count / frame_stride / width / height
+   and **`duration_sec = frame_count / fps`** — β depends on this value. After duration is stored,
+   the backend reuses the same live summary calculation as the product API and appends one
+   `dwh_video_metrics` row per brand (`sum_visibility_value = Σ(S·α·β)`) with revision `1`; a result
+   without brands gets one row with both `brand` and the value NULL. Artifact registration, the
+   `completed` status and DWH publication commit as one transaction. Failure is reported through
+   `POST .../{run_id}/fail`. There is no lease/heartbeat yet: a process death between claim and
+   failure reporting leaves a run in `processing`, as the old in-process worker did.
 7. Reads: `GET /runs/{id}/summary` and `/objects` parse **`tracks.csv`** from MinIO and apply β on
    the fly; `/timeline` parses `detections.csv`; `/overlay` returns `overlay.json`. `pipeline_runs`
    has exactly six read endpoints — `/{id}`, `/summary`, `/objects`, `/timeline`, `/overlay`,
@@ -175,32 +197,30 @@ On the backend `visibility_value` means **S·α·β**. They are different number
 10. Frontend renders charts from `/summary`, `/objects`, `/timeline`, and the player from
    `/overlay` + `/playback`.
 
-`brand_summary_by_tracks.csv`, `brand_summary_by_detections.csv`, `frame_summary.csv` are written and
-registered but **nothing downstream reads them** — the backend recomputes from `tracks.csv`. They
-only feed the pipeline's own `report.html`.
-
 ---
 
 ## 7. Change cookbook
 
 | I need to… | Touch |
 |---|---|
-| Retune area/position/contrast/confidence numbers | `ScoringConfig` in [config.py](ml/pipeline/scripts/config.py) only |
-| Change how a factor is computed | the one file in `ml/pipeline/scripts/scoring/`, plus its class in [tests/test_scoring.py](tests/test_scoring.py) |
-| Add/remove a CSV column | `pipeline_contracts/artifacts.py` (field list is derived from the model) → the dataclass in `ml/pipeline/scripts/schemas.py` → whoever reads it |
-| Change β semantics / zone model | `apps/backend/src/domain/geozones.py` + `_apply_beta` in `pipeline_run_service.py` + `RouteGeozone` model |
-| Change how zones are entered or edited | `apps/frontend/src/components/RouteGeozones.tsx` — one panel for both mounts (city page without video, shooting card with it); percent↔fraction lives in `toFraction`/`percentText` there |
-| Add an endpoint | router in `presentation/http/routers/v1/` → response DTO in `presentation/http/dto/response.py` → service → repository interface → SQL repository |
+| Retune area/position/contrast/confidence numbers | `ScoringConfig` in `../ai_ad_ml/ml/pipeline/scripts/config.py` only |
+| Change how a factor is computed | the one file in `../ai_ad_ml/ml/pipeline/scripts/scoring/`, plus its class in `../ai_ad_ml/tests/test_scoring.py` |
+| Add/remove a CSV column | update `pipeline_contracts/artifacts.py` in **both** repositories → the dataclass in `../ai_ad_ml/ml/pipeline/scripts/schemas.py` → every reader; run both repositories' contract/tests before handoff |
+| Change β semantics / zone model | `src/domain/geozones.py` + `_apply_beta` in `pipeline_run_service.py` + `RouteGeozone` model |
+| Change how zones are entered or edited | `../ai_ad_frontend/src/components/RouteGeozones.tsx` — one panel for both mounts (city page without video, shooting card with it); percent↔fraction lives in `toFraction`/`percentText` there |
+| Add an endpoint | router in `presentation/http/routers/v1/` → response DTO in `presentation/http/dto/response.py` → service → repository interface → SQL repository. It is behind the session automatically (the v1 router applies `current_user` to everything); add `Depends(require_admin)` if it administers rather than operates |
 | Add a DB table/column | `infrastructure/database/models.py`, then the schema change goes **into `0001_schema`**, not into a third migration — there is still no production database (see §3). Generate it only when asked; **the owner applies it**, and the owner must wipe the volume for an edited `0001_schema` to take effect. Verify with `alembic check` against a scratch database: `pytest` proves the code runs on the migrated schema but not that the migration matches the models |
 | Change how an assignment **or a route** aggregates shootings | `application/services/metrics_rollup.py` — the only place that decides how shootings collapse (today: mean + median + std), shared by both levels. Which shootings reach it is decided earlier, in `list_route_runs`; do not move that decision here or the other way round |
 | Change how an assignment is created, edited or hidden | `components/AdminAssignments.tsx` (the only mount of `AssignmentForm.tsx` — route picker, create, edit, hide/show) → `createAssignment` / `updateAssignment` / `getRouteAssignments` in `api.ts` → `assignments.py` + `cities.py` routers (both writes behind `require_admin`) → `catalog_service` → `sql_catalog_repository`. `RoutePage.tsx` and `AssignmentPage.tsx` only display; do not put a form back into either |
 | Change what a hidden assignment hides | `is_active` threads through **nine** reads. Seven in `sql_catalog_repository.py`: `list_assignments`, `get_assignment`, `_assignment_counts_by_route`, `_video_counts_by_route`, the two city-level counters in `list_cities`, and `list_route_runs` (this is the metric). Three in `sql_pipeline_run_repository.py`: `list_runs`, `get`, and `lock_assignment` — the last one guards the upload and **must stay in that file**, next to its only caller; see the twin trap in §10. Miss one and you get half-hidden: a card gone from the list but its video still counted |
 | Change the route's date period | `list_route_runs` in `sql_catalog_repository.py` (the `[shot_from, shot_to)` window) → `get_route_summary` in `catalog_service.py` → `cities.py` router → `getRouteSummary` in `api.ts` → `PeriodPicker` in `RouteSummaryPanel.tsx`, with the window itself in the URL (`routePath`). Date↔instant conversion lives in `utils/formatters.ts`. **The filter stays on the server** — see §10 |
-| Change which centre estimate the UI shows, or add a third one | `MetricStatDTO` → `_stat()` in `metrics_rollup.py` → `MetricStat` in `types.ts` → `statValue`/`formatStat` in `utils/formatters.ts` → `AggregateToggle.tsx`, which is mounted only by `MetricsPanel.tsx` (the summary tiles and the toggle are one card, and the caption «Оценка за съёмку» names the **toggle**, not the tiles — two of the four tiles are totals the estimate does not touch). The choice itself never reaches the backend, and it is held by the **page** (`RoutePage` / `AssignmentPage`), not by the panel — the panel unmounts on a tab switch and the selection has to survive that |
+| Change which centre estimate the UI shows, or add a third one | `MetricStatDTO` → `_stat()` in `metrics_rollup.py` → `MetricStat` in `types.ts` → `statValue`/`formatStat` in `utils/formatters.ts` → `AggregateToggle.tsx`, which is mounted only by `MetricsPanel.tsx` (the summary tiles and the toggle are one card; among the tiles it changes only «объектов за видео», while brand visibility changes in the charts below). The choice itself never reaches the backend, and it is held by the **page** (`RoutePage` / `AssignmentPage`), not by the panel — the panel unmounts on a tab switch and the selection has to survive that |
 | Change what the route/assignment page shows, or add a tab | `PageView` in `routing.ts` (`?view=analytics`, absent means work) → `routePath` / `assignmentPath` → `VIEW_TABS` in `RoutePage.tsx` / `AssignmentPage.tsx`. **The rollup request is gated on the tab** — that is what makes it lazy; do not hoist it out of that condition. `App.tsx` deliberately keeps the tab out of the page `key` so switching does not remount and refetch |
 | Add a city/route field, change geometry handling | `domain/geometry.py` (validation only) → `models.py` → `sql_catalog_repository` → `catalog_service` → `cities.py` router → `AdminPage.tsx`. Geometry must stay out of list responses |
 | Change how a route's line is drawn or snapped | `domain/route_snapping.py` — graph building, candidate search, Viterbi, stitching, and `SnappingConfig`. Quality is measured, not eyeballed: [tests/test_route_snapping.py](tests/test_route_snapping.py) traces all seven real routes. Read the two traps in §10 before touching the graph or the tests |
 | Change the drawing surface (zoom, pan, the stroke itself) | `RouteMap.tsx` (`zoomable` / `drawing` / `onSegmentDrawn` props; the live stroke and the rubber band are written straight to the DOM by `showLiveStroke` / `showRubber`, deliberately bypassing React) → `RouteDrawing.tsx` (the draft, the keys and the confirm call) → `AdminPage.tsx` mounts it on the «Маршруты» tab. **The map emits *pieces*, it does not own the line** — a drag gives a trail, a click gives one point, and `RouteDrawing` accumulates them; see the draft trap in §10. **The wheel handler is a native listener with `passive: false`, not `onWheel`** — React registers `wheel` passively on the root, so `preventDefault()` inside `onWheel` is silently ignored and the page keeps scrolling while the map zooms under the cursor. Moving it back to `onWheel` looks tidier and breaks exactly that |
+| Change who may sign in, or what a group grants | `AUTH_ADMIN_GROUPS` in `.env` first — group names are configuration, not code. Only if a **new kind** of right is needed: `Permission` in `domain/auth.py` → `permissions_for` → the `require_*` dependency in `presentation/http/auth.py` → the guarded routers. Never read `groups_raw` to decide access |
+| Change the login/logout flow itself | `presentation/http/routers/v1/auth.py` (redirects, `state`, cookie) → `application/services/auth_service.py` (JIT upsert, session) → `infrastructure/auth/keycloak.py` (code exchange, JWKS). Frontend side: `components/LoginGate.tsx` and the gate in `App.tsx` |
 | Change who can see hidden cities/routes/assignments | `include_inactive` threads through `list_cities` / `get_city` / `list_assignments` / `get_assignment` (repository → service → router → `api.ts`). Only the admin panel passes `true` |
 | Change catalogue parsing (new column, new format) | `infrastructure/catalog/parser.py` only; the row/point types live in `domain/catalog.py` |
 | Retune catalogue distance thresholds | `MERGE_DISTANCE_M` / `DIFF_DISTANCE_M` / `CITY_BOUNDS_MARGIN_M` in `domain/catalog.py` |
@@ -209,20 +229,26 @@ only feed the pipeline's own `report.html`.
 | Add a section to the admin panel | a component under `components/`, mounted from `AdminPage.tsx`. City-scoped → a tab in `CITY_TABS`; not city-scoped → a page-level section in `AdminSection` (like `AdminUsers.tsx`). Keep the two switchers visually different — underlined text for sections, pill tabs inside a city — or they read as one level. Guard its writes with `require_admin` in the same change |
 | Change the people directory | `user_service.py` → `users.py` router → `AdminUsers.tsx` — creation, renaming and hiding all live there. `UserSelect.tsx` only selects; do not put a create form back into it (see §10). **A person is attached to a row in exactly two roles, and both are named `uploaded_by`**: `pipeline_runs.uploaded_by_users_id` (who brought the video) and `catalog_imports.uploaded_by_users_id` (who brought the catalogue pack). The third is `assignments.author_users_id` — the person who *set* the campaign, a different thing. **Who drove and filmed is not stored at all** — see §10 |
 | Change how the shooting date is entered | `useVideoUpload.ts` (`shotDate` per queued file, `shotStartedAt()` decides what is sent) → `DateField.tsx` + its mount in `UploadPage.tsx` → `createRun` in `api.ts` → `CreateRunRequest` / `UpdateShootingRequest` → `pipeline_run_service` → repository → the `PipelineRun` model and `0001_schema`. Use the shared `DateField`, never a native `<input type="date">`: the browser owns that popup and renders it outside the product theme. Date↔ISO conversion belongs in `utils/formatters.ts` and nowhere else — see the timezone trap in §10. Preserve the invariant at every layer: create requires `shot_started_at`, PATCH may omit it but may not send `null`, and the database column is `NOT NULL` |
-| Change what the overlay card shows | `viewer/payload.py` + `OverlayObjectPayload` in `pipeline_contracts/artifacts.py` + `VideoOverlayPlayer.tsx` |
+| Change what the overlay card shows | `../ai_ad_ml/ml/pipeline/scripts/viewer/payload.py` + `OverlayObjectPayload` in both copies of `pipeline_contracts/artifacts.py` + `../ai_ad_frontend/src/components/VideoOverlayPlayer.tsx` |
 
 ---
 
 ## 8. Commands
 
 ```bash
-./scripts/dev.sh up          # postgres + minio + migrations + backend (docker) + worker (host)
-./scripts/dev.sh down|logs
+docker compose up -d --build       # backend + migrations + Postgres + MinIO
+docker compose down                # run separately in every repository
+uv run python -m alembic -c alembic.ini upgrade head
+uv run python -m uvicorn main:app --app-dir src --reload
 uv run pytest                # needs postgres up; creates/drops ad_pipeline_test
-uv run pytest tests/test_scoring.py     # scoring in isolation — but still needs postgres, see below
 uv run ruff check . && uv run mypy .
-cd apps/frontend && pnpm dev && pnpm build && pnpm lint
-./run_video_pipeline.sh path/to/video.mp4     # standalone ML run (GPU + weights required)
+cd ../ai_ad_frontend && docker compose up -d --build
+cd ../ai_ad_frontend && pnpm dev
+cd ../ai_ad_frontend && pnpm build && pnpm lint
+cd ../ai_ad_ml && docker compose up -d --build
+cd ../ai_ad_ml && uv run python -m processing_worker.main
+cd ../ai_ad_ml && uv run pytest && uv run ruff check . && uv run mypy .
+cd ../ai_ad_ml && ./run_video_pipeline.sh path/to/video.mp4  # standalone GPU run
 ```
 
 **Run `ruff`, `mypy` and `pytest` after every change, and `pnpm lint` after every frontend change.**
@@ -232,9 +258,9 @@ bugs, and the one consequence was that nobody looked at it. If a finding genuine
 expressed in types, silence it at the single line with `# type: ignore[code]` **and a comment saying
 why** — never by widening a signature or excluding a module.
 
-`tests/test_scoring.py` needs no database of its own, but you still cannot run it without one: the
-session-scoped autouse `database` fixture in `conftest.py` creates the test database before any test
-is collected, and calls `pytest.exit` when postgres is unreachable. There is no DB-free subset.
+Backend tests use a session-scoped autouse `database` fixture that creates the test database before
+collection and calls `pytest.exit` when Postgres is unreachable. ML/scoring tests live in
+`../ai_ad_ml/tests/` and do not need PostgreSQL.
 
 ---
 
@@ -243,27 +269,69 @@ is collected, and calls `pytest.exit` when postgres is unreachable. There is no 
 * **Layering:** presentation → application (services/DTOs) → domain (pure) → infrastructure.
   Services never import FastAPI; domain imports nothing project-specific.
 * **DTOs:** application DTOs in `application/common/dto/`, HTTP response models in
-  `presentation/http/dto/response.py`. Some application DTOs subclass contract models directly
-  (`RunObjectDTO(TrackCsvRow)`), which is intentional — the CSV *is* the contract.
-* **Admin password:** one login/password pair from settings (`ADMIN_USERNAME` / `ADMIN_PASSWORD`,
-  default `admin`/`admin`), checked by `presentation/http/security.py` over HTTP Basic. It is **not**
-  authorization and there are no roles — it fences the admin panel off from colleagues who have no
-  business there, inside a corporate network. The login form in the UI is convenience only; the
-  guarantee is that the endpoints answer 401 on their own. **The password may be in any language** —
-  see the UTF-8 trap in §10. What it guards:
-  * `require_admin` — every write on cities and routes, **both** writes on assignments
-    (`POST /cities/{c}/routes/{r}/assignments`, `PATCH /assignments/{id}`), all four
-    catalogue-revision writes (upload / apply / restore / delete), and **both** writes on people
-    (`POST /users`, `PATCH /users/{id}`);
-  * `allow_hidden` — `include_inactive` on `GET /cities`, `GET /cities/{slug}`, `GET /users`,
-    `GET /cities/{c}/routes/{r}/assignments` and `GET /assignments/{id}`.
-  * **The line is the cost of a mistake, not the difficulty.** Administration is what changes the
-    frame everyone works inside. An assignment is such a frame — it is the campaign whose shootings
-    a route's metrics are computed from — so creating and editing one moved behind the password on
-    29.07.2026. Operational work — shootings, video upload, geozones — stays open, or the product
-    becomes unusable: the driver picks a ready assignment, never invents one. What stays open on the
-    directory side is reads only: the catalogue list (a product screen), `GET /users` (every upload
-    form's dropdown) and the assignment list (the upload form reads it too).
+  `presentation/http/dto/response.py`. Artifact readers validate the full shared CSV contract, but
+  browser DTOs are deliberately narrow: `RunObjectDTO` exposes only the seven fields the result UI
+  consumes instead of leaking the full `TrackCsvRow` over HTTP.
+* **Authentication: corporate Keycloak (OIDC), whole app behind it.** People sign in with their
+  Active Directory account at `IC-GROUP` on `ssoc.ic-group.ru`; the app never sees a password and has
+  no login form of its own. Every `/api/v1` endpoint requires a session — the router applies
+  `current_user` to all of them and exempts exactly one thing, `/auth/*`, so a new endpoint is closed
+  by default. `/healthcheck` stays open (monitoring cannot log in) and `/internal/v1` keeps its own
+  shared token (machine-to-machine, no human involved).
+  * **BFF, not a bearer token in the browser.** `/auth/login` redirects to Keycloak, `/auth/callback`
+    exchanges the code for a token **server-side**, verifies its signature against JWKS, and stores a
+    row in `user_sessions`. The browser gets only an opaque `HttpOnly` cookie. Three reasons, each
+    sufficient on its own: a corporate token carrying dozens of AD groups overflows the 4 KB cookie
+    limit and header limits; the token lives 8 hours and cannot be revoked, so a server-side row is
+    the only place to evict someone; `sessionStorage` is readable by any script on the page.
+  * **The token itself is never stored.** It is needed once, at callback, to learn who arrived and in
+    which groups. Nothing else acts on the person's behalf.
+  * **Session lifetime comes from the token's `exp`, never its own number** — 8 hours, no refresh, so
+    one working day per login. Expiry is a plain 401 and a trip back to Keycloak.
+  * **Logout clears our session only** — no backchannel logout. Keycloak's SSO session is separate,
+    and killing it would both break the expected "come back without retyping the password" behaviour
+    and sign the person out of neighbouring apps in the same realm.
+  * **Authorization is a whitelist, `AUTH_ADMIN_GROUPS`, matched exactly.** The token carries the
+    whole org chart — departments, mailing lists, file-share access — and none of it means anything
+    to this app. Group names are compared as exact strings: Keycloak emits full paths
+    (`/Departments/Marketing`) and Russian AD names contain spaces and Cyrillic, so `startswith` or
+    case-insensitive matching would hand rights to whoever owns a similarly named group. The list
+    lives in configuration, not the database, because otherwise the first admin has nowhere to come
+    from: the directory is empty until someone logs in.
+  * **`permissions` on the `users` row is a mirror, not the source of truth** — a snapshot recomputed
+    from the token's groups at every login, so the admin panel can show who is who. Access is decided
+    from the current token's groups. `groups_raw` is diagnostics for "why is Petrov not an admin" and
+    must never decide access.
+  * What `require_admin` guards is unchanged from the password era, deliberately: every write on
+    cities and routes, **both** writes on assignments, all four catalogue-revision writes, and
+    **both** writes on people. **The line is the cost of a mistake, not the difficulty.**
+    Administration changes the frame everyone works inside; operational work — shootings, video
+    upload, geozones — stays open to any signed-in user, or the product becomes unusable: the driver
+    picks a ready assignment, never invents one.
+  * `allow_hidden` — `include_inactive` is silently downgraded for non-admins rather than refused.
+    Hidden records are clutter, not secrets, and a refusal would hint there is something worth
+    seeing.
+  * **401 vs 403 is load-bearing.** 401 means "sign in" and the frontend redirects to Keycloak; 403
+    means "you are signed in but may not" and redirecting would be an infinite carousel. Neither
+    answer names a group — the org chart must not leak through an error message to someone already
+    denied.
+  * **One switch picks the mode: `AUTH_USE_KEYCLOAK`.** `true` — the domain login described above.
+    `false` — a login/password form served by `/auth/dev-login` with two fixed accounts,
+    `admin`/`admin` (with rights) and `user`/`user` (without). No combinations: Keycloak here is
+    production-only — there is no local copy and no container for it — so until IC-GROUP issues a
+    client, `false` is the only way to work, and the real flow can first be exercised on a deployed
+    service. `warn_if_unusable` reports — but does not enforce — a `true` without a complete
+    issuer/client_id/secret triple: the service starts, logs the reason and says so on the login
+    screen (see the trap in §10). `false` needs no configuration at all, which is the point.
+    The unused half is closed at both ends: `/auth/login` answers 503 in password mode and
+    `/auth/dev-login` answers 404 (not 403) in Keycloak mode. `GET /auth/mode` is the one endpoint
+    open without a session — the frontend asks it to decide whether to draw a button or a form, so a
+    single build serves both modes.
+  * **Directory rows are created on first login (JIT).** The link is `keycloak_subject` (`sub`),
+    never the login or the full name: `sub` is permanent, a domain login changes with a surname.
+    `full_name` therefore lost its `UNIQUE` — real namesakes exist and the constraint would deny the
+    second one a login. Rows created by hand before SSO keep a NULL `keycloak_subject`: they still
+    own their history, but nobody can sign in as them.
 * **API envelope:** every success response is `{"data": …}` (`OkResponse[T]`). Errors are
   `{"detail": "<Russian sentence>"}` produced by handlers in `presentation/http/exception_handlers.py`.
   Domain errors are typed exceptions in `application/exceptions.py`, never raw `HTTPException`.
@@ -351,10 +419,10 @@ is collected, and calls `pytest.exit` when postgres is unreachable. There is no 
   and the same screen brings them back.
 * Coefficient tables are **defaults, not calibrated numbers** — area, position, contrast and
   confidence were set so work could proceed. Calibration against a real distribution is still open.
-* `run_video_pipeline.sh` appends `--brand-overrides` when `ml/pipeline/brand_overrides.csv` exists,
-  but `run_pipeline.py` has no such argument. The file is absent today, so the script works by luck.
-* α is derived from `final_brand_conf` only; the "brand stability across the track" input is a stub
-  parameter (`detections` is accepted and ignored in `scoring/confidence.py`).
+* The standalone `../ai_ad_ml/run_video_pipeline.sh` intentionally exposes only arguments accepted
+  by `run_pipeline.py`; the former conditional `--brand-overrides` argument was removed during the
+  repository split because no such CLI option exists.
+* α is derived from `final_brand_conf` only; detection history is not an input to this coefficient.
 * An object that was never classified still gets α = 0.5 (the floor) and counts as `other`.
 * β needs `duration_sec`; it exists only after `mark_completed`. The only remaining way to get a
   neutral β is an unmarked route — every shooting has a route now, so it always has zones, sometimes
@@ -364,8 +432,8 @@ is collected, and calls `pytest.exit` when postgres is unreachable. There is no 
   nowhere to roll the shooting up — the video took storage and answered no question. The FK is
   `CASCADE`, not `SET NULL`: there is nothing to null out. **`PipelineRunDTO.assignment` and its
   frontend twin stay optional anyway** — there `None` means "the relation was not loaded", which is
-  how the worker (`with_refs=False`) and `GET /assignments/{id}/runs` both answer. Tightening that
-  field to non-optional breaks the worker.
+  how the internal processing claim and `GET /assignments/{id}/runs` both answer. Tightening that
+  field to non-optional breaks those deliberately lightweight reads.
 * **The upload page's target comes from the loaded assignment, not from the id in the URL.**
   `UploadPage` in pinned mode (`/upload?assignment=…`) reads `pinnedAssignment?.id`, never
   `assignmentId` — otherwise a tab opened before the assignment was hidden keeps a live "Начать
@@ -456,30 +524,23 @@ is collected, and calls `pytest.exit` when postgres is unreachable. There is no 
   755 KB of JSONB it then threw away. Note the distinction the test encodes: `roads_geometry IS NOT
   NULL` is a *legal* mention — that is how `has_roads_geometry` is computed, in the database, so only
   a boolean crosses the wire. Referencing the column is fine; selecting its value is not.
-* **The admin password is UTF-8 end to end, and every layer had to be taught it.** Two library
-  defaults conspire against a non-Latin password. FastAPI's `HTTPBasic` decodes the header as
-  **ASCII** and raises its own error before your dependency runs — `auto_error=False` does not stop
-  it. `secrets.compare_digest` on **`str`** raises `TypeError` on non-ASCII, which surfaces as a 500,
-  not a 401. Set a Cyrillic `ADMIN_PASSWORD` on the old code and the panel locked from both sides:
-  the correct password never survived the decode (401), any wrong one crashed the comparison (500).
-  Hence `_Utf8HTTPBasic` in `security.py` (subclass, not a from-scratch dependency — the base class
-  carries the OpenAPI scheme) and byte comparison in `_verify`. **Two consequences to preserve:**
-  the frontend's `basicToken` in `api.ts` hand-rolls UTF-8 base64 because `btoa` is latin1-only —
-  that is not redundant, it is the other half; and every rejection must reach `_verify`, so
-  `_Utf8HTTPBasic` returns `None` on anything malformed and never raises — otherwise the library's
-  English "Not authenticated" leaks out in place of the Russian sentence.
-* **A gate that is an early `return` does not gate the effects above it — `signedIn` must be in their
-  dependencies.** `AdminPage.tsx` renders `<AdminLogin/>` from an early return, but its two loading
-  effects sit above that return (hooks must) and therefore ran while the form was still on screen:
-  no token, 401, and the backend's «Админ-панель под паролем. Введите логин и пароль.» landed in
-  `error`. Logging in sets only `signedIn` — neither `version` nor `citySlug` moves — so nothing
-  refetched and that banner sat over an already-authenticated panel with an empty city list. It
-  looked like a broken login and was cured by F5, which remounts with the token already in
-  `sessionStorage`. Both effects now start with `if (!signedIn) return` **and carry `signedIn` in
-  their deps** — that is what makes a successful login the trigger to load. Same reason `onSuccess`
-  clears `error`: the other way in is a 401 mid-session (the password changed on the server), and
-  page state outlives the trip through the login form. **Any admin screen that fetches behind the
-  password inherits this**: gate the request on the session and let the session re-trigger it.
+* **Nothing in the app ever handles a password, and that removed a whole family of traps.** Until
+  06.08.2026 the admin panel had its own HTTP Basic password, and making it work with a Cyrillic
+  value took a `HTTPBasic` subclass (the library decodes the header as ASCII and raises before your
+  dependency runs), byte comparison in place of `secrets.compare_digest` on `str` (which raises
+  `TypeError` on non-ASCII, surfacing as a 500), and a hand-rolled UTF-8 base64 in the frontend
+  because `btoa` is latin1-only. All of it is gone: passwords are typed on Keycloak's page, and the
+  fallback login exists only while `AUTH_USE_KEYCLOAK=false`. Do not reintroduce a password field
+  anywhere without re-reading this — the encoding traps are still there, they just have nothing to
+  bite.
+* **The login screen must never guess.** `App.tsx` asks `GET /auth/mode` before drawing anything and
+  distinguishes four answers: Keycloak, password form, *configured-but-unusable*, and *no answer at
+  all*. An earlier version collapsed the last two into "assume Keycloak", and the result was a
+  working-looking «Войти» button that led to a 404 while the real cause was a stale backend. The
+  same rule applies to `AUTH_USE_KEYCLOAK=true` without credentials: the service starts (crashing the
+  whole app over one unset variable is worse than the outage it prevents), logs the reason, and the
+  screen says the domain login is not configured. **It must never fall back to the password form** —
+  that is the one degradation that silently opens a door on a deployed stand.
 * **The city manual sits outside the password on purpose, and the reason is the router, not the
   content.** `/manual/city` describes admin work, so putting it behind `require_admin` looks
   obviously right — it would break the page. The admin panel's tabs live in component state, not in
@@ -497,6 +558,11 @@ is collected, and calls `pytest.exit` when postgres is unreachable. There is no 
   source a second time. Nothing read it: no component touched `annotated_url`, and `api.ts` has no
   artifact functions at all, so it was not even downloadable. If you find yourself wanting to render
   boxes into a file, the answer is almost certainly `overlay.json` plus the player instead.
+* **A worker without a GPU starts happily and only fails on the first video.** `PIPELINE_DEVICE`
+  defaults to `"0"`, but nothing touches CUDA until a run is claimed and the models load — so the
+  native queue process can look healthy before the first real shooting reports failure. Verify the
+  selected device and `torch.cuda.is_available()` before allowing it to claim work; use a supported
+  CPU setting explicitly only when that runtime is acceptable.
 * **Uploading a city's road layer recomputes `bounds_*` in the same operation.** The catalogue parser
   uses that box to drop out-of-town points; a new layer with a stale box silently discards good rows.
 * **`ShootingMetricsDTO` is the unit of account at every level.** Assignment and route both read it;
@@ -508,6 +574,22 @@ is collected, and calls `pytest.exit` when postgres is unreachable. There is no 
   `getRouteAssignments`, `getAssignment`, `getAssignmentRuns`), so opening a route to find one video
   no longer pays for the rollup of every shooting on it. The assignment header's «отснято» is summed
   from the runs in the browser for exactly this reason; it used to come from the rollup.
+* **Visibility has no cross-brand total in the API.** The final business measure is
+  `brands[].sum_visibility_value` for one brand in one shooting; assignment and route keep the same
+  split in `brands[].visibility_per_shooting`. Summing unlike brands into
+  `totals.visibility_index` created a number with no business meaning, so that field — together with
+  the total rollup `visibility_per_shooting` — was removed on 04.08.2026. The frontend may sum brand
+  values transiently only to turn each one into a share; the sum must not become a tile, DTO field or
+  stored fact again.
+* **The DWH fact is produced by the backend summary calculation, never by worker or SQL.** β needs
+  `duration_sec`, so `ProcessingJobService.complete` first calls `mark_completed`, then
+  `PipelineRunService.append_dwh_revision`, and commits artifacts, status and facts together. The
+  writer locks the run, takes `max(revision) + 1` and only inserts: old rows are immutable. One row is
+  one brand in one shooting revision; no-brand is represented by one NULL/NULL row so a completed
+  shooting does not disappear from the extract. IDs have no FKs intentionally and are accompanied
+  by city/route/assignment names: this is an outbound history table and its rows must stay readable
+  without operational JOINs. Today only successful processing invokes the writer; the trigger that
+  appends another revision after a geozone recalculation is still a separate next step.
 * **Hiding without a way back is a one-way door — the bug that cost every city at once.** Before
   28.07.2026 `DELETE /cities/{slug}` set `is_active = false`, the list filtered it out, the slug
   stayed taken and no endpoint could flip it back: the owner "deleted" three cities and could
@@ -521,10 +603,11 @@ is collected, and calls `pytest.exit` when postgres is unreachable. There is no 
   for inactive rows unless `include_inactive` is set, so a bookmarked `/archive/kerch` gives 404.
   The two admin write paths (`update_route`, `draw_route_geometry`) pass `include_inactive=True` on
   purpose — they answer about the very row they just hid, and a 404 there would read as a failure.
-* **Both centre estimates ship in every rollup response; the choice is presentation-only.**
+* **Both centre estimates ship in every brand rollup; the choice is presentation-only.**
   `MetricStat` carries `mean`, `median` and `std` together — switching is a re-render, never a
-  request, and the backend never learns which one is on screen. Consequence for the future DWH step:
-  a snapshot must store **both**, or the toggle stops working for past periods.
+  request, and the backend never learns which one is on screen. A future per-video DWH fact stores
+  the final value for each brand; DWH can derive either centre from those rows instead of persisting
+  an aggregate of aggregates.
 * **Under median the brand shares do not add up to 100 %.** Median is not linear — the median of a
   sum is not the sum of medians. This is a property of the estimate, not a bug; the pie chart's copy
   says so out loud under median. It is also why `visibility_share` no longer exists in the API: the
@@ -547,12 +630,13 @@ is collected, and calls `pytest.exit` when postgres is unreachable. There is no 
   zones simply shift, because β is a fraction of *this* video's duration, and the numbers go quietly
   wrong. Rejected deliberately (owner: every drive is uploaded whole); if the assumption ever breaks,
   filtering belongs in `metrics_rollup.py` and nowhere else.
-* **Hiding an assignment is a product read filter, never a write filter — the worker must not see
-  it.** `SqlPipelineRunRepository.get` returns `None` for a shooting of a hidden assignment, so one
+* **Hiding an assignment is a product read filter, never a processing write filter.**
+  `SqlPipelineRunRepository.get` returns `None` for a shooting of a hidden assignment, so one
   line covers the card, the summary, the objects, the timeline and the player at once; `list_runs`
   excludes them through the same subquery that already resolves route and city. Write paths
   (`_get_model` directly: `claim_next`, `mark_upload_complete`, `mark_completed`, `mark_failed`,
-  `add_artifact`) have no filter and must not grow one — a hidden assignment would otherwise mean a
+  `add_artifact`) have no filter and must not grow one — the internal processing service invokes
+  those paths on the ML worker's behalf. A hidden assignment would otherwise mean a
   queued video nobody claims and nobody hears about again. The one deliberate exception is
   `complete_upload`, which passes `include_hidden=True`: the file is already in MinIO, and refusing
   there would strand the row in `uploading` next to an orphaned object. Same reason
@@ -563,12 +647,14 @@ is collected, and calls `pytest.exit` when postgres is unreachable. There is no 
   `ix_pipeline_runs_status` next to `ix_pipeline_runs_queue (status, created_at)` — and
   `ix_catalog_imports_cities_id` next to `ix_catalog_imports_city_current (cities_id, is_current)` —
   answered nothing the composite did not, while being rewritten on every insert. Both were dropped on
-  30.07.2026 along with `pipeline_runs.worker_id` (written by `claim_next`, read by no query — the
-  worker still builds an id, but only for its log line). The models now carry a comment at each site
+  30.07.2026 along with `pipeline_runs.worker_id` (written by the old in-repository worker and read by
+  no query). The standalone worker does not send or persist a worker id. The models carry a comment
+  at each site
   saying why there is no `index=True`; do not "restore" one. **Before adding `index=True`, check
   `__table_args__` for a composite that already starts with that column.**
 * **`pipeline_run_events` is a write-only table, and the only thing guarding it is one test.** The
-  worker appends a row per stage; nothing in the product reads them. Progress on screen comes from
+  ML worker reports each stage over HTTP and backend appends the row; nothing in the product reads
+  them. Progress on screen comes from
   the run's own `stage` / `progress` / `status_message`, which always hold the latest state — a
   second source of the same thing is what the events read path was, and it served `GET
   /runs/{id}/status`, an endpoint byte-identical to `GET /runs/{id}` that `api.ts` never called.

@@ -41,8 +41,6 @@ from domain.route_snapping import (
 
 ROADS_DIR = (
     Path(__file__).resolve().parents[1]
-    / "apps"
-    / "backend"
     / "alembic"
     / "seed_data"
     / "geometry"

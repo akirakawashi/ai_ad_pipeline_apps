@@ -49,7 +49,15 @@ def test_creates_with_full_details(client, assignments_url, author):
 
 def test_creates_without_details(client, assignments_url):
     """Реквизиты необязательны: маршрут и номер и так известны."""
-    assert client.post(assignments_url, json={}).status_code == 201
+    response = client.post(assignments_url, json={})
+    assert response.status_code == 201
+    assert payload(response)["status_counts"] == {
+        "uploading": 0,
+        "queued": 0,
+        "processing": 0,
+        "completed": 0,
+        "processing_failed": 0,
+    }
 
 
 def test_numbers_are_sequential_within_route(client, assignments_url):

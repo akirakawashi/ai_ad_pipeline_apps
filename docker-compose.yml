@@ -1,22 +1,14 @@
-x-backend-service: &backend-service
-  image: ai-ad-pipeline-backend:dev
+x-backend: &backend
+  image: ai-ad-backend:local
   build:
     context: .
-    dockerfile: apps/backend/Dockerfile
-    target: backend
   env_file:
-    - ./apps/backend/.env
+    - ./.env
   environment:
     POSTGRES_HOST: postgres
+    POSTGRES_PORT: "5432"
     MINIO_INTERNAL_ENDPOINT: http://minio:9000
-    MINIO_PUBLIC_ENDPOINT: http://127.0.0.1:9000
-    PYTHONPATH: /app/apps/backend/src:/app
-    WATCHFILES_FORCE_POLLING: "true"
-  volumes:
-    - ./pipeline_contracts:/app/pipeline_contracts:ro
-    - ./apps/backend/src:/app/apps/backend/src:ro
-    - ./apps/backend/alembic:/app/apps/backend/alembic:ro
-    - ./apps/backend/alembic.ini:/app/apps/backend/alembic.ini:ro
+    MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT:-http://127.0.0.1:9000}
 
 services:
   postgres:
@@ -24,7 +16,7 @@ services:
     container_name: ai-ad-postgres
     restart: unless-stopped
     env_file:
-      - ./apps/backend/.env
+      - ./.env
     ports:
       - "5432:5432"
     volumes:
@@ -40,7 +32,7 @@ services:
     container_name: ai-ad-minio
     restart: unless-stopped
     env_file:
-      - ./apps/backend/.env
+      - ./.env
     environment:
       MINIO_BROWSER: "on"
       MINIO_API_CORS_ALLOW_ORIGIN: "*"
@@ -50,56 +42,30 @@ services:
       - "9001:9001"
     volumes:
       - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:9000/minio/health/live"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
 
   migrate:
-    <<: *backend-service
-    command:
-      - uv
-      - run
-      - --no-sync
-      - alembic
-      - -c
-      - apps/backend/alembic.ini
-      - upgrade
-      - head
+    <<: *backend
+    command: ["python", "-m", "alembic", "-c", "alembic.ini", "upgrade", "head"]
     depends_on:
       postgres:
         condition: service_healthy
     restart: "no"
 
   backend:
-    <<: *backend-service
-    command:
-      - uv
-      - run
-      - --no-sync
-      - uvicorn
-      - main:app
-      - --app-dir
-      - apps/backend/src
-      - --host
-      - 0.0.0.0
-      - --port
-      - "8000"
-      - --reload
+    <<: *backend
+    container_name: ai-ad-backend
     ports:
       - "8000:8000"
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       minio:
-        condition: service_started
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "python",
-          "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthcheck')",
-        ]
-      interval: 5s
-      timeout: 3s
-      retries: 20
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:

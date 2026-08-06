@@ -19,18 +19,22 @@ ROOT = Path(__file__).resolve().parents[1]
 
 # Всё до импорта приложения: настройки читаются из окружения, а session.py
 # создаёт движок прямо на импорте модуля — подменить базу позже уже нельзя.
-load_dotenv(ROOT / "apps" / "backend" / ".env")
+load_dotenv(ROOT / ".env")
 TEST_DB = os.environ.get("POSTGRES_TEST_DB", "ad_pipeline_test")
 ADMIN_DB = "postgres"
 os.environ["POSTGRES_DB"] = TEST_DB
 
-# Пароль справочников фиксируем здесь, а не берём из .env: иначе смена пароля
-# у владельца молча роняла бы половину набора. Настройки кэшируются на первом
-# обращении, поэтому переменные ставим до импорта приложения.
-ADMIN_LOGIN = "admin"
-ADMIN_PASSWORD = "admin"
-os.environ["ADMIN_USERNAME"] = ADMIN_LOGIN
-os.environ["ADMIN_PASSWORD"] = ADMIN_PASSWORD
+# Группа, дающая права админа. Фиксируем здесь, а не берём из .env: иначе смена
+# состава групп у владельца молча роняла бы половину набора. Настройки кэшируются
+# на первом обращении, поэтому переменные ставим до импорта приложения.
+ADMIN_GROUP = "/AI-AD-Admins"
+os.environ["AUTH_ADMIN_GROUPS"] = ADMIN_GROUP
+# Настоящего Keycloak в тестах нет и быть не может — он только продовый.
+# Личность подменяется на границе `current_user`, но приложение должно
+# импортироваться, а с AUTH_USE_KEYCLOAK=true это требовало бы реквизитов.
+os.environ["AUTH_USE_KEYCLOAK"] = "false"
+PROCESSING_TOKEN = "test-processing-token"
+os.environ["PROCESSING_SERVICE_TOKEN"] = PROCESSING_TOKEN
 
 import psycopg  # noqa: E402
 import pytest  # noqa: E402
@@ -40,8 +44,14 @@ from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import inspect  # noqa: E402
 from sqlmodel import Session, text  # noqa: E402
 
+from fastapi import Request  # noqa: E402
+
+from application.common.dto import AuthenticatedUserDTO  # noqa: E402
+from application.exceptions import SessionExpiredError  # noqa: E402
+from domain.auth import Permission  # noqa: E402
 from infrastructure.database.session import engine  # noqa: E402
 from main import app  # noqa: E402
+from presentation.http.auth import current_user, optional_user  # noqa: E402
 from presentation.http.dependencies import get_object_storage  # noqa: E402
 
 # Города и маршруты приходят из сид-миграций и переживают тесты: сущности
@@ -49,6 +59,7 @@ from presentation.http.dependencies import get_object_storage  # noqa: E402
 MUTABLE_TABLES = (
     "pipeline_run_events",
     "pipeline_artifacts",
+    "dwh_video_metrics",
     "pipeline_runs",
     "route_geozones",
     "ad_structures",
@@ -115,7 +126,7 @@ def database() -> Iterator[None]:
         conn.execute(f'DROP DATABASE IF EXISTS "{TEST_DB}" WITH (FORCE)')
         conn.execute(f'CREATE DATABASE "{TEST_DB}"')
 
-    config = Config(str(ROOT / "apps" / "backend" / "alembic.ini"))
+    config = Config(str(ROOT / "alembic.ini"))
     command.upgrade(config, "head")
 
     yield
@@ -158,27 +169,92 @@ def storage() -> FakeObjectStorage:
     return FakeObjectStorage()
 
 
-@pytest.fixture
-def client(storage: FakeObjectStorage) -> Iterator[TestClient]:
-    """Клиент без запуска lifespan: подключение к MinIO тестам не нужно.
+# Кем представляется клиент. Заголовок, а не отдельная подмена зависимости на
+# каждую фикстуру: `dependency_overrides` — общий словарь приложения, и два
+# клиента в одном тесте затирали друг друга. Порядок разрешения фикстур решал,
+# кто победит, и `user_client` молча ходил админом — тест «403 ничего не меняет»
+# при этом проходил бы, будь он один, и падал в паре с админским клиентом.
+TEST_USER_HEADER = "x-test-user"
 
-    Ходит с паролем справочников: правка городов и маршрутов закрыта, а
-    проверяют её сценарии из test_admin_auth.py — остальным тестам интересна
-    бизнес-логика, а не пароль. Кто должен видеть 401, берёт `anonymous_client`.
+
+def admin_user() -> AuthenticatedUserDTO:
+    """Вошедший админ, каким его собрал бы вход из групп токена."""
+    return AuthenticatedUserDTO(
+        id="00000000-0000-0000-0000-0000000000ad",
+        full_name="Тестовый Админ",
+        username="test.admin",
+        email="test.admin@example.test",
+        permissions=[str(Permission.ADMIN)],
+    )
+
+
+def plain_user() -> AuthenticatedUserDTO:
+    """Вошедший сотрудник без прав администратора."""
+    return AuthenticatedUserDTO(
+        id="00000000-0000-0000-0000-0000000000aa",
+        full_name="Тестовый Сотрудник",
+        username="test.user",
+        email="test.user@example.test",
+        permissions=[],
+    )
+
+
+def _identity(request: Request) -> AuthenticatedUserDTO | None:
+    """Кто стоит за запросом — по заголовку клиента, а не по глобальной подмене."""
+    who = request.headers.get(TEST_USER_HEADER)
+    if who == "admin":
+        return admin_user()
+    if who == "plain":
+        return plain_user()
+    return None
+
+
+def _override_current_user(request: Request) -> AuthenticatedUserDTO:
+    user = _identity(request)
+    if user is None:
+        raise SessionExpiredError()
+    return user
+
+
+def _override_optional_user(request: Request) -> AuthenticatedUserDTO | None:
+    return _identity(request)
+
+
+@pytest.fixture
+def clients(storage: FakeObjectStorage) -> Iterator[None]:
+    """Подмена личности на границе `current_user`, одна на все клиенты.
+
+    Настоящей сессией тесты не ходят намеренно: Keycloak в компании только
+    продовый, завести его для тестов негде, а проверять надо решения приложения,
+    а не работу Keycloak.
     """
     app.dependency_overrides[get_object_storage] = lambda: storage
-    test_client = TestClient(app)
-    test_client.auth = (ADMIN_LOGIN, ADMIN_PASSWORD)
-    yield test_client
+    app.dependency_overrides[current_user] = _override_current_user
+    app.dependency_overrides[optional_user] = _override_optional_user
+    yield
     app.dependency_overrides.clear()
 
 
 @pytest.fixture
-def anonymous_client(storage: FakeObjectStorage) -> Iterator[TestClient]:
-    """Тот же клиент, но без пароля — им проверяется, что закрыто именно то."""
-    app.dependency_overrides[get_object_storage] = lambda: storage
-    yield TestClient(app)
-    app.dependency_overrides.clear()
+def client(clients: None) -> TestClient:
+    """Вошедший админ. Без запуска lifespan: подключение к MinIO тестам не нужно.
+
+    Что именно закрыто правами, проверяет `test_access_control.py` — остальным
+    тестам интересна бизнес-логика, а не граница доступа.
+    """
+    return TestClient(app, headers={TEST_USER_HEADER: "admin"})
+
+
+@pytest.fixture
+def user_client(clients: None) -> TestClient:
+    """Вошедший, но без прав администратора — им проверяется 403 против 401."""
+    return TestClient(app, headers={TEST_USER_HEADER: "plain"})
+
+
+@pytest.fixture
+def anonymous_client(clients: None) -> TestClient:
+    """Без сессии — им проверяется, что закрыто именно то, что должно."""
+    return TestClient(app)
 
 
 @pytest.fixture
