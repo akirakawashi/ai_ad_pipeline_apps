@@ -74,7 +74,7 @@ def _upload(client, url: str):
         f"{CITIES}/simferopol/roads-geometry",
         "/api/v1/runs",
         USERS,
-        "/api/v1/catalog/structures?city=simferopol",
+        f"{CITIES}/simferopol/ad-structures",
         ME,
     ],
     ids=[
@@ -189,10 +189,16 @@ def test_catalog_writes_need_admin(user_client):
 
 
 def test_closed_write_changes_nothing(user_client, client):
-    """403 обязан быть отказом, а не «приняли, но не показали»."""
-    before = payload(client.get(f"{CITIES}/simferopol"))["name"]
-    user_client.patch(f"{CITIES}/simferopol", json={"name": "Взломано"})
-    assert payload(client.get(f"{CITIES}/simferopol"))["name"] == before
+    """403 обязан быть отказом, а не «приняли, но не показали».
+
+    Правим справочник людей, а не сидовый город: города между тестами не
+    чистятся, и прошедшая правка испортила бы данные всем следующим тестам —
+    ровно это и случилось, когда фикстуры клиентов затирали друг друга.
+    """
+    created = payload(client.post(USERS, json={"full_name": "Иван Неприкосновенный"}))
+    user_client.patch(f"{USERS}/{created['id']}", json={"full_name": "Взломано"})
+    same = payload(client.get(f"{USERS}?include_inactive=true"))
+    assert {person["full_name"] for person in same} == {"Иван Неприкосновенный"}
 
 
 # --- скрытые записи: режим просмотра админ-панели ----------------------------
@@ -211,21 +217,26 @@ def test_hidden_records_are_silently_ignored_for_a_plain_user(user_client):
     assert user_client.get(f"{assignments}?include_inactive=true").status_code == 200
 
 
-def test_hidden_city_is_visible_to_admin_only(client, user_client):
+def test_hidden_record_is_visible_to_admin_only(client, user_client):
     """Смысл флага: одна и та же ручка отвечает разным составом.
 
-    Проверяется не код ответа, а содержимое, — иначе тест прошёл бы и на
+    Проверяется содержимое, а не код ответа, — иначе тест прошёл бы и на
     заглушке, которая флаг просто игнорирует.
+
+    На справочнике людей, а не на городах: `users` очищается между тестами, а
+    города приходят из сид-миграции и живут дольше теста. Скрытый город остался
+    бы скрытым для всех следующих.
     """
-    client.post(CITIES, json={"slug": "hidden-town", "name": "Скрытый"})
-    client.patch(f"{CITIES}/hidden-town", json={"is_active": False})
+    created = payload(client.post(USERS, json={"full_name": "Скрытый Сотрудник"}))
+    client.patch(f"{USERS}/{created['id']}", json={"is_active": False})
 
-    def slugs(response):
-        return {city["slug"] for city in payload(response)}
+    def names(response):
+        return {person["full_name"] for person in payload(response)}
 
-    assert "hidden-town" in slugs(client.get(f"{CITIES}?include_inactive=true"))
-    assert "hidden-town" not in slugs(user_client.get(f"{CITIES}?include_inactive=true"))
-    assert "hidden-town" not in slugs(user_client.get(CITIES))
+    hidden = f"{USERS}?include_inactive=true"
+    assert "Скрытый Сотрудник" in names(client.get(hidden))
+    assert "Скрытый Сотрудник" not in names(user_client.get(hidden))
+    assert "Скрытый Сотрудник" not in names(user_client.get(USERS))
 
 
 # --- что вошедшему открыто ---------------------------------------------------

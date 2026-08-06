@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -11,15 +12,17 @@ from presentation.http.exception_handlers import setup_exception_handlers
 from presentation.http.routers.healthcheck import healthcheck_router
 from presentation.http.routers.internal import internal_v1_router
 from presentation.http.routers.v1.router import api_v1_router
-from settings.auth import validate_auth_setup
+from settings.auth import warn_if_unusable
 from settings.factory import get_settings
 
 config = get_settings()
 
-# Проверка до создания приложения: выбранный способ входа должен быть работоспособен.
-# Обнаружиться это обязано при запуске, а не когда человек нажмёт «Войти» и
-# уедет в никуда.
-validate_auth_setup(config.auth)
+# Непригодная настройка входа не роняет запуск: отказ всего сервиса ради одной
+# незаполненной переменной — лекарство хуже болезни. Пишем в лог, а человек на
+# экране входа увидит внятную причину вместо кнопки в никуда.
+_auth_problem = warn_if_unusable(config.auth)
+if _auth_problem:
+    logging.getLogger("ai_ad.auth").warning(_auth_problem)
 
 
 @asynccontextmanager

@@ -37,10 +37,30 @@ class KeycloakIdentityProvider:
 
     def __init__(self, settings: AuthSettings) -> None:
         self._settings = settings
-        # Ключи кэшируются: JWKS меняется при ротации ключей realm, то есть
-        # примерно никогда, а ходить за ним на каждый вход — лишний поход в сеть
-        # на критическом пути.
-        self._jwks = PyJWKClient(settings.jwks_uri, cache_keys=True)
+        self._jwks: PyJWKClient | None = None
+
+    def _jwks_client(self) -> PyJWKClient:
+        """Клиент JWKS создаётся при первом обращении, а не в конструкторе.
+
+        `PyJWKClient` проверяет адрес прямо в `__init__` и падает на пустой
+        схеме. В парольном режиме (`AUTH_USE_KEYCLOAK=false`) `issuer` пуст,
+        адрес получается вида `/protocol/openid-connect/certs` — и создание
+        провайдера роняло любой запрос к `/auth/*`, хотя сам Keycloak в этом
+        режиме не нужен вовсе.
+
+        Провайдер при этом собирается всегда: он висит зависимостью на
+        `get_auth_service`, а тот — на всех ручках входа. Разводить две сборки
+        под два режима значило бы плодить состояния; дешевле не трогать то, чем
+        не пользуются.
+
+        Ключи кэшируются внутри клиента: JWKS меняется при ротации ключей realm,
+        то есть примерно никогда, а ходить за ним на каждый вход — лишний поход в
+        сеть на критическом пути. Сам клиент живёт столько же, сколько провайдер,
+        то есть до перезапуска процесса.
+        """
+        if self._jwks is None:
+            self._jwks = PyJWKClient(self._settings.jwks_uri, cache_keys=True)
+        return self._jwks
 
     def authorization_url(self, *, state: str) -> str:
         query = urlencode(
@@ -100,7 +120,7 @@ class KeycloakIdentityProvider:
         стал бы пропуском сюда.
         """
         try:
-            key = self._jwks.get_signing_key_from_jwt(token).key
+            key = self._jwks_client().get_signing_key_from_jwt(token).key
             return jwt.decode(
                 token,
                 key,

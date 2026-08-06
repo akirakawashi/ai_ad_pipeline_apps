@@ -8,7 +8,7 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
 from application.common.dto import AuthenticatedUserDTO
-from application.exceptions import AuthenticationError
+from application.exceptions import AuthenticationError, InactiveUserError
 from application.services.auth_service import AuthService
 from presentation.http.auth import (
     SESSION_COOKIE,
@@ -50,15 +50,22 @@ def login(
     307, а не 302: браузер обязан сохранить метод, а не превратить запрос в GET
     по своему усмотрению.
 
-    В режиме `AUTH_USE_KEYCLOAK=false` уводить браузер некуда, и ручка отвечает
-    503 с внятной причиной, а не редиректом на пустой адрес. До этого дело
-    обычно не доходит: интерфейс в этом режиме показывает форму, а не кнопку, —
-    но ручка обязана отвечать осмысленно и когда её позвали напрямую.
+    Два состояния, в которых уводить некуда, и оба отвечают 503 с внятной
+    причиной, а не редиректом на пустой адрес: режим парольного входа и
+    незаполненные реквизиты Keycloak. До этого дело обычно не доходит —
+    интерфейс спрашивает `/auth/mode` и в обоих случаях кнопку не рисует, — но
+    ручка обязана отвечать осмысленно и когда её позвали напрямую.
     """
-    if not get_settings().auth.use_keycloak:
+    settings = get_settings().auth
+    if not settings.use_keycloak:
         raise HTTPException(
             status_code=503,
             detail="Вход через Keycloak выключен.",
+        )
+    if not settings.configured:
+        raise HTTPException(
+            status_code=503,
+            detail="Доменный вход не настроен: обратитесь к администратору.",
         )
     state = secrets.token_urlsafe(32)
     response = RedirectResponse(service.authorization_url(state=state), status_code=307)
@@ -82,8 +89,15 @@ def callback(
 
     Токен наружу не отдаётся ни в каком виде. В браузер уходит только
     непрозрачный ключ сессии в `HttpOnly`-cookie.
+
+    В парольном режиме ручки нет: сюда попадают только редиректом от Keycloak,
+    а его в этом режиме не бывает. 404 симметричен `/auth/dev-login`, которого
+    нет в режиме Keycloak.
     """
-    frontend = get_settings().auth.frontend_url
+    settings = get_settings().auth
+    if not settings.use_keycloak:
+        raise HTTPException(status_code=404, detail="Not Found")
+    frontend = settings.frontend_url
 
     if error:
         # Keycloak отказал сам — например, человек закрыл форму или его учётка
@@ -93,9 +107,15 @@ def callback(
 
     expected_state = request.cookies.get(STATE_COOKIE)
     if not state or not expected_state or not secrets.compare_digest(
-        state, expected_state
+        state.encode("utf-8"), expected_state.encode("utf-8")
     ):
         # Сравнение постоянного времени — `state` секрет на время входа.
+        #
+        # По байтам, а не по строкам: `compare_digest` на `str` требует чистого
+        # ASCII и на первой же кириллической букве бросает `TypeError`, то есть
+        # `?state=чужой` возвращал бы 500 вместо отказа. Свой `state` мы делаем
+        # ASCII-безопасным, но сюда приходит то, что прислали, а не то, что мы
+        # выдали, — в том и смысл проверки.
         return _back_to_frontend(frontend, "state")
 
     if not code:
@@ -105,6 +125,12 @@ def callback(
         _, key, expires_at = service.complete_login(code=code)
     except AuthenticationError:
         return _back_to_frontend(frontend, "failed")
+    except InactiveUserError:
+        # Домен человека пустил, а мы его скрыли в справочнике. Ловим здесь, а
+        # не отдаём обработчику: тот вернул бы 403 с JSON, а человек в этот
+        # момент в адресной строке и увидел бы голый `{"detail": ...}` вместо
+        # приложения.
+        return _back_to_frontend(frontend, "inactive")
 
     response = _back_to_frontend(frontend, None)
     # Cookie живёт ровно столько же, сколько сессия в базе, — до `exp` токена.
@@ -130,11 +156,18 @@ def mode() -> OkResponse[AuthModeResponse]:
     зашивать под режим на сборке, и одна и та же сборка не смогла бы работать в
     обоих.
 
-    Наружу отдаётся один флаг и ничего больше. Адрес Keycloak, client_id и тем
+    Наружу отдаётся два флага и ничего больше. Адрес Keycloak, client_id и тем
     более секрет здесь не нужны: браузер к Keycloak сам не ходит, его уводит
     `/auth/login`.
     """
-    return OkResponse(data=AuthModeResponse(keycloak=get_settings().auth.use_keycloak))
+    settings = get_settings().auth
+    return OkResponse(
+        data=AuthModeResponse(
+            keycloak=settings.use_keycloak,
+            # Парольному входу настраивать нечего, он готов всегда.
+            ready=settings.configured if settings.use_keycloak else True,
+        )
+    )
 
 
 @router.post("/dev-login", response_model=OkResponse[CurrentUserResponse])

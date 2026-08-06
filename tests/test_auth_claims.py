@@ -26,9 +26,8 @@ from domain.auth import (
 )
 from settings.auth import (
     AuthSettings,
-    AuthSetupError,
     build_auth_settings,
-    validate_auth_setup,
+    warn_if_unusable,
 )
 
 ADMINS = frozenset({"/AI-AD-Admins"})
@@ -180,7 +179,7 @@ def test_claims_carry_the_raw_payload_for_the_dump():
     assert claims.full_name == "Иван Обычный"
 
 
-# --- переключатель способа входа ---------------------------------------------
+# --- пригодность выбранного способа входа ------------------------------------
 
 
 def _settings(issuer: str, *, use_keycloak: bool) -> AuthSettings:
@@ -196,26 +195,21 @@ def _settings(issuer: str, *, use_keycloak: bool) -> AuthSettings:
     )
 
 
-def test_keycloak_mode_without_credentials_refuses_to_start():
-    """Иначе сервис поднимется, покажет «Войти» и отправит человека в никуда.
+def test_keycloak_without_credentials_is_reported_unusable():
+    """Сервис при этом поднимается — падать из-за одной переменной нельзя.
 
-    Разбираться пришлось бы уже на развёрнутом стенде, поэтому падаем при
-    запуске: логи читают, когда что-то случилось, а несостоявшийся старт
-    замечают за минуту.
+    Но войти нельзя, и знать об этом надо: причина уходит в лог, а интерфейс по
+    `/auth/mode` показывает «вход не настроен» вместо кнопки в 503.
     """
-    with pytest.raises(AuthSetupError):
-        validate_auth_setup(_settings("", use_keycloak=True))
+    assert warn_if_unusable(_settings("", use_keycloak=True)) is not None
 
 
 @pytest.mark.parametrize(
-    ("issuer", "client_id", "secret"),
-    [
-        ("https://ssoc.ic-group.ru/realms/IC-GROUP", "", "s"),
-        ("https://ssoc.ic-group.ru/realms/IC-GROUP", "ai-ad", ""),
-    ],
+    ("client_id", "secret"),
+    [("", "s"), ("ai-ad", "")],
     ids=["без client_id", "без секрета"],
 )
-def test_partial_credentials_refuse_to_start(issuer: str, client_id: str, secret: str):
+def test_partial_credentials_are_reported_unusable(client_id: str, secret: str):
     """Обязательны все три, а не только адрес.
 
     Без `client_id` Keycloak не поймёт, кто спрашивает; без секрета не отдаст
@@ -223,7 +217,7 @@ def test_partial_credentials_refuse_to_start(issuer: str, client_id: str, secret
     сломается на первом же входе.
     """
     settings = build_auth_settings(
-        oidc_issuer=issuer,
+        oidc_issuer="https://ssoc.ic-group.ru/realms/IC-GROUP",
         oidc_client_id=client_id,
         oidc_client_secret=secret,
         redirect_uri="r",
@@ -232,16 +226,27 @@ def test_partial_credentials_refuse_to_start(issuer: str, client_id: str, secret
         claims_dump_path=None,
         use_keycloak=True,
     )
-    with pytest.raises(AuthSetupError):
-        validate_auth_setup(settings)
+    assert warn_if_unusable(settings) is not None
 
 
 def test_password_mode_needs_nothing():
     """Заглушке настраивать нечего, и это её главное свойство: работает всегда."""
-    validate_auth_setup(_settings("", use_keycloak=False))
+    assert warn_if_unusable(_settings("", use_keycloak=False)) is None
 
 
-def test_keycloak_mode_with_full_credentials_starts():
-    validate_auth_setup(
-        _settings("https://ssoc.ic-group.ru/realms/IC-GROUP", use_keycloak=True)
-    )
+def test_keycloak_with_full_credentials_is_usable():
+    settings = _settings("https://ssoc.ic-group.ru/realms/IC-GROUP", use_keycloak=True)
+    assert warn_if_unusable(settings) is None
+
+
+def test_unconfigured_keycloak_never_falls_back_to_password_login():
+    """Главное, чего здесь быть не должно: молчаливого отката на admin/admin.
+
+    Соблазн понятный — реквизитов нет, так пустим по паролю, чтобы люди
+    работали. Но это ровно тот случай, когда неудачная настройка тихо открывает
+    дверь на развёрнутом стенде, и никто не узнает. Не настроено — не пускаем
+    никого.
+    """
+    settings = _settings("", use_keycloak=True)
+    assert settings.use_keycloak is True
+    assert settings.configured is False

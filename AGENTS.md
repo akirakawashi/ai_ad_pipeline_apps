@@ -521,30 +521,23 @@ collection and calls `pytest.exit` when Postgres is unreachable. ML/scoring test
   755 KB of JSONB it then threw away. Note the distinction the test encodes: `roads_geometry IS NOT
   NULL` is a *legal* mention — that is how `has_roads_geometry` is computed, in the database, so only
   a boolean crosses the wire. Referencing the column is fine; selecting its value is not.
-* **The admin password is UTF-8 end to end, and every layer had to be taught it.** Two library
-  defaults conspire against a non-Latin password. FastAPI's `HTTPBasic` decodes the header as
-  **ASCII** and raises its own error before your dependency runs — `auto_error=False` does not stop
-  it. `secrets.compare_digest` on **`str`** raises `TypeError` on non-ASCII, which surfaces as a 500,
-  not a 401. Set a Cyrillic `ADMIN_PASSWORD` on the old code and the panel locked from both sides:
-  the correct password never survived the decode (401), any wrong one crashed the comparison (500).
-  Hence `_Utf8HTTPBasic` in `security.py` (subclass, not a from-scratch dependency — the base class
-  carries the OpenAPI scheme) and byte comparison in `_verify`. **Two consequences to preserve:**
-  the frontend's `basicToken` in `api.ts` hand-rolls UTF-8 base64 because `btoa` is latin1-only —
-  that is not redundant, it is the other half; and every rejection must reach `_verify`, so
-  `_Utf8HTTPBasic` returns `None` on anything malformed and never raises — otherwise the library's
-  English "Not authenticated" leaks out in place of the Russian sentence.
-* **A gate that is an early `return` does not gate the effects above it — `signedIn` must be in their
-  dependencies.** `AdminPage.tsx` renders `<AdminLogin/>` from an early return, but its two loading
-  effects sit above that return (hooks must) and therefore ran while the form was still on screen:
-  no token, 401, and the backend's «Админ-панель под паролем. Введите логин и пароль.» landed in
-  `error`. Logging in sets only `signedIn` — neither `version` nor `citySlug` moves — so nothing
-  refetched and that banner sat over an already-authenticated panel with an empty city list. It
-  looked like a broken login and was cured by F5, which remounts with the token already in
-  `sessionStorage`. Both effects now start with `if (!signedIn) return` **and carry `signedIn` in
-  their deps** — that is what makes a successful login the trigger to load. Same reason `onSuccess`
-  clears `error`: the other way in is a 401 mid-session (the password changed on the server), and
-  page state outlives the trip through the login form. **Any admin screen that fetches behind the
-  password inherits this**: gate the request on the session and let the session re-trigger it.
+* **Nothing in the app ever handles a password, and that removed a whole family of traps.** Until
+  06.08.2026 the admin panel had its own HTTP Basic password, and making it work with a Cyrillic
+  value took a `HTTPBasic` subclass (the library decodes the header as ASCII and raises before your
+  dependency runs), byte comparison in place of `secrets.compare_digest` on `str` (which raises
+  `TypeError` on non-ASCII, surfacing as a 500), and a hand-rolled UTF-8 base64 in the frontend
+  because `btoa` is latin1-only. All of it is gone: passwords are typed on Keycloak's page, and the
+  fallback login exists only while `AUTH_USE_KEYCLOAK=false`. Do not reintroduce a password field
+  anywhere without re-reading this — the encoding traps are still there, they just have nothing to
+  bite.
+* **The login screen must never guess.** `App.tsx` asks `GET /auth/mode` before drawing anything and
+  distinguishes four answers: Keycloak, password form, *configured-but-unusable*, and *no answer at
+  all*. An earlier version collapsed the last two into "assume Keycloak", and the result was a
+  working-looking «Войти» button that led to a 404 while the real cause was a stale backend. The
+  same rule applies to `AUTH_USE_KEYCLOAK=true` without credentials: the service starts (crashing the
+  whole app over one unset variable is worse than the outage it prevents), logs the reason, and the
+  screen says the domain login is not configured. **It must never fall back to the password form** —
+  that is the one degradation that silently opens a door on a deployed stand.
 * **The city manual sits outside the password on purpose, and the reason is the router, not the
   content.** `/manual/city` describes admin work, so putting it behind `require_admin` looks
   obviously right — it would break the page. The admin panel's tabs live in component state, not in
